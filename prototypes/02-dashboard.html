@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinanceRPA · 运营大屏</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* 页面特定样式 */
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+  .app-sidebar { padding: 16px 12px; }
+
+  /* 时间筛选 */
+  .time-filter {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-subtle);
+  }
+  .time-filter button {
+    padding: 6px 14px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    font-size: 12px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    transition: all 0.2s var(--ease-out);
+  }
+  .time-filter button.active {
+    background: #047857;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(4, 120, 87, 0.3);
+  }
+  .time-filter button:hover:not(.active) {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.6);
+  }
+
+  /* 面包屑 */
+  .breadcrumb {
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .breadcrumb a { color: var(--text-muted); }
+  .breadcrumb a:hover { color: var(--accent-primary); }
+  .breadcrumb .sep { margin: 0 6px; opacity: 0.6; }
+  .breadcrumb .current { color: var(--text-secondary); }
+
+  /* 图表卡片 */
+  .chart-card {
+    display: flex;
+    flex-direction: column;
+  }
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .chart-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .chart-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+  .chart-body { flex: 1; }
+
+  /* SVG 图表通用（浅色适配） */
+  .chart-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .chart-svg .grid-line {
+    stroke: rgba(15, 23, 42, 0.06);
+    stroke-width: 1;
+    stroke-dasharray: 2 3;
+  }
+  .chart-svg .axis-line {
+    stroke: rgba(15, 23, 42, 0.10);
+    stroke-width: 1;
+  }
+  .chart-svg .axis-label {
+    fill: var(--text-muted);
+    font-size: 10px;
+    font-family: var(--font-mono);
+  }
+  .chart-svg .data-line {
+    fill: none;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .chart-svg .line-primary { stroke: #047857; }   /* 任务量趋势 - 绿 */
+  .chart-svg .line-success { stroke: #7C3AED; }   /* LLM 成本趋势 - 紫 */
+  .chart-svg .data-point {
+    stroke: #fff;
+    stroke-width: 2;
+  }
+  .chart-svg .point-primary { fill: #047857; }
+  .chart-svg .point-success { fill: #7C3AED; }
+  .chart-svg .data-area { opacity: 0.4; }
+  .chart-svg .data-point-label {
+    fill: var(--text-secondary);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    text-anchor: middle;
+    font-weight: 600;
+  }
+
+  /* 业务线进度条 */
+  .biz-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: var(--space-md);
+  }
+  .biz-row:last-child { margin-bottom: 0; }
+  .biz-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  .biz-name {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .biz-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .biz-value {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .biz-bar {
+    height: 8px;
+    background: #F1F5F9;
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+  }
+  .biz-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-pill);
+    transition: width 0.6s var(--ease-out);
+  }
+
+  /* 错误类型柱状图 */
+  .error-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+  }
+  .error-row:last-child { margin-bottom: 0; }
+  .error-name {
+    width: 50px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .error-bar-wrap {
+    flex: 1;
+    height: 26px;
+    background: #F8FAFC;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+  }
+  .error-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-sm);
+    transition: width 0.6s var(--ease-out);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 8px;
+  }
+  .error-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  /* 操作按钮组 */
+  .action-group {
+    display: inline-flex;
+    gap: 6px;
+  }
+  .action-group .btn {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
+  /* 表格内剩余时间色 */
+  .time-urgent { color: var(--accent-danger); }
+  .time-warning { color: var(--accent-warning); }
+  .time-normal { color: var(--text-secondary); }
+</style>
+</head>
+<body class="aurora">
+
+<div class="app-layout">
+  <!-- ============ Header ============ -->
+  <header class="app-header glass-floating">
+    <div class="flex items-center gap-md">
+      <div class="logo-mark" style="width:32px;height:32px;border-radius:var(--radius-sm)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L4 7l8 5 8-5-8-5z"/>
+          <path d="M4 12l8 5 8-5"/>
+          <path d="M4 17l8 5 8-5"/>
+        </svg>
+      </div>
+      <strong style="font-size:15px;letter-spacing:-0.02em">FinanceRPA</strong>
+    </div>
+
+    <div class="demo-search">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input placeholder="搜索任务、工作流、审计日志…">
+    </div>
+
+    <div class="flex items-center gap-md">
+      <button class="icon-btn">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span class="badge badge-danger" style="position:absolute;top:-4px;right:-4px;padding:1px 5px;font-size:10px;min-width:16px;justify-content:center">7</span>
+      </button>
+      <div class="user-chip">
+        <div class="avatar">张</div>
+        <span style="font-size:13px;font-weight:500">张三</span>
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ Sidebar ============ -->
+  <aside class="app-sidebar glass-floating">
+    <div class="nav-group-title">监控</div>
+    <div class="nav-item active">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      运营大屏
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      LLM 监控
+    </div>
+
+    <div class="nav-group-title">自动化</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/>
+        <path d="M8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
+        <line x1="9" y1="12" x2="15" y2="12"/>
+        <line x1="9" y1="16" x2="13" y2="16"/>
+      </svg>
+      任务管理
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="4" width="6" height="6" rx="1"/>
+        <rect x="14" y="14" width="6" height="6" rx="1"/>
+        <path d="M10 7h4a3 3 0 0 1 3 3v4"/>
+      </svg>
+      工作流
+    </div>
+
+    <div class="nav-group-title">合规</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+      审批中心
+      <span class="badge badge-warning" style="margin-left:auto">3</span>
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      人工接管
+      <span class="badge badge-danger" style="margin-left:auto">7</span>
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="8" y1="13" x2="16" y2="13"/>
+        <line x1="8" y1="17" x2="14" y2="17"/>
+      </svg>
+      审计日志
+    </div>
+
+    <div class="nav-group-title">管理</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      设置
+    </div>
+  </aside>
+
+  <!-- ============ Main ============ -->
+  <main class="app-main">
+
+    <!-- 页面标题区 -->
+    <div class="flex items-center justify-between mb-md">
+      <div>
+        <h1 class="page-title" style="margin:0 0 4px">运营大屏</h1>
+        <div class="breadcrumb">
+          <a href="#">首页</a>
+          <span class="sep">/</span>
+          <a href="#">监控</a>
+          <span class="sep">/</span>
+          <span class="current">运营大屏</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-md">
+        <div class="time-filter">
+          <button class="active">今日</button>
+          <button>本周</button>
+          <button>本月</button>
+        </div>
+        <button class="btn btn-ghost btn-icon" title="刷新">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI 卡片 -->
+    <div class="page-grid grid-4">
+      <div class="glass-card kpi-card">
+        <div class="kpi-label">任务总数</div>
+        <div class="kpi-value">1,284</div>
+        <div class="kpi-trend up">↑ 12% vs 上期</div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-label">成功率</div>
+        <div class="kpi-value">94.3<span style="font-size:18px">%</span></div>
+        <div class="kpi-trend up">↑ 2.1%</div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-label">LLM 成本</div>
+        <div class="kpi-value">¥1,256</div>
+        <div class="kpi-trend down">↓ 8%</div>
+      </div>
+      <div class="glass-card kpi-card">
+        <div class="kpi-label">接管队列</div>
+        <div class="kpi-value" style="color:var(--accent-warning)">7</div>
+        <div class="kpi-trend" style="color:var(--accent-warning)">⚠ 待处理</div>
+      </div>
+    </div>
+
+    <!-- 任务量趋势 + 业务线分布 -->
+    <div class="page-grid grid-2-1 mt-lg">
+      <!-- 任务量趋势图 -->
+      <div class="glass-card-static p-lg chart-card">
+        <div class="chart-header">
+          <div class="chart-title">任务量趋势 (7天)</div>
+          <div class="chart-meta">峰值 256 · 均值 183</div>
+        </div>
+        <div class="chart-body">
+          <svg class="chart-svg" viewBox="0 0 700 260" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <linearGradient id="trend-area" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#047857" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#047857" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <!-- 网格线 -->
+            <line class="grid-line" x1="50" y1="20" x2="690" y2="20"/>
+            <line class="grid-line" x1="50" y1="87" x2="690" y2="87"/>
+            <line class="grid-line" x1="50" y1="153" x2="690" y2="153"/>
+            <line class="axis-line" x1="50" y1="220" x2="690" y2="220"/>
+            <!-- Y 轴标签 -->
+            <text class="axis-label" x="42" y="24" text-anchor="end">300</text>
+            <text class="axis-label" x="42" y="91" text-anchor="end">200</text>
+            <text class="axis-label" x="42" y="157" text-anchor="end">100</text>
+            <text class="axis-label" x="42" y="224" text-anchor="end">0</text>
+            <!-- X 轴标签 -->
+            <text class="axis-label" x="50" y="240" text-anchor="middle">周一</text>
+            <text class="axis-label" x="150" y="240" text-anchor="middle">周二</text>
+            <text class="axis-label" x="250" y="240" text-anchor="middle">周三</text>
+            <text class="axis-label" x="350" y="240" text-anchor="middle">周四</text>
+            <text class="axis-label" x="450" y="240" text-anchor="middle">周五</text>
+            <text class="axis-label" x="550" y="240" text-anchor="middle">周六</text>
+            <text class="axis-label" x="650" y="240" text-anchor="middle">周日</text>
+            <!-- 面积填充 -->
+            <polygon class="data-area" style="fill:url(#trend-area)" points="50,123 150,108 250,132 350,90 450,80 550,101 650,49 650,220 50,220"/>
+            <!-- 折线 -->
+            <polyline class="data-line line-primary" points="50,123 150,108 250,132 350,90 450,80 550,101 650,49"/>
+            <!-- 数据点 -->
+            <circle class="data-point point-primary" cx="50" cy="123" r="4"/>
+            <circle class="data-point point-primary" cx="150" cy="108" r="4"/>
+            <circle class="data-point point-primary" cx="250" cy="132" r="4"/>
+            <circle class="data-point point-primary" cx="350" cy="90" r="4"/>
+            <circle class="data-point point-primary" cx="450" cy="80" r="4"/>
+            <circle class="data-point point-primary" cx="550" cy="101" r="4"/>
+            <circle class="data-point point-primary" cx="650" cy="49" r="4.5"/>
+            <!-- 数据标签 -->
+            <text class="data-point-label" x="50" y="113">145</text>
+            <text class="data-point-label" x="150" y="98">168</text>
+            <text class="data-point-label" x="250" y="122">132</text>
+            <text class="data-point-label" x="350" y="80">195</text>
+            <text class="data-point-label" x="450" y="70">210</text>
+            <text class="data-point-label" x="550" y="91">178</text>
+            <text class="data-point-label" x="650" y="39">256</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 业务线分布 -->
+      <div class="glass-card-static p-lg chart-card">
+        <div class="chart-header">
+          <div class="chart-title">业务线分布</div>
+          <div class="chart-meta">总占比 100%</div>
+        </div>
+        <div class="chart-body">
+          <div class="biz-row">
+            <div class="biz-header">
+              <span class="biz-name"><span class="biz-dot" style="background:#1E40AF"></span>对公业务</span>
+              <span class="biz-value">38%</span>
+            </div>
+            <div class="biz-bar"><div class="biz-bar-fill" style="width:38%;background:linear-gradient(90deg,#1E40AF,#1E3A8A)"></div></div>
+          </div>
+          <div class="biz-row">
+            <div class="biz-header">
+              <span class="biz-name"><span class="biz-dot" style="background:#2563EB"></span>个人金融</span>
+              <span class="biz-value">27%</span>
+            </div>
+            <div class="biz-bar"><div class="biz-bar-fill" style="width:27%;background:linear-gradient(90deg,#2563EB,#1E40AF)"></div></div>
+          </div>
+          <div class="biz-row">
+            <div class="biz-header">
+              <span class="biz-name"><span class="biz-dot" style="background:#3B82F6"></span>资产管理</span>
+              <span class="biz-value">20%</span>
+            </div>
+            <div class="biz-bar"><div class="biz-bar-fill" style="width:20%;background:linear-gradient(90deg,#3B82F6,#2563EB)"></div></div>
+          </div>
+          <div class="biz-row">
+            <div class="biz-header">
+              <span class="biz-name"><span class="biz-dot" style="background:#60A5FA"></span>保险业务</span>
+              <span class="biz-value">15%</span>
+            </div>
+            <div class="biz-bar"><div class="biz-bar-fill" style="width:15%;background:linear-gradient(90deg,#60A5FA,#3B82F6)"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LLM 成本趋势 + 错误类型分布 -->
+    <div class="page-grid grid-2-1 mt-lg">
+      <!-- LLM 成本趋势 -->
+      <div class="glass-card-static p-lg chart-card">
+        <div class="chart-header">
+          <div class="chart-title">LLM 成本趋势 (7天)</div>
+          <div class="chart-meta">累计 ¥1,256 · ↓ 8%</div>
+        </div>
+        <div class="chart-body">
+          <svg class="chart-svg" viewBox="0 0 700 260" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <linearGradient id="llm-area" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#7C3AED" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <!-- 网格线 -->
+            <line class="grid-line" x1="50" y1="20" x2="690" y2="20"/>
+            <line class="grid-line" x1="50" y1="80" x2="690" y2="80"/>
+            <line class="grid-line" x1="50" y1="140" x2="690" y2="140"/>
+            <line class="axis-line" x1="50" y1="200" x2="690" y2="200"/>
+            <!-- Y 轴标签 -->
+            <text class="axis-label" x="42" y="24" text-anchor="end">¥240</text>
+            <text class="axis-label" x="42" y="84" text-anchor="end">¥160</text>
+            <text class="axis-label" x="42" y="144" text-anchor="end">¥80</text>
+            <text class="axis-label" x="42" y="204" text-anchor="end">¥0</text>
+            <!-- X 轴标签 -->
+            <text class="axis-label" x="50" y="220" text-anchor="middle">07/20</text>
+            <text class="axis-label" x="150" y="220" text-anchor="middle">07/21</text>
+            <text class="axis-label" x="250" y="220" text-anchor="middle">07/22</text>
+            <text class="axis-label" x="350" y="220" text-anchor="middle">07/23</text>
+            <text class="axis-label" x="450" y="220" text-anchor="middle">07/24</text>
+            <text class="axis-label" x="550" y="220" text-anchor="middle">07/25</text>
+            <text class="axis-label" x="650" y="220" text-anchor="middle">07/26</text>
+            <!-- 面积填充 -->
+            <polygon class="data-area" style="fill:url(#llm-area)" points="50,20 150,39 250,50 350,65 450,76 550,95 650,113 650,200 50,200"/>
+            <!-- 折线 -->
+            <polyline class="data-line line-success" points="50,20 150,39 250,50 350,65 450,76 550,95 650,113"/>
+            <!-- 数据点 -->
+            <circle class="data-point point-success" cx="50" cy="20" r="4.5"/>
+            <circle class="data-point point-success" cx="150" cy="39" r="4"/>
+            <circle class="data-point point-success" cx="250" cy="50" r="4"/>
+            <circle class="data-point point-success" cx="350" cy="65" r="4"/>
+            <circle class="data-point point-success" cx="450" cy="76" r="4"/>
+            <circle class="data-point point-success" cx="550" cy="95" r="4"/>
+            <circle class="data-point point-success" cx="650" cy="113" r="4"/>
+            <!-- 数据标签 -->
+            <text class="data-point-label" x="50" y="14">¥240</text>
+            <text class="data-point-label" x="150" y="33">¥215</text>
+            <text class="data-point-label" x="250" y="44">¥200</text>
+            <text class="data-point-label" x="350" y="59">¥180</text>
+            <text class="data-point-label" x="450" y="70">¥165</text>
+            <text class="data-point-label" x="550" y="89">¥140</text>
+            <text class="data-point-label" x="650" y="107">¥116</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 错误类型分布 -->
+      <div class="glass-card-static p-lg chart-card">
+        <div class="chart-header">
+          <div class="chart-title">错误类型分布</div>
+          <div class="chart-meta">共 93 起</div>
+        </div>
+        <div class="chart-body">
+          <div class="error-row">
+            <div class="error-name">超时</div>
+            <div class="error-bar-wrap">
+              <div class="error-bar-fill" style="width:100%;background:#DC2626">
+                <span class="error-count">42</span>
+              </div>
+            </div>
+          </div>
+          <div class="error-row">
+            <div class="error-name">校验</div>
+            <div class="error-bar-wrap">
+              <div class="error-bar-fill" style="width:66.7%;background:#D97706">
+                <span class="error-count">28</span>
+              </div>
+            </div>
+          </div>
+          <div class="error-row">
+            <div class="error-name">网络</div>
+            <div class="error-bar-wrap">
+              <div class="error-bar-fill" style="width:35.7%;background:#2563EB">
+                <span class="error-count">15</span>
+              </div>
+            </div>
+          </div>
+          <div class="error-row">
+            <div class="error-name">其他</div>
+            <div class="error-bar-wrap">
+              <div class="error-bar-fill" style="width:19%;background:linear-gradient(90deg,#94A3B8,#64748B)">
+                <span class="error-count">8</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 最近审批表格 -->
+    <div class="glass-card-static p-lg mt-lg">
+      <div class="chart-header">
+        <div class="chart-title">最近审批</div>
+        <a href="#" style="font-size:12px">查看全部 →</a>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>任务名</th>
+              <th>风险等级</th>
+              <th>申请人</th>
+              <th>剩余时间</th>
+              <th style="text-align:right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>大额转账审批 · <span class="mono" style="color:var(--text-muted)">TASK-A0215</span></td>
+              <td><span class="badge risk-critical">CRITICAL</span></td>
+              <td>王经理</td>
+              <td class="mono time-urgent">剩 5 分钟</td>
+              <td style="text-align:right">
+                <div class="action-group">
+                  <button class="btn btn-ghost btn-sm">查看</button>
+                  <button class="btn btn-success btn-sm">批准</button>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>信用卡大额授权 · <span class="mono" style="color:var(--text-muted)">TASK-A0218</span></td>
+              <td><span class="badge risk-high">HIGH</span></td>
+              <td>李经理</td>
+              <td class="mono time-warning">剩 12 分钟</td>
+              <td style="text-align:right">
+                <div class="action-group">
+                  <button class="btn btn-ghost btn-sm">查看</button>
+                  <button class="btn btn-success btn-sm">批准</button>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>跨境汇款审核 · <span class="mono" style="color:var(--text-muted)">TASK-A0223</span></td>
+              <td><span class="badge risk-high">HIGH</span></td>
+              <td>赵主管</td>
+              <td class="mono time-warning">剩 25 分钟</td>
+              <td style="text-align:right">
+                <div class="action-group">
+                  <button class="btn btn-ghost btn-sm">查看</button>
+                  <button class="btn btn-success btn-sm">批准</button>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>批量代发复核 · <span class="mono" style="color:var(--text-muted)">TASK-A0231</span></td>
+              <td><span class="badge risk-medium">MEDIUM</span></td>
+              <td>钱专员</td>
+              <td class="mono time-normal">剩 1 小时</td>
+              <td style="text-align:right">
+                <div class="action-group">
+                  <button class="btn btn-ghost btn-sm">查看</button>
+                  <button class="btn btn-success btn-sm">批准</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+</body>
+</html>

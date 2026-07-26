@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinanceRPA · 任务列表与详情</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* 页面特定样式 */
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+  .app-sidebar { padding: 16px 12px; }
+
+  /* 分隔演示区块（绿色系） */
+  .demo-divider {
+    margin: 56px 0 24px;
+    padding: 16px 24px;
+    background: var(--accent-primary-light);
+    border: 1px dashed var(--glass-border-strong);
+    border-radius: var(--radius-md);
+    color: var(--accent-primary-hover);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  /* ===== 任务列表页 ===== */
+  /* 筛选栏内一行布局 */
+  .filter-bar {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1.6fr auto;
+    gap: var(--space-md);
+    align-items: end;
+  }
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .filter-field .label {
+    margin-bottom: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .filter-field .input,
+  .filter-field .select { padding: 8px 12px; font-size: 13px; }
+  .search-field { position: relative; }
+  .search-field .search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+  }
+  .search-field .input { padding-left: 34px; }
+  .date-range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .date-range .input { padding: 8px 10px; font-size: 13px; }
+  .date-range .sep { color: var(--text-muted); font-size: 12px; }
+
+  /* 任务卡片 */
+  .task-card {
+    display: grid;
+    grid-template-columns: 48px 1fr auto;
+    gap: var(--space-lg);
+    align-items: center;
+    padding: var(--space-md) var(--space-lg);
+    margin-bottom: var(--space-md);
+  }
+  .task-status-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .task-status-icon.success { background: rgba(4, 120, 87, 0.12); color: var(--accent-success); border: 1px solid rgba(4, 120, 87, 0.30); }
+  .task-status-icon.running { background: rgba(37, 99, 235, 0.12); color: var(--accent-info); border: 1px solid rgba(37, 99, 235, 0.30); }
+  .task-status-icon.takeover { background: rgba(217, 119, 6, 0.12); color: var(--accent-warning); border: 1px solid rgba(217, 119, 6, 0.30); }
+  .task-status-icon.pending { background: rgba(148, 163, 184, 0.10); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.25); }
+  .task-status-icon.failed { background: rgba(220, 38, 38, 0.12); color: var(--accent-danger); border: 1px solid rgba(220, 38, 38, 0.30); }
+
+  .task-status-icon .icon { width: 24px; height: 24px; }
+
+  .task-body { min-width: 0; }
+  .task-title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+  .task-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-primary-hover);
+    background: var(--accent-primary-light);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--glass-border-subtle);
+  }
+  .task-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .task-meta {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .task-meta .dot { margin: 0 8px; color: var(--text-disabled); }
+  .task-stats {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+  }
+  .task-stats .stat-item { display: inline-flex; align-items: center; gap: 4px; }
+  .task-stats .stat-item .icon { width: 14px; height: 14px; color: var(--text-muted); }
+  .task-stats .mono { color: var(--text-secondary); }
+
+  .task-progress-wrap {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 480px;
+  }
+  .task-progress-wrap .progress { flex: 1; }
+  .task-progress-wrap .pct {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-info);
+    min-width: 38px;
+    text-align: right;
+  }
+
+  .task-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* 分页 */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-top: var(--space-lg);
+  }
+  .pagination .page-item {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+    font-family: var(--font-sans);
+  }
+  .pagination .page-item:hover { background: #fff; color: var(--text-primary); border-color: var(--glass-border-strong); }
+  .pagination .page-item.active {
+    background:#047857;
+    color: #fff;
+    border-color: rgba(4, 120, 87, 0.3);
+    box-shadow: 0 2px 8px rgba(4, 120, 87, 0.3);
+  }
+  .pagination .page-item.disabled { color: var(--text-disabled); cursor: not-allowed; }
+  .pagination .page-info {
+    margin-left: 16px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  /* ===== 任务详情页 ===== */
+  .detail-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+  }
+  .detail-title-block {
+    flex: 1;
+    min-width: 280px;
+  }
+  .detail-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .detail-title-row .task-id { font-size: 13px; }
+  .detail-title-row h2 { font-size: 20px; font-weight: 700; color: var(--text-primary); }
+  .detail-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 520px;
+    margin-top: 6px;
+  }
+  .detail-progress-row .progress { flex: 1; height: 8px; }
+  .detail-progress-row .pct {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-info);
+    min-width: 48px;
+    text-align: right;
+  }
+
+  /* 浏览器实时流 */
+  .browser-stream {
+    aspect-ratio: 16 / 9;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(10, 14, 39, 0.95));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .browser-stream::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 30% 30%, rgba(4, 120, 87, 0.12), transparent 50%),
+      radial-gradient(circle at 70% 70%, rgba(5, 150, 105, 0.08), transparent 50%);
+    pointer-events: none;
+  }
+  .browser-stream .stream-label {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    z-index: 1;
+  }
+  .browser-stream .stream-icon {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 12px;
+    color: var(--accent-primary);
+    opacity: 0.5;
+    z-index: 1;
+  }
+  .browser-stream .browser-chrome {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    z-index: 2;
+  }
+  .browser-stream .dot-r { width: 8px; height: 8px; border-radius: 50%; background: #DC2626; }
+  .browser-stream .dot-y { width: 8px; height: 8px; border-radius: 50%; background: #D97706; }
+  .browser-stream .dot-g { width: 8px; height: 8px; border-radius: 50%; background: #047857; }
+  .browser-stream .url-bar {
+    flex: 1;
+    margin-left: 8px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+  }
+  .browser-stream .live-badge {
+    position: absolute;
+    top: 38px;
+    right: 12px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(220, 38, 38, 0.15);
+    color: var(--accent-danger);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .browser-stream .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-danger);
+    animation: pulse 1.5s infinite;
+  }
+
+  .sse-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--accent-primary-light);
+    border: 1px solid var(--glass-border-subtle);
+    color: var(--accent-primary-hover);
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .sse-tag .sse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    animation: pulse 1.5s infinite;
+  }
+
+  /* 操作日志小窗 */
+  .log-window {
+    margin-top: var(--space-md);
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.9;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .log-window .log-line { display: flex; gap: 10px; }
+  .log-window .log-time { color: var(--text-muted); flex-shrink: 0; }
+  .log-window .log-msg { color: var(--text-secondary); word-break: break-all; }
+  .log-window .log-msg.success { color: var(--accent-success); }
+  .log-window .log-msg.info { color: var(--accent-info); }
+  .log-window .log-msg.warn { color: var(--accent-warning); }
+
+  /* 时间线项 */
+  .timeline-item-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  .timeline-item-title .name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .timeline-item-title .time {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .timeline-item-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .timeline-item.active .timeline-item-title .name { color: var(--accent-primary-hover); }
+  .timeline-item.pending .timeline-item-title .name { color: var(--text-muted); }
+
+  /* 详情两栏 */
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: var(--space-lg);
+    margin-top: var(--space-lg);
+  }
+  @media (max-width: 1024px) {
+    .detail-grid { grid-template-columns: 1fr; }
+    .filter-bar { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body class="aurora">
+
+<div class="app-layout">
+  <!-- ============ Header ============ -->
+  <header class="app-header glass-floating">
+    <div class="flex items-center gap-md">
+      <div class="logo-mark" style="width:32px;height:32px;border-radius:var(--radius-sm)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L4 7l8 5 8-5-8-5z"/>
+          <path d="M4 12l8 5 8-5"/>
+          <path d="M4 17l8 5 8-5"/>
+        </svg>
+      </div>
+      <strong style="font-size:15px;letter-spacing:-0.02em">FinanceRPA</strong>
+    </div>
+
+    <div class="demo-search">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input placeholder="搜索任务、工作流、审计日志…">
+    </div>
+
+    <div class="flex items-center gap-md">
+      <button class="icon-btn">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span class="badge badge-danger" style="position:absolute;top:-4px;right:-4px;padding:1px 5px;font-size:10px;min-width:16px;justify-content:center">3</span>
+      </button>
+      <div class="user-chip">
+        <div class="avatar">张</div>
+        <span style="font-size:13px;font-weight:500">张三</span>
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ Sidebar ============ -->
+  <aside class="app-sidebar glass-floating">
+    <div class="nav-group-title">监控</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      运营大屏
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      LLM 监控
+    </div>
+
+    <div class="nav-group-title">自动化</div>
+    <div class="nav-item active">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/>
+        <path d="M8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
+        <line x1="9" y1="12" x2="15" y2="12"/>
+        <line x1="9" y1="16" x2="13" y2="16"/>
+      </svg>
+      任务管理
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="4" width="6" height="6" rx="1"/>
+        <rect x="14" y="14" width="6" height="6" rx="1"/>
+        <path d="M10 7h4a3 3 0 0 1 3 3v4"/>
+      </svg>
+      工作流
+    </div>
+
+    <div class="nav-group-title">合规</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+      审批中心
+      <span class="badge badge-warning" style="margin-left:auto">3</span>
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      人工接管
+      <span class="badge badge-danger" style="margin-left:auto">5</span>
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="8" y1="13" x2="16" y2="13"/>
+        <line x1="8" y1="17" x2="14" y2="17"/>
+      </svg>
+      审计日志
+    </div>
+
+    <div class="nav-group-title">管理</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      设置
+    </div>
+  </aside>
+
+  <!-- ============ Main ============ -->
+  <main class="app-main">
+
+    <!-- ========== 第一部分：任务列表页 ========== -->
+
+    <!-- 标题栏 -->
+    <div class="flex items-center justify-between mb-md">
+      <div>
+        <h1 class="page-title" style="margin:0">任务管理</h1>
+        <div style="color:var(--text-muted);font-size:12px">
+          <a href="#">首页</a> / <a href="#">自动化</a> / <span style="color:var(--text-secondary)">任务管理</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-sm">
+        <button class="btn btn-ghost">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          刷新
+        </button>
+        <button class="btn btn-primary">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          新建任务
+        </button>
+      </div>
+    </div>
+
+    <!-- 筛选栏 -->
+    <div class="glass-card-static p-md mb-md">
+      <div class="filter-bar">
+        <div class="filter-field search-field">
+          <label class="label">关键词</label>
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input class="input" placeholder="搜索任务 ID / 名称…">
+        </div>
+        <div class="filter-field">
+          <label class="label">状态</label>
+          <select class="select">
+            <option>全部状态</option>
+            <option>成功</option>
+            <option>执行中</option>
+            <option>待接管</option>
+            <option>待审批</option>
+            <option>失败</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label class="label">业务线</label>
+          <select class="select">
+            <option>全部业务线</option>
+            <option>对公信贷</option>
+            <option>个人金融</option>
+            <option>保险业务</option>
+            <option>同业业务</option>
+            <option>资金运营</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label class="label">风险等级</label>
+          <select class="select">
+            <option>全部</option>
+            <option>低风险</option>
+            <option>中风险</option>
+            <option>高风险</option>
+            <option>极高风险</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label class="label">执行时间</label>
+          <div class="date-range">
+            <input class="input" type="date" value="2026-07-20">
+            <span class="sep">至</span>
+            <input class="input" type="date" value="2026-07-26">
+          </div>
+        </div>
+        <div class="filter-field">
+          <label class="label" style="visibility:hidden">操作</label>
+          <button class="btn btn-ghost">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1 4 1 10 7 10"/>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+            重置
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 任务卡片列表 -->
+    <div>
+
+      <!-- 任务 1：成功 -->
+      <div class="glass-card task-card">
+        <div class="task-status-icon success">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-id">TASK-001</span>
+            <span class="task-name">银行流水自动下载</span>
+            <span class="badge risk-low">低风险</span>
+          </div>
+          <div class="task-meta">对公信贷部<span class="dot">·</span>操作人：李四<span class="dot">·</span>工商银行 RPA</div>
+          <div class="task-stats">
+            <span class="stat-item"><span class="badge badge-success">✅ 成功</span></span>
+            <span class="stat-item">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              2026-07-26 09:14:22
+            </span>
+            <span class="stat-item">耗时 <span class="mono">3m 12s</span></span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn btn-ghost btn-sm">查看详情</button>
+          <button class="btn btn-ghost btn-sm">日志</button>
+          <button class="btn btn-ghost btn-sm btn-icon" title="更多">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 任务 2：执行中 -->
+      <div class="glass-card task-card">
+        <div class="task-status-icon running">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-id">TASK-002</span>
+            <span class="task-name">跨行转账核对</span>
+            <span class="badge risk-medium">中风险</span>
+          </div>
+          <div class="task-meta">个人金融部<span class="dot">·</span>操作人：张三<span class="dot">·</span>招商银行 RPA</div>
+          <div class="task-stats">
+            <span class="stat-item"><span class="badge badge-info">⚡ 执行中</span></span>
+            <span class="stat-item">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              2026-07-26 14:32:05
+            </span>
+            <span class="stat-item">已运行 <span class="mono">2m 08s</span></span>
+          </div>
+          <div class="task-progress-wrap">
+            <div class="progress"><div class="progress-bar" style="width:67%;background:linear-gradient(90deg,#2563EB,#2563EB)"></div></div>
+            <span class="pct">67%</span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn btn-ghost btn-sm">查看详情</button>
+          <button class="btn btn-ghost btn-sm">实时流</button>
+          <button class="btn btn-ghost btn-sm btn-icon" title="更多">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 任务 3：待接管 -->
+      <div class="glass-card task-card">
+        <div class="task-status-icon takeover">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-id">TASK-003</span>
+            <span class="task-name">保单申请表自动填写</span>
+            <span class="badge risk-high">高风险</span>
+          </div>
+          <div class="task-meta">保险业务线<span class="dot">·</span>操作人：王五<span class="dot">·</span>平安保险 RPA</div>
+          <div class="task-stats">
+            <span class="stat-item"><span class="badge badge-warning">⚠ 待接管</span></span>
+            <span class="stat-item">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              2026-07-26 11:08:47
+            </span>
+            <span class="stat-item">等待 <span class="mono">5m 12s</span></span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,#D97706,#D97706);color:#fff;border-color:rgba(217,119,6,0.3);box-shadow:0 4px 12px rgba(217,119,6,0.28)">立即接管</button>
+          <button class="btn btn-ghost btn-sm">详情</button>
+          <button class="btn btn-ghost btn-sm btn-icon" title="更多">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 任务 4：待审批 -->
+      <div class="glass-card task-card">
+        <div class="task-status-icon pending">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 22h14"/>
+            <path d="M5 2h14"/>
+            <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/>
+            <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>
+          </svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-id">TASK-004</span>
+            <span class="task-name">大额资金划拨审批</span>
+            <span class="badge risk-critical">极高风险</span>
+          </div>
+          <div class="task-meta">资金运营部<span class="dot">·</span>操作人：赵六<span class="dot">·</span>建设银行 RPA</div>
+          <div class="task-stats">
+            <span class="stat-item"><span class="badge badge-muted">⏳ 待审批</span></span>
+            <span class="stat-item">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              2026-07-26 13:45:10
+            </span>
+            <span class="stat-item">金额 <span class="mono">¥ 8,500,000</span></span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn btn-primary btn-sm">查看审批</button>
+          <button class="btn btn-ghost btn-sm">详情</button>
+          <button class="btn btn-ghost btn-sm btn-icon" title="更多">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 任务 5：失败 -->
+      <div class="glass-card task-card">
+        <div class="task-status-icon failed">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-id">TASK-005</span>
+            <span class="task-name">日报表自动生成</span>
+            <span class="badge risk-low">低风险</span>
+          </div>
+          <div class="task-meta">同业业务部<span class="dot">·</span>操作人：钱七<span class="dot">·</span>报表系统 RPA</div>
+          <div class="task-stats">
+            <span class="stat-item"><span class="badge badge-danger">❌ 失败</span></span>
+            <span class="stat-item">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              2026-07-26 08:50:33
+            </span>
+            <span class="stat-item">耗时 <span class="mono">1m 47s</span></span>
+            <span class="stat-item" style="color:var(--accent-danger)">错误：元素未找到 (#submit-btn)</span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn btn-ghost btn-sm">重试</button>
+          <button class="btn btn-ghost btn-sm">日志</button>
+          <button class="btn btn-ghost btn-sm btn-icon" title="更多">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 任务 6：成功 -->
+      <div class="glass-card task-card">
+        <div class="task-status-icon success">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div class="task-body">
+          <div class="task-title-row">
+            <span class="task-id">TASK-006</span>
+            <span class="task-name">对账单自动核对</span>
+            <span class="badge risk-medium">中风险</span>
+          </div>
+          <div class="task-meta">个人金融部<span class="dot">·</span>操作人：孙八<span class="dot">·</span>农业银行 RPA</div>
+          <div class="task-stats">
+            <span class="stat-item"><span class="badge badge-success">✅ 成功</span></span>
+            <span class="stat-item">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              2026-07-26 10:22:18
+            </span>
+            <span class="stat-item">耗时 <span class="mono">6m 35s</span></span>
+            <span class="stat-item">核对记录 <span class="mono">1,284</span> 条</span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn btn-ghost btn-sm">查看详情</button>
+          <button class="btn btn-ghost btn-sm">报告</button>
+          <button class="btn btn-ghost btn-sm btn-icon" title="更多">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="5" r="1"/>
+              <circle cx="12" cy="12" r="1"/>
+              <circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination">
+      <span class="page-item disabled">‹</span>
+      <span class="page-item active">1</span>
+      <span class="page-item">2</span>
+      <span class="page-item">3</span>
+      <span class="page-item">4</span>
+      <span class="page-item">5</span>
+      <span class="page-item">›</span>
+      <span class="page-info">共 128 条 · 每页 20 条</span>
+    </div>
+
+    <!-- ========== 演示分隔 ========== -->
+    <div class="demo-divider">▼ 以下为任务详情页演示</div>
+
+    <!-- ========== 第二部分：任务详情页 ========== -->
+
+    <!-- 详情头部 -->
+    <div class="glass-card-static p-lg">
+      <div class="detail-header">
+        <button class="btn btn-ghost btn-icon" title="返回">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/>
+            <polyline points="12 19 5 12 12 5"/>
+          </svg>
+        </button>
+        <div class="detail-title-block">
+          <div class="detail-title-row">
+            <span class="task-id">TASK-002</span>
+            <h2>跨行转账核对</h2>
+            <span class="badge badge-info">⚡ 执行中</span>
+            <span class="badge risk-medium">中风险</span>
+          </div>
+          <div class="task-meta" style="margin-bottom:6px">个人金融部<span class="dot">·</span>操作人：张三<span class="dot">·</span>招商银行 RPA<span class="dot">·</span>开始于 2026-07-26 14:32:05</div>
+          <div class="detail-progress-row">
+            <div class="progress"><div class="progress-bar" style="width:67%;background:linear-gradient(90deg,#2563EB,#2563EB)"></div></div>
+            <span class="pct">67%</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-sm">
+          <button class="btn btn-ghost">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="4" width="4" height="16"/>
+              <rect x="14" y="4" width="4" height="16"/>
+            </svg>
+            暂停
+          </button>
+          <button class="btn btn-danger">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="5" width="14" height="14" rx="2"/>
+            </svg>
+            终止
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 两栏：浏览器实时流 + 子任务时间线 -->
+    <div class="detail-grid">
+
+      <!-- 左侧：浏览器实时流 -->
+      <div class="glass-card-static p-lg">
+        <div class="flex items-center justify-between mb-md">
+          <div class="section-title" style="margin:0;border:none;padding:0">
+            浏览器实时流
+          </div>
+          <span class="sse-tag">
+            <span class="sse-dot"></span>
+            SSE 实时连接
+          </span>
+        </div>
+
+        <!-- 16:9 占位区域 -->
+        <div class="browser-stream">
+          <div class="browser-chrome">
+            <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+            <div class="url-bar">https://www.cmbchina.com/corporate/transfer/confirm</div>
+          </div>
+          <div class="live-badge">
+            <span class="live-dot"></span>
+            LIVE
+          </div>
+          <svg class="stream-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <div class="stream-label">[ Playwright 截图流 ]</div>
+          <div style="font-size:11px;color:var(--text-disabled);margin-top:6px;z-index:1">每 800ms 刷新</div>
+        </div>
+
+        <!-- 操作日志小窗 -->
+        <div class="section-title" style="margin-top:var(--space-lg)">操作日志</div>
+        <div class="log-window">
+          <div class="log-line">
+            <span class="log-time">14:34:08</span>
+            <span class="log-msg info">[STEP 3] 开始填写转账表单</span>
+          </div>
+          <div class="log-line">
+            <span class="log-time">14:34:11</span>
+            <span class="log-msg">→ 定位收款人输入框 selector=#payee-name</span>
+          </div>
+          <div class="log-line">
+            <span class="log-time">14:34:13</span>
+            <span class="log-msg">→ 输入收款人："上海某供应链有限公司"</span>
+          </div>
+          <div class="log-line">
+            <span class="log-time">14:34:15</span>
+            <span class="log-msg">→ 定位金额输入框 selector=#amount</span>
+          </div>
+          <div class="log-line">
+            <span class="log-time">14:34:17</span>
+            <span class="log-msg warn">⚠ 触发风控校验：金额 > ¥500,000</span>
+          </div>
+          <div class="log-line">
+            <span class="log-time">14:34:20</span>
+            <span class="log-msg info">→ LLM 决策：调用风控审批流程</span>
+          </div>
+          <div class="log-line">
+            <span class="log-time">14:34:22</span>
+            <span class="log-msg">→ 输入金额："580,000.00"</span>
+          </div>
+          <div class="log-line">
+            <span class="log-time">14:34:25</span>
+            <span class="log-msg">→ 等待页面响应 (timeout=5000ms)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：子任务时间线 -->
+      <div class="glass-card-static p-lg">
+        <div class="section-title">子任务时间线</div>
+        <div class="timeline">
+
+          <!-- 1. 登录银行系统 -->
+          <div class="timeline-item">
+            <div class="timeline-dot success">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <div class="timeline-item-title">
+              <span class="name">1. 登录银行系统</span>
+              <span class="time">14:32:05</span>
+            </div>
+            <div class="timeline-item-desc">
+              成功登录招商银行企业版<span style="color:var(--accent-success);margin-left:6px">· 耗时 8s</span>
+            </div>
+          </div>
+
+          <!-- 2. 导航到转账页面 -->
+          <div class="timeline-item">
+            <div class="timeline-dot success">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <div class="timeline-item-title">
+              <span class="name">2. 导航到转账页面</span>
+              <span class="time">14:33:12</span>
+            </div>
+            <div class="timeline-item-desc">
+              点击"付款业务 → 跨行转账"<span style="color:var(--accent-success);margin-left:6px">· 耗时 1m 03s</span>
+            </div>
+          </div>
+
+          <!-- 3. 填写转账表单（执行中） -->
+          <div class="timeline-item active">
+            <div class="timeline-dot active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </div>
+            <div class="timeline-item-title">
+              <span class="name">3. 填写转账表单</span>
+              <span class="time">14:34:08</span>
+            </div>
+            <div class="timeline-item-desc">
+              <span style="color:var(--accent-primary);font-weight:500">执行中…</span> 收款人、金额已填，等待风控确认
+            </div>
+          </div>
+
+          <!-- 4. 提交并确认（pending） -->
+          <div class="timeline-item pending">
+            <div class="timeline-dot pending"></div>
+            <div class="timeline-item-title">
+              <span class="name">4. 提交并确认</span>
+              <span class="time">--:--:--</span>
+            </div>
+            <div class="timeline-item-desc">点击"提交"按钮，处理短信验证码</div>
+          </div>
+
+          <!-- 5. 下载回单（pending） -->
+          <div class="timeline-item pending">
+            <div class="timeline-dot pending"></div>
+            <div class="timeline-item-title">
+              <span class="name">5. 下载回单</span>
+              <span class="time">--:--:--</span>
+            </div>
+            <div class="timeline-item-desc">下载 PDF 回单并归档至文件服务器</div>
+          </div>
+
+        </div>
+
+        <!-- 风险提示 -->
+        <div style="margin-top:var(--space-lg);padding:12px 14px;background:rgba(217,119,6,0.10);border:1px solid rgba(217,119,6,0.30);border-radius:var(--radius-sm);font-size:12px;color:var(--accent-warning);display:flex;gap:8px;align-items:flex-start">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:1px;flex-shrink:0">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <div>
+            <div style="font-weight:600;margin-bottom:2px">高风险操作预警</div>
+            <div style="color:var(--text-secondary);line-height:1.6">转账金额 ¥580,000 触发风控阈值，本步骤需人工二次确认后方可继续执行。</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+</div>
+
+</body>
+</html>

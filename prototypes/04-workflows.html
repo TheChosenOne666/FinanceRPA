@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinanceRPA · 工作流管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* 演示分隔条 */
+  .demo-divider {
+    margin: 48px 0 24px;
+    padding: 14px 20px;
+    background: var(--accent-primary-light);
+    border: 1px dashed var(--glass-border-strong);
+    border-radius: var(--radius-md);
+    color: var(--accent-primary-hover);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  /* Header / Sidebar 内部布局 */
+  .app-header-inner {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+  }
+  .logo-mark {
+    width: 32px;
+    height: 32px;
+    background:#047857;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(4, 120, 87, 0.28), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .logo-mark svg { stroke: #fff; }
+  .demo-search {
+    flex: 1;
+    max-width: 360px;
+    margin: 0 24px;
+    position: relative;
+  }
+  .demo-search input {
+    width: 100%;
+    padding: 9px 14px 9px 38px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    transition: all 0.2s var(--ease-out);
+  }
+  .demo-search input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(4, 120, 87, 0.12);
+  }
+  .demo-search svg {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+  }
+  .app-sidebar-inner { padding: 16px 12px; height: 100%; overflow-y: auto; }
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 14px 5px 5px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+  }
+  .user-chip:hover {
+    background: #fff;
+    border-color: var(--glass-border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background:#047857;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 13px;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(4, 120, 87, 0.3);
+  }
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+    position: relative;
+  }
+  .icon-btn:hover {
+    background: #fff;
+    color: var(--accent-primary);
+    border-color: var(--glass-border-strong);
+  }
+
+  /* 面包屑 */
+  .breadcrumb {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  /* 行业筛选 + 搜索 */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-lg);
+  }
+  .filter-tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--glass-border);
+  }
+  .filter-tabs button {
+    padding: 6px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    transition: all 0.2s var(--ease-out);
+  }
+  .filter-tabs button:hover { color: var(--text-primary); }
+  .filter-tabs button.active {
+    background:#047857;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(4, 120, 87, 0.3);
+  }
+  .search-box {
+    position: relative;
+    width: 280px;
+  }
+  .search-box input {
+    width: 100%;
+    padding: 9px 14px 9px 38px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    transition: all 0.2s var(--ease-out);
+  }
+  .search-box input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(4, 120, 87, 0.12);
+  }
+  .search-box svg {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+  }
+
+  /* 工作流卡片 */
+  .workflow-card {
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .workflow-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .industry-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .industry-bank {
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--accent-info);
+    border: 1px solid rgba(37, 99, 235, 0.24);
+  }
+  .industry-insurance {
+    background: rgba(4, 120, 87, 0.12);
+    color: var(--accent-success);
+    border: 1px solid rgba(4, 120, 87, 0.24);
+  }
+  .industry-securities {
+    background: rgba(217, 119, 6, 0.12);
+    color: var(--accent-warning);
+    border: 1px solid rgba(217, 119, 6, 0.24);
+  }
+  .workflow-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text-primary);
+    line-height: 1.3;
+  }
+  .workflow-industry {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .workflow-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .workflow-card-meta .dot { color: var(--text-disabled); }
+  .workflow-card-stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding-top: 8px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .workflow-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+  }
+  .workflow-card-actions .btn { flex: 1; }
+
+  /* 详情头部 */
+  .detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-lg);
+  }
+  .detail-title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .detail-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    letter-spacing: -0.02em;
+  }
+
+  /* 配置信息键值 */
+  .config-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px 24px;
+    font-size: 13px;
+  }
+  .config-item .config-key {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 2px;
+  }
+  .config-item .config-val {
+    color: var(--text-primary);
+  }
+  .config-desc {
+    grid-column: 1 / -1;
+    padding-top: 12px;
+    margin-top: 4px;
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* 工作流步骤列表 */
+  .workflow-steps {
+    list-style: none;
+    padding: 0;
+    counter-reset: step;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .workflow-steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    transition: all 0.2s var(--ease-out);
+  }
+  .workflow-steps li:hover {
+    background: rgba(4, 120, 87, 0.04);
+    border-color: var(--glass-border-strong);
+  }
+  .workflow-steps li::before {
+    content: counter(step);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent-primary-light);
+    color: var(--accent-primary-hover);
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+    border: 1px solid rgba(4, 120, 87, 0.24);
+  }
+  .step-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .step-params {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    word-break: break-all;
+  }
+
+  /* 执行历史小列表 */
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    font-size: 12px;
+    transition: all 0.2s var(--ease-out);
+  }
+  .history-item:hover {
+    background: rgba(4, 120, 87, 0.04);
+    border-color: var(--glass-border-strong);
+  }
+  .history-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .history-time {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .history-meta {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  /* 触发表单 */
+  .trigger-form .form-group {
+    margin-bottom: 18px;
+  }
+  .form-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .form-actions .btn { flex: 1; }
+
+  /* 风险提示框 */
+  .risk-notice {
+    margin-top: 24px;
+    padding: 12px;
+    background: rgba(217, 119, 6, 0.08);
+    border: 1px solid rgba(217, 119, 6, 0.25);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--accent-warning);
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+</style>
+</head>
+<body class="aurora">
+
+<div class="app-layout">
+  <!-- Header -->
+  <header class="app-header glass-floating">
+    <div class="app-header-inner">
+      <div class="flex items-center gap-md">
+        <div class="logo-mark">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L4 7l8 5 8-5-8-5z"/>
+            <path d="M4 12l8 5 8-5"/>
+            <path d="M4 17l8 5 8-5"/>
+          </svg>
+        </div>
+        <strong style="font-size:15px;letter-spacing:-0.02em">FinanceRPA</strong>
+      </div>
+
+      <div class="demo-search">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input placeholder="搜索任务、工作流、审计日志…">
+      </div>
+
+      <div class="flex items-center gap-md">
+        <button class="icon-btn">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="badge badge-danger" style="position:absolute;top:-4px;right:-4px;padding:1px 5px;font-size:10px;min-width:16px;justify-content:center">3</span>
+        </button>
+        <div class="user-chip">
+          <div class="avatar">张</div>
+          <span style="font-size:13px;font-weight:500">张三</span>
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="app-sidebar glass-floating">
+    <div class="app-sidebar-inner">
+      <div class="nav-group-title">监控</div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        运营大屏
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        LLM 监控
+      </div>
+
+      <div class="nav-group-title">自动化</div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/>
+          <path d="M8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
+          <line x1="9" y1="12" x2="15" y2="12"/>
+          <line x1="9" y1="16" x2="13" y2="16"/>
+        </svg>
+        任务管理
+      </div>
+      <div class="nav-item active">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="6" height="6" rx="1"/>
+          <rect x="14" y="14" width="6" height="6" rx="1"/>
+          <path d="M10 7h4a3 3 0 0 1 3 3v4"/>
+        </svg>
+        工作流
+      </div>
+
+      <div class="nav-group-title">合规</div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <polyline points="9 12 11 14 15 10"/>
+        </svg>
+        审批中心
+        <span class="badge badge-warning" style="margin-left:auto">3</span>
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        人工接管
+        <span class="badge badge-danger" style="margin-left:auto">5</span>
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="8" y1="13" x2="16" y2="13"/>
+          <line x1="8" y1="17" x2="14" y2="17"/>
+        </svg>
+        审计日志
+      </div>
+
+      <div class="nav-group-title">管理</div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        设置
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="app-main">
+
+    <!-- ============ 第一部分：工作流列表 ============ -->
+    <div class="flex items-center justify-between mb-md">
+      <div>
+        <h1 class="page-title" style="margin:0">工作流管理</h1>
+        <div class="breadcrumb">首页 / 自动化 / 工作流管理</div>
+      </div>
+      <button class="btn btn-primary">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        新建工作流
+      </button>
+    </div>
+
+    <div class="filter-bar">
+      <div class="filter-tabs">
+        <button class="active">全部</button>
+        <button>银行</button>
+        <button>保险</button>
+        <button>证券</button>
+      </div>
+      <div class="search-box">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input placeholder="搜索工作流名称…">
+      </div>
+    </div>
+
+    <div class="page-grid grid-3">
+
+      <!-- 工作流 1：银行流水下载（中风险，银行） -->
+      <div class="glass-card workflow-card">
+        <div class="workflow-card-header">
+          <div class="industry-icon industry-bank">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 21h18"/>
+              <path d="M5 21V7l7-4 7 4v14"/>
+              <path d="M9 21v-6h6v6"/>
+              <line x1="9" y1="9" x2="9" y2="9.01"/>
+              <line x1="15" y1="9" x2="15" y2="9.01"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="workflow-name">银行流水下载</div>
+            <div class="workflow-industry">银行业务</div>
+          </div>
+          <span class="badge risk-medium">中</span>
+        </div>
+        <div class="workflow-card-meta">
+          <span>5 步骤</span><span class="dot">·</span><span>5 Skills</span>
+        </div>
+        <div class="workflow-card-stats">
+          已执行 <span class="mono" style="color:var(--text-primary)">1,284</span> 次
+        </div>
+        <div class="workflow-card-actions">
+          <button class="btn btn-ghost btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            详情
+          </button>
+          <button class="btn btn-primary btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            运行
+          </button>
+        </div>
+      </div>
+
+      <!-- 工作流 2：跨行转账核对（高风险，银行） -->
+      <div class="glass-card workflow-card">
+        <div class="workflow-card-header">
+          <div class="industry-icon industry-bank">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 21h18"/>
+              <path d="M5 21V7l7-4 7 4v14"/>
+              <path d="M9 21v-6h6v6"/>
+              <line x1="9" y1="9" x2="9" y2="9.01"/>
+              <line x1="15" y1="9" x2="15" y2="9.01"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="workflow-name">跨行转账核对</div>
+            <div class="workflow-industry">银行业务</div>
+          </div>
+          <span class="badge risk-high">高</span>
+        </div>
+        <div class="workflow-card-meta">
+          <span>7 步骤</span><span class="dot">·</span><span>6 Skills</span>
+        </div>
+        <div class="workflow-card-stats">
+          已执行 <span class="mono" style="color:var(--text-primary)">642</span> 次
+        </div>
+        <div class="workflow-card-actions">
+          <button class="btn btn-ghost btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            详情
+          </button>
+          <button class="btn btn-primary btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            运行
+          </button>
+        </div>
+      </div>
+
+      <!-- 工作流 3：对公贷款放款（极高风险，银行） -->
+      <div class="glass-card workflow-card">
+        <div class="workflow-card-header">
+          <div class="industry-icon industry-bank">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 21h18"/>
+              <path d="M5 21V7l7-4 7 4v14"/>
+              <path d="M9 21v-6h6v6"/>
+              <line x1="9" y1="9" x2="9" y2="9.01"/>
+              <line x1="15" y1="9" x2="15" y2="9.01"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="workflow-name">对公贷款放款</div>
+            <div class="workflow-industry">银行业务</div>
+          </div>
+          <span class="badge risk-critical">极高</span>
+        </div>
+        <div class="workflow-card-meta">
+          <span>9 步骤</span><span class="dot">·</span><span>8 Skills</span>
+        </div>
+        <div class="workflow-card-stats">
+          已执行 <span class="mono" style="color:var(--text-primary)">128</span> 次
+        </div>
+        <div class="workflow-card-actions">
+          <button class="btn btn-ghost btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            详情
+          </button>
+          <button class="btn btn-primary btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            运行
+          </button>
+        </div>
+      </div>
+
+      <!-- 工作流 4：保单申请填写（高风险，保险） -->
+      <div class="glass-card workflow-card">
+        <div class="workflow-card-header">
+          <div class="industry-icon industry-insurance">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="workflow-name">保单申请填写</div>
+            <div class="workflow-industry">保险业务</div>
+          </div>
+          <span class="badge risk-high">高</span>
+        </div>
+        <div class="workflow-card-meta">
+          <span>6 步骤</span><span class="dot">·</span><span>5 Skills</span>
+        </div>
+        <div class="workflow-card-stats">
+          已执行 <span class="mono" style="color:var(--text-primary)">456</span> 次
+        </div>
+        <div class="workflow-card-actions">
+          <button class="btn btn-ghost btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            详情
+          </button>
+          <button class="btn btn-primary btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            运行
+          </button>
+        </div>
+      </div>
+
+      <!-- 工作流 5：理赔审核提交（高风险，保险） -->
+      <div class="glass-card workflow-card">
+        <div class="workflow-card-header">
+          <div class="industry-icon industry-insurance">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="workflow-name">理赔审核提交</div>
+            <div class="workflow-industry">保险业务</div>
+          </div>
+          <span class="badge risk-high">高</span>
+        </div>
+        <div class="workflow-card-meta">
+          <span>8 步骤</span><span class="dot">·</span><span>7 Skills</span>
+        </div>
+        <div class="workflow-card-stats">
+          已执行 <span class="mono" style="color:var(--text-primary)">312</span> 次
+        </div>
+        <div class="workflow-card-actions">
+          <button class="btn btn-ghost btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            详情
+          </button>
+          <button class="btn btn-primary btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            运行
+          </button>
+        </div>
+      </div>
+
+      <!-- 工作流 6：委托下单（高风险，证券） -->
+      <div class="glass-card workflow-card">
+        <div class="workflow-card-header">
+          <div class="industry-icon industry-securities">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+              <polyline points="17 6 23 6 23 12"/>
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="workflow-name">委托下单</div>
+            <div class="workflow-industry">证券业务</div>
+          </div>
+          <span class="badge risk-high">高</span>
+        </div>
+        <div class="workflow-card-meta">
+          <span>6 步骤</span><span class="dot">·</span><span>6 Skills</span>
+        </div>
+        <div class="workflow-card-stats">
+          已执行 <span class="mono" style="color:var(--text-primary)">873</span> 次
+        </div>
+        <div class="workflow-card-actions">
+          <button class="btn btn-ghost btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            详情
+          </button>
+          <button class="btn btn-primary btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            运行
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="demo-divider">
+      ▼ 以下为工作流详情演示（以"银行流水下载"为例）
+    </div>
+
+    <!-- ============ 第二部分：工作流详情 ============ -->
+    <div class="detail-header">
+      <div class="detail-title-row">
+        <button class="icon-btn" title="返回">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/>
+            <polyline points="12 19 5 12 12 5"/>
+          </svg>
+        </button>
+        <div>
+          <div class="detail-title">
+            银行流水下载
+            <span class="badge risk-medium">中风险</span>
+          </div>
+          <div class="breadcrumb">工作流 / 银行业务 / 银行流水下载</div>
+        </div>
+      </div>
+      <button class="btn btn-primary">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        运行
+      </button>
+    </div>
+
+    <div class="page-grid grid-2">
+
+      <!-- 左侧：配置 + 步骤 + 历史 -->
+      <div class="flex flex-col gap-lg">
+
+        <!-- 工作流配置 -->
+        <div class="glass-card-static p-lg">
+          <div class="section-title">工作流配置</div>
+          <div class="config-grid">
+            <div class="config-item">
+              <div class="config-key">工作流 ID</div>
+              <div class="config-val mono">WF-2024-001</div>
+            </div>
+            <div class="config-item">
+              <div class="config-key">所属行业</div>
+              <div class="config-val">银行</div>
+            </div>
+            <div class="config-item">
+              <div class="config-key">创建人</div>
+              <div class="config-val">张三</div>
+            </div>
+            <div class="config-item">
+              <div class="config-key">创建时间</div>
+              <div class="config-val mono">2024-12-15</div>
+            </div>
+            <div class="config-item">
+              <div class="config-key">风险等级</div>
+              <div class="config-val"><span class="badge risk-medium">中</span></div>
+            </div>
+            <div class="config-item">
+              <div class="config-key">最近更新</div>
+              <div class="config-val mono">2025-07-20</div>
+            </div>
+            <div class="config-desc">
+              <strong style="color:var(--text-secondary)">描述：</strong>自动登录主流商业银行企业网银，按指定账号与日期范围下载交易流水明细，并导出为 Excel 文件供后续对账使用。
+            </div>
+          </div>
+        </div>
+
+        <!-- 执行步骤 -->
+        <div class="glass-card-static p-lg">
+          <div class="section-title">执行步骤</div>
+          <ol class="workflow-steps">
+            <li>
+              <div>
+                <div class="step-name">浏览器启动 Skill</div>
+                <div class="step-params">browser_type=chromium, headless=false, profile=icbc_session</div>
+              </div>
+            </li>
+            <li>
+              <div>
+                <div class="step-name">银行登录 Skill</div>
+                <div class="step-params">bank=icbc, account=****1234, password=****, mfa=true</div>
+              </div>
+            </li>
+            <li>
+              <div>
+                <div class="step-name">流水查询 Skill</div>
+                <div class="step-params">date_range={start}:{end}, account=****1234, type=enterprise</div>
+              </div>
+            </li>
+            <li>
+              <div>
+                <div class="step-name">数据提取 Skill</div>
+                <div class="step-params">format=xlsx, fields=[date,amount,balance,counterparty]</div>
+              </div>
+            </li>
+            <li>
+              <div>
+                <div class="step-name">浏览器关闭 Skill</div>
+                <div class="step-params">save_session=true, clear_cache=false</div>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <!-- 执行历史 -->
+        <div class="glass-card-static p-lg">
+          <div class="section-title">执行历史</div>
+          <div class="history-list">
+            <div class="history-item">
+              <div class="history-left">
+                <div class="history-time">2025-07-26 14:30:25</div>
+                <div class="history-meta">张三 · 耗时 3m12s</div>
+              </div>
+              <span class="badge badge-success">成功</span>
+            </div>
+            <div class="history-item">
+              <div class="history-left">
+                <div class="history-time">2025-07-26 10:15:42</div>
+                <div class="history-meta">李四 · 耗时 2m58s</div>
+              </div>
+              <span class="badge badge-success">成功</span>
+            </div>
+            <div class="history-item">
+              <div class="history-left">
+                <div class="history-time">2025-07-25 16:45:18</div>
+                <div class="history-meta">王五 · 耗时 5m30s</div>
+              </div>
+              <span class="badge badge-danger">失败</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 右侧：触发运行表单 -->
+      <div class="glass-card-static p-lg">
+        <div class="section-title">触发运行</div>
+        <form class="trigger-form" onsubmit="return false">
+          <div class="form-group">
+            <label class="label">银行账号 <span class="required">*</span></label>
+            <input class="input" placeholder="请输入 19 位银行账号" value="6225-7788-1234-5678" required>
+          </div>
+          <div class="form-group">
+            <label class="label">起始日期 <span class="required">*</span></label>
+            <input class="input" type="date" value="2025-07-01" required>
+          </div>
+          <div class="form-group">
+            <label class="label">结束日期</label>
+            <input class="input" type="date" value="2025-07-26">
+          </div>
+
+          <div class="risk-notice">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <div>该工作流风险等级为 <strong>中</strong>，运行后将自动提交至审批中心，由审批人确认后执行。</div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost">取消</button>
+            <button type="submit" class="btn btn-primary">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              确认运行
+            </button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+
+  </main>
+</div>
+
+</body>
+</html>

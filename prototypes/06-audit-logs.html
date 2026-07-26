@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinanceRPA · 审计日志</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .breadcrumb { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+
+  /* 复用 01 的 Header 组件样式 */
+  .logo-mark {
+    background: #047857;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgba(4, 120, 87, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .logo-mark svg { stroke: #fff; }
+  .demo-search { position: relative; }
+  .demo-search input {
+    width: 100%;
+    padding: 9px 14px 9px 38px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    transition: all 0.2s var(--ease-out);
+  }
+  .demo-search input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(4, 120, 87, 0.12);
+  }
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 14px 5px 5px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+  }
+  .user-chip:hover {
+    background: #fff;
+    border-color: var(--glass-border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #047857;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 13px;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(4, 120, 87, 0.3);
+  }
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+    position: relative;
+  }
+  .icon-btn:hover {
+    background: #fff;
+    color: var(--accent-primary);
+    border-color: var(--glass-border-strong);
+  }
+
+  /* 筛选栏 */
+  .filter-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .filter-group { display: flex; align-items: center; gap: 6px; }
+  .filter-group label { font-size: 12px; color: var(--text-muted); margin: 0; white-space: nowrap; }
+  .filter-group .select,
+  .filter-group .input {
+    padding: 7px 12px;
+    font-size: 13px;
+    min-width: 120px;
+  }
+
+  /* 审计列表 */
+  .audit-list { display: flex; flex-direction: column; gap: 8px; }
+  .audit-item {
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+  }
+  .audit-item:hover {
+    background: var(--glass-hover);
+    border-color: var(--glass-border-strong);
+  }
+  .audit-item.active {
+    background: var(--accent-primary-light);
+    border-color: var(--accent-primary);
+    box-shadow: inset 3px 0 0 var(--accent-primary), var(--shadow-xs);
+  }
+  .audit-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .audit-ts { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+  .audit-item-meta { font-size: 12px; color: var(--text-secondary); }
+  .audit-item-meta .mono { color: var(--text-primary); }
+
+  /* 截图占位 */
+  .screenshot-box {
+    aspect-ratio: 16 / 9;
+    background: linear-gradient(135deg, #F1F5F9, #E2E8F0);
+    border: 1px dashed var(--glass-border-strong);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-family: var(--font-mono);
+    position: relative;
+  }
+  .screenshot-tag {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 2px 8px;
+    background: var(--accent-primary-light);
+    color: var(--accent-primary-hover);
+    border: 1px solid var(--glass-border-strong);
+    border-radius: var(--radius-pill);
+    font-size: 10px;
+    font-family: var(--font-sans);
+    font-weight: 600;
+  }
+
+  /* 元信息列表 */
+  .meta-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px 24px;
+    font-size: 13px;
+  }
+  .meta-list dt { color: var(--text-muted); }
+  .meta-list dd { color: var(--text-primary); font-family: var(--font-mono); }
+
+  /* 脱敏字段 */
+  .mask-field {
+    padding: 8px 12px;
+    background: rgba(217, 119, 6, 0.10);
+    border: 1px solid rgba(217, 119, 6, 0.30);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    color: var(--accent-warning);
+    font-size: 13px;
+    display: inline-block;
+    font-weight: 600;
+  }
+
+  /* 操作类型徽章 */
+  .badge-CLICK   { background: rgba(37, 99, 235, 0.10); color: var(--accent-info); border: 1px solid rgba(37, 99, 235, 0.22); }
+  .badge-INPUT   { background: rgba(4, 120, 87, 0.12); color: var(--accent-success); border: 1px solid rgba(4, 120, 87, 0.24); }
+  .badge-NAVIGATE{ background: rgba(217, 119, 6, 0.12); color: var(--accent-warning); border: 1px solid rgba(217, 119, 6, 0.24); }
+  .badge-LOGIN   { background: rgba(4, 120, 87, 0.10); color: var(--accent-primary-hover); border: 1px solid rgba(4, 120, 87, 0.22); }
+</style>
+</head>
+<body class="aurora">
+
+<div class="app-layout">
+  <!-- Header -->
+  <header class="app-header glass-floating" style="display:flex;align-items:center;justify-content:space-between;padding:0 20px;">
+    <div class="flex items-center gap-md">
+      <div class="logo-mark" style="width:32px;height:32px;border-radius:var(--radius-sm)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L4 7l8 5 8-5-8-5z"/>
+          <path d="M4 12l8 5 8-5"/>
+          <path d="M4 17l8 5 8-5"/>
+        </svg>
+      </div>
+      <strong style="font-size:15px;letter-spacing:-0.02em">FinanceRPA</strong>
+      <div class="demo-search" style="flex:1;max-width:360px;margin-left:24px;position:relative">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--text-muted)">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input placeholder="搜索任务、工作流、审计日志…" style="width:100%;padding:9px 14px 9px 38px;background:rgba(255,255,255,0.7);border:1px solid var(--border-subtle);border-radius:var(--radius-pill);color:var(--text-secondary);font-size:13px;font-family:var(--font-sans);transition:all 0.2s var(--ease-out)">
+      </div>
+    </div>
+
+    <div class="flex items-center gap-md">
+      <button class="icon-btn" style="position:relative">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span class="badge badge-danger" style="position:absolute;top:-4px;right:-4px;padding:1px 5px;font-size:10px;min-width:16px;justify-content:center">3</span>
+      </button>
+      <div class="user-chip">
+        <div class="avatar">张</div>
+        <span style="font-size:13px;font-weight:500">张三</span>
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="app-sidebar glass-floating" style="padding:16px 12px;overflow-y:auto">
+    <div class="nav-group-title">监控</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      运营大屏
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      LLM 监控
+    </div>
+
+    <div class="nav-group-title">自动化</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/>
+        <path d="M8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
+        <line x1="9" y1="12" x2="15" y2="12"/>
+        <line x1="9" y1="16" x2="13" y2="16"/>
+      </svg>
+      任务管理
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="4" width="6" height="6" rx="1"/>
+        <rect x="14" y="14" width="6" height="6" rx="1"/>
+        <path d="M10 7h4a3 3 0 0 1 3 3v4"/>
+      </svg>
+      工作流
+    </div>
+
+    <div class="nav-group-title">合规</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+      审批中心
+      <span class="badge badge-warning" style="margin-left:auto">3</span>
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      人工接管
+      <span class="badge badge-danger" style="margin-left:auto">5</span>
+    </div>
+    <div class="nav-item active">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="8" y1="13" x2="16" y2="13"/>
+        <line x1="8" y1="17" x2="14" y2="17"/>
+      </svg>
+      审计日志
+    </div>
+
+    <div class="nav-group-title">管理</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      设置
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="app-main">
+    <!-- 标题栏 -->
+    <div class="flex items-center justify-between mb-md">
+      <div>
+        <h1 class="page-title" style="margin:0">审计日志</h1>
+        <div class="breadcrumb">首页 / 合规 / 审计日志</div>
+      </div>
+      <button class="btn btn-primary">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        导出 CSV
+      </button>
+    </div>
+
+    <!-- 筛选栏 -->
+    <div class="glass-card-static p-md mb-md">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>时间范围</label>
+          <input class="input" type="date" value="2026-07-26" style="min-width:140px">
+          <span style="color:var(--text-muted)">~</span>
+          <input class="input" type="date" value="2026-07-26" style="min-width:140px">
+        </div>
+        <div class="filter-group">
+          <label>任务</label>
+          <select class="select"><option>全部任务</option><option>TASK-001 银行流水下载</option><option>TASK-002 跨行转账核对</option></select>
+        </div>
+        <div class="filter-group">
+          <label>用户</label>
+          <select class="select"><option>全部用户</option><option>张三</option><option>李四</option></select>
+        </div>
+        <div class="filter-group">
+          <label>部门</label>
+          <select class="select"><option>全部部门</option><option>对公信贷部</option><option>个人金融部</option></select>
+        </div>
+        <div class="filter-group">
+          <label>业务线</label>
+          <select class="select"><option>全部业务线</option><option>银行业务</option><option>保险业务</option></select>
+        </div>
+        <div class="filter-group">
+          <label>风险等级</label>
+          <select class="select"><option>全部</option><option>低</option><option>中</option><option>高</option><option>严重</option></select>
+        </div>
+        <div class="filter-group">
+          <label>操作类型</label>
+          <select class="select"><option>全部</option><option>CLICK</option><option>INPUT</option><option>NAVIGATE</option><option>LOGIN</option></select>
+        </div>
+        <div class="filter-group" style="margin-left:auto">
+          <button class="btn btn-primary btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            搜索
+          </button>
+          <button class="btn btn-ghost btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1 4 1 10 7 10"/>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+            重置
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 两栏布局 -->
+    <div class="page-grid grid-1-2">
+      <!-- 左侧：审计列表 -->
+      <div class="glass-card-static p-md">
+        <div class="section-title">审计记录 <span class="badge badge-muted" style="margin-left:8px">6 条</span></div>
+        <div class="audit-list">
+          <div class="audit-item active">
+            <div class="audit-item-top">
+              <span class="audit-ts">2026-07-26 14:32:08</span>
+              <span class="badge badge-INPUT">INPUT</span>
+            </div>
+            <div class="audit-item-meta">任务 <span class="mono">TASK-002</span> · 步骤 3/5</div>
+            <div class="audit-item-meta">张三 · 对公信贷部 · 银行业务</div>
+          </div>
+          <div class="audit-item">
+            <div class="audit-item-top">
+              <span class="audit-ts">2026-07-26 14:31:42</span>
+              <span class="badge badge-CLICK">CLICK</span>
+            </div>
+            <div class="audit-item-meta">任务 <span class="mono">TASK-002</span> · 步骤 2/5</div>
+            <div class="audit-item-meta">张三 · 对公信贷部 · 银行业务</div>
+          </div>
+          <div class="audit-item">
+            <div class="audit-item-top">
+              <span class="audit-ts">2026-07-26 14:30:15</span>
+              <span class="badge badge-NAVIGATE">NAVIGATE</span>
+            </div>
+            <div class="audit-item-meta">任务 <span class="mono">TASK-002</span> · 步骤 1/5</div>
+            <div class="audit-item-meta">张三 · 对公信贷部 · 银行业务</div>
+          </div>
+          <div class="audit-item">
+            <div class="audit-item-top">
+              <span class="audit-ts">2026-07-26 14:28:33</span>
+              <span class="badge badge-LOGIN">LOGIN</span>
+            </div>
+            <div class="audit-item-meta">任务 <span class="mono">TASK-001</span> · 登录网银</div>
+            <div class="audit-item-meta">李四 · 个人金融部 · 银行业务</div>
+          </div>
+          <div class="audit-item">
+            <div class="audit-item-top">
+              <span class="audit-ts">2026-07-26 14:25:09</span>
+              <span class="badge badge-INPUT">INPUT</span>
+            </div>
+            <div class="audit-item-meta">任务 <span class="mono">TASK-003</span> · 步骤 4/7</div>
+            <div class="audit-item-meta">王五 · 保险业务线 · 保险业务</div>
+          </div>
+          <div class="audit-item">
+            <div class="audit-item-top">
+              <span class="audit-ts">2026-07-26 14:20:51</span>
+              <span class="badge badge-CLICK">CLICK</span>
+            </div>
+            <div class="audit-item-meta">任务 <span class="mono">TASK-003</span> · 步骤 3/7</div>
+            <div class="audit-item-meta">王五 · 保险业务线 · 保险业务</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：详情区 -->
+      <div class="glass-card-static p-lg">
+        <div class="flex items-center justify-between mb-md">
+          <div>
+            <div style="font-size:16px;font-weight:600;color:var(--text-primary)">任务 <span class="mono">TASK-002</span> 步骤 3/5 填写转账表单</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px">用户 张三 · 2026-07-26 14:32:08 · 操作类型 <span class="badge badge-INPUT" style="margin-left:4px">INPUT</span></div>
+          </div>
+          <button class="btn btn-ghost btn-sm">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            返回列表
+          </button>
+        </div>
+
+        <!-- 截图对比 -->
+        <div class="section-title">操作前后截图</div>
+        <div class="page-grid grid-2 mb-md">
+          <div>
+            <div class="screenshot-box">
+              <span class="screenshot-tag">before 截图</span>
+              <span>[before 截图]</span>
+            </div>
+            <div style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:6px">操作前 · 14:32:07</div>
+          </div>
+          <div>
+            <div class="screenshot-box">
+              <span class="screenshot-tag">after 截图</span>
+              <span>[after 截图]</span>
+            </div>
+            <div style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:6px">操作后 · 14:32:09</div>
+          </div>
+        </div>
+
+        <!-- LLM 信息 + 脱敏字段 -->
+        <div class="page-grid grid-2">
+          <div>
+            <div class="section-title">LLM 信息</div>
+            <dl class="meta-list">
+              <dt>模型</dt><dd>gpt-4o-mini</dd>
+              <dt>Tokens</dt><dd>1,284</dd>
+              <dt>耗时</dt><dd>1.2s</dd>
+              <dt>缓存命中</dt><dd style="color:var(--accent-danger)">否</dd>
+              <dt>Prompt Tokens</dt><dd>968</dd>
+              <dt>Completion Tokens</dt><dd>316</dd>
+            </dl>
+          </div>
+          <div>
+            <div class="section-title">脱敏字段</div>
+            <div class="flex flex-col gap-sm" style="margin-top:8px">
+              <div>
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">银行卡号</div>
+                <span class="mask-field">6228******1234</span>
+              </div>
+              <div>
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">收款人姓名</div>
+                <span class="mask-field">张**</span>
+              </div>
+              <div>
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">转账金额</div>
+                <span class="mask-field">¥ 50,000.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

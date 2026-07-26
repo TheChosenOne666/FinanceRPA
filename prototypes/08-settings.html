@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinanceRPA · 设置</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* ========== 复用 01 的 Header/SideNav 组件 ========== */
+  .logo-mark {
+    width: 44px;
+    height: 44px;
+    background: #047857;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgba(4, 120, 87, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .logo-mark svg { stroke: #fff; }
+
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+    position: relative;
+  }
+  .icon-btn:hover {
+    background: #fff;
+    color: var(--accent-primary);
+    border-color: var(--glass-border-strong);
+  }
+
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 14px 5px 5px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+  }
+  .user-chip:hover {
+    background: #fff;
+    border-color: var(--glass-border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #047857;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 13px;
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(4, 120, 87, 0.3);
+  }
+
+  /* ========== 页面特定样式 ========== */
+  .breadcrumb { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+
+  /* 设置布局 */
+  .settings-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: var(--space-lg);
+    align-items: start;
+  }
+
+  /* 子导航 */
+  .sub-nav {
+    padding: 12px;
+    position: sticky;
+    top: var(--space-lg);
+  }
+  .sub-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+    font-size: 14px;
+    font-weight: 500;
+    position: relative;
+  }
+  .sub-nav-item:hover {
+    background: var(--accent-primary-lighter);
+    color: var(--text-primary);
+  }
+  .sub-nav-item.active {
+    background: var(--accent-primary-light);
+    color: var(--accent-primary-hover);
+    font-weight: 600;
+    box-shadow: var(--shadow-xs);
+  }
+  .sub-nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    background: var(--accent-primary);
+    border-radius: 0 3px 3px 0;
+  }
+
+  /* 内容区块 */
+  .settings-section { margin-bottom: var(--space-lg); }
+  .settings-section:last-child { margin-bottom: 0; }
+
+  /* 开关 */
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    vertical-align: middle;
+  }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch-slider {
+    position: absolute;
+    inset: 0;
+    background: #F1F5F9;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-pill);
+    transition: 0.2s var(--ease-out);
+    cursor: pointer;
+  }
+  .switch-slider::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    left: 2px;
+    top: 2px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: 0.2s var(--ease-out);
+  }
+  .switch input:checked + .switch-slider {
+    background: rgba(4, 120, 87, 0.2);
+    border-color: var(--accent-primary);
+  }
+  .switch input:checked + .switch-slider::before {
+    transform: translateX(16px);
+    background: var(--accent-primary);
+  }
+
+  /* 通知模板勾选 */
+  .check-list { display: flex; flex-direction: column; gap: 10px; }
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+  }
+  .check-item:hover {
+    background: #fff;
+    border-color: var(--glass-border-strong);
+  }
+  .check-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+  }
+  .check-label { font-size: 13px; color: var(--text-secondary); flex: 1; }
+  .check-label > div:first-child { color: var(--text-primary); font-weight: 500; }
+  .check-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  .btn-link {
+    background: transparent;
+    border: none;
+    color: var(--accent-primary);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 8px;
+    font-family: var(--font-sans);
+    transition: color 0.2s var(--ease-out);
+  }
+  .btn-link:hover { color: var(--accent-primary-hover); text-decoration: underline; }
+
+  .btn-test {
+    padding: 5px 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 12px;
+    font-family: var(--font-sans);
+    transition: all 0.2s var(--ease-out);
+  }
+  .btn-test:hover {
+    background: #fff;
+    color: var(--accent-primary);
+    border-color: var(--glass-border-strong);
+  }
+
+  .channel-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .sub-block-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-sm);
+  }
+</style>
+</head>
+<body class="aurora">
+
+<div class="app-layout">
+  <!-- Header -->
+  <header class="app-header glass-floating" style="display:flex;align-items:center;justify-content:space-between;padding:0 24px;">
+    <div class="flex items-center gap-md">
+      <div class="logo-mark" style="width:32px;height:32px;border-radius:var(--radius-sm)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L4 7l8 5 8-5-8-5z"/>
+          <path d="M4 12l8 5 8-5"/>
+          <path d="M4 17l8 5 8-5"/>
+        </svg>
+      </div>
+      <strong style="font-size:15px;letter-spacing:-0.02em">FinanceRPA</strong>
+      <div style="flex:1;max-width:360px;margin-left:24px;position:relative">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--text-muted)">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input class="input" placeholder="搜索任务、工作流、审计日志…" style="padding:9px 14px 9px 38px;border-radius:var(--radius-pill);font-size:13px">
+      </div>
+    </div>
+    <div class="flex items-center gap-md">
+      <button class="icon-btn">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span class="badge badge-danger" style="position:absolute;top:-4px;right:-4px;padding:1px 5px;font-size:10px;min-width:16px;justify-content:center">3</span>
+      </button>
+      <div class="user-chip">
+        <div class="avatar">张</div>
+        <span style="font-size:13px;font-weight:500">张三</span>
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="app-sidebar glass-floating" style="padding:16px 12px;overflow-y:auto">
+    <div class="nav-group-title">监控</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      运营大屏
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      LLM 监控
+    </div>
+
+    <div class="nav-group-title">自动化</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z"/>
+        <path d="M8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
+        <line x1="9" y1="12" x2="15" y2="12"/>
+        <line x1="9" y1="16" x2="13" y2="16"/>
+      </svg>
+      任务管理
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="4" width="6" height="6" rx="1"/>
+        <rect x="14" y="14" width="6" height="6" rx="1"/>
+        <path d="M10 7h4a3 3 0 0 1 3 3v4"/>
+      </svg>
+      工作流
+    </div>
+
+    <div class="nav-group-title">合规</div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+      审批中心
+      <span class="badge badge-warning" style="margin-left:auto">3</span>
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      人工接管
+      <span class="badge badge-danger" style="margin-left:auto">5</span>
+    </div>
+    <div class="nav-item">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="8" y1="13" x2="16" y2="13"/>
+        <line x1="8" y1="17" x2="14" y2="17"/>
+      </svg>
+      审计日志
+    </div>
+
+    <div class="nav-group-title">管理</div>
+    <div class="nav-item active">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      设置
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="app-main">
+    <!-- 标题栏 -->
+    <div class="flex items-center justify-between mb-md">
+      <div>
+        <h1 class="page-title" style="margin:0">设置</h1>
+        <div class="breadcrumb">首页 / 管理 / 设置</div>
+      </div>
+    </div>
+
+    <!-- 两栏布局 -->
+    <div class="settings-layout">
+      <!-- 左侧：子导航 -->
+      <div class="glass-floating sub-nav">
+        <div class="sub-nav-item active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span>用户管理</span>
+        </div>
+        <div class="sub-nav-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>角色管理</span>
+        </div>
+        <div class="sub-nav-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 21h18"/>
+            <path d="M5 21V7l7-4 7 4v14"/>
+            <path d="M9 21v-6h6v6"/>
+          </svg>
+          <span>部门管理</span>
+        </div>
+        <div class="sub-nav-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"/>
+            <line x1="8" y1="12" x2="21" y2="12"/>
+            <line x1="8" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="6" x2="3.01" y2="6"/>
+            <line x1="3" y1="12" x2="3.01" y2="12"/>
+            <line x1="3" y1="18" x2="3.01" y2="18"/>
+          </svg>
+          <span>业务线</span>
+        </div>
+        <div class="sub-nav-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span>通知配置</span>
+        </div>
+        <div class="sub-nav-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 0-3.237-3.237c-.464.18-.894.527-.967 1.02a1.026 1.026 0 0 1-.29.877l-1.568 1.568A2.402 2.402 0 0 1 1.998 21a2.402 2.402 0 0 1-1.704-.706L.726 18.726A2.404 2.404 0 0 1 .02 17.02c.074-.493.504-.84.968-1.02a2.5 2.5 0 1 0-3.237-3.237c-.18.464-.527.894-1.02.967a1.026 1.026 0 0 1-.877-.29l-1.568-1.568a2.404 2.404 0 0 1-.707-1.705c0-.617.236-1.233.706-1.704l1.611-1.611a.98.98 0 0 1 .837-.276c.47.07.802.48.968.925a2.501 2.501 0 1 0 3.214-3.214c-.446-.166-.855-.497-.925-.968a.979.979 0 0 1 .276-.837l1.61-1.61a2.402 2.402 0 0 1 3.409 0l1.568 1.568c.23.23.556.338.878.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 0 3.237 3.237c.18-.464.527-.894 1.02-.967.322-.049.648.059.878.289l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704z"/>
+          </svg>
+          <span>Skill 管理</span>
+        </div>
+        <div class="sub-nav-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span>权限矩阵</span>
+        </div>
+      </div>
+
+      <!-- 右侧：内容区 -->
+      <div>
+        <!-- 用户管理 -->
+        <div class="settings-section">
+          <div class="flex items-center justify-between mb-md">
+            <div class="section-title" style="margin:0">用户管理</div>
+            <button class="btn btn-primary btn-sm">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              添加用户
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>用户名</th><th>部门</th><th>角色</th><th>状态</th><th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="flex items-center gap-sm">
+                      <div class="avatar" style="width:28px;height:28px;font-size:11px">张</div>
+                      <span class="mono">zhangsan</span>
+                    </div>
+                  </td>
+                  <td>对公信贷部</td>
+                  <td><span class="badge badge-info">operator</span></td>
+                  <td><span class="badge badge-success">启用</span></td>
+                  <td>
+                    <button class="btn-link">编辑</button>
+                    <button class="btn-link">重置密码</button>
+                    <button class="btn-link" style="color:var(--accent-danger)">禁用</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="flex items-center gap-sm">
+                      <div class="avatar" style="width:28px;height:28px;font-size:11px;background:linear-gradient(135deg,#D97706,#C2410C)">李</div>
+                      <span class="mono">lisi</span>
+                    </div>
+                  </td>
+                  <td>个人金融部</td>
+                  <td><span class="badge badge-warning">approver</span></td>
+                  <td><span class="badge badge-success">启用</span></td>
+                  <td>
+                    <button class="btn-link">编辑</button>
+                    <button class="btn-link">重置密码</button>
+                    <button class="btn-link" style="color:var(--accent-danger)">禁用</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="flex items-center gap-sm">
+                      <div class="avatar" style="width:28px;height:28px;font-size:11px;background:linear-gradient(135deg,#2563EB,#79C0FF)">王</div>
+                      <span class="mono">wangwu</span>
+                    </div>
+                  </td>
+                  <td>保险业务线</td>
+                  <td><span class="badge badge-muted">viewer</span></td>
+                  <td><span class="badge badge-success">启用</span></td>
+                  <td>
+                    <button class="btn-link">编辑</button>
+                    <button class="btn-link">重置密码</button>
+                    <button class="btn-link" style="color:var(--accent-danger)">禁用</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="flex items-center gap-sm">
+                      <div class="avatar" style="width:28px;height:28px;font-size:11px;background:linear-gradient(135deg,#DC2626,#C2410C)">赵</div>
+                      <span class="mono">zhaoliu</span>
+                    </div>
+                  </td>
+                  <td>对公信贷部</td>
+                  <td><span class="badge badge-info">operator</span></td>
+                  <td><span class="badge badge-muted">已禁用</span></td>
+                  <td>
+                    <button class="btn-link">编辑</button>
+                    <button class="btn-link">重置密码</button>
+                    <button class="btn-link" style="color:var(--accent-success)">启用</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 角色管理 -->
+        <div class="settings-section">
+          <div class="flex items-center justify-between mb-md">
+            <div class="section-title" style="margin:0">角色管理</div>
+            <button class="btn btn-primary btn-sm">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              新建角色
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>角色</th><th>权限范围</th><th>互斥约束</th><th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="badge badge-info">operator</span><div style="font-size:11px;color:var(--text-muted);margin-top:4px">操作员</div></td>
+                  <td>任务执行 · Skill 调用 · 数据查看</td>
+                  <td><span class="badge badge-warning">不可兼任 approver</span></td>
+                  <td>
+                    <button class="btn-link">编辑权限</button>
+                    <button class="btn-link" style="color:var(--accent-danger)">删除</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-warning">approver</span><div style="font-size:11px;color:var(--text-muted);margin-top:4px">审批员</div></td>
+                  <td>审批处理 · 风险查看 · 审计日志</td>
+                  <td><span class="badge badge-warning">不可兼任 operator</span></td>
+                  <td>
+                    <button class="btn-link">编辑权限</button>
+                    <button class="btn-link" style="color:var(--accent-danger)">删除</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-muted">viewer</span><div style="font-size:11px;color:var(--text-muted);margin-top:4px">观察员</div></td>
+                  <td>数据查看 · 报表导出</td>
+                  <td><span class="badge badge-success">无约束</span></td>
+                  <td>
+                    <button class="btn-link">编辑权限</button>
+                    <button class="btn-link" style="color:var(--accent-danger)">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 通知配置 -->
+        <div class="settings-section">
+          <div class="section-title">通知配置</div>
+          <div class="glass-card-static p-lg">
+            <!-- 通道表格 -->
+            <div class="sub-block-title">通知通道</div>
+            <div class="table-wrap mb-md">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>通道</th><th>Webhook 地址</th><th>启用</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <div class="channel-name">
+                        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-primary)">
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                        </svg>
+                        <span>企业微信</span>
+                      </div>
+                    </td>
+                    <td class="mono" style="font-size:12px">https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx</td>
+                    <td>
+                      <label class="switch">
+                        <input type="checkbox" checked>
+                        <span class="switch-slider"></span>
+                      </label>
+                    </td>
+                    <td><button class="btn-test">测试</button></td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div class="channel-name">
+                        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-primary)">
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                        </svg>
+                        <span>钉钉</span>
+                      </div>
+                    </td>
+                    <td class="mono" style="font-size:12px">https://oapi.dingtalk.com/robot/send?access_token=xxx</td>
+                    <td>
+                      <label class="switch">
+                        <input type="checkbox" checked>
+                        <span class="switch-slider"></span>
+                      </label>
+                    </td>
+                    <td><button class="btn-test">测试</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 通知模板勾选 -->
+            <div class="sub-block-title" style="margin-top:var(--space-md)">通知模板</div>
+            <div class="check-list">
+              <label class="check-item">
+                <input type="checkbox" checked>
+                <div class="check-label">
+                  <div>审批待处理</div>
+                  <div class="check-desc">当有新审批任务待处理时通知审批人</div>
+                </div>
+                <span class="badge badge-warning">高频</span>
+              </label>
+              <label class="check-item">
+                <input type="checkbox" checked>
+                <div class="check-label">
+                  <div>任务超时</div>
+                  <div class="check-desc">任务执行超过预设时长时通知负责人</div>
+                </div>
+                <span class="badge badge-warning">高频</span>
+              </label>
+              <label class="check-item">
+                <input type="checkbox" checked>
+                <div class="check-label">
+                  <div>NEEDS_HUMAN 触发</div>
+                  <div class="check-desc">LLM 校验失败需人工接管时立即通知</div>
+                </div>
+                <span class="badge badge-danger">紧急</span>
+              </label>
+              <label class="check-item">
+                <input type="checkbox">
+                <div class="check-label">
+                  <div>风险升级</div>
+                  <div class="check-desc">风险等级升级到高/严重时通知合规岗</div>
+                </div>
+                <span class="badge badge-danger">紧急</span>
+              </label>
+            </div>
+
+            <div class="flex justify-between items-center" style="margin-top:var(--space-lg);padding-top:var(--space-md);border-top:1px solid var(--border-subtle)">
+              <div style="font-size:12px;color:var(--text-muted)">最后保存于 2026-07-26 14:00:00</div>
+              <div class="flex gap-sm">
+                <button class="btn btn-ghost btn-sm">取消</button>
+                <button class="btn btn-primary btn-sm">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                  保存配置
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
