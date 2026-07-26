@@ -90,11 +90,11 @@
     justify-content: center;
     flex-shrink: 0;
   }
-  .task-status-icon.success { background: rgba(4, 120, 87, 0.12); color: var(--accent-success); border: 1px solid rgba(4, 120, 87, 0.30); }
-  .task-status-icon.running { background: rgba(37, 99, 235, 0.12); color: var(--accent-info); border: 1px solid rgba(37, 99, 235, 0.30); }
-  .task-status-icon.takeover { background: rgba(217, 119, 6, 0.12); color: var(--accent-warning); border: 1px solid rgba(217, 119, 6, 0.30); }
+  .task-status-icon.success { background: rgba(26, 58, 92, 0.12); color: var(--accent-success); border: 1px solid rgba(26, 58, 92, 0.30); }
+  .task-status-icon.running { background: rgba(59, 130, 246, 0.12); color: var(--accent-info); border: 1px solid rgba(59, 130, 246, 0.30); }
+  .task-status-icon.takeover { background: rgba(249, 115, 22, 0.12); color: var(--accent-warning); border: 1px solid rgba(249, 115, 22, 0.30); }
   .task-status-icon.pending { background: rgba(148, 163, 184, 0.10); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.25); }
-  .task-status-icon.failed { background: rgba(220, 38, 38, 0.12); color: var(--accent-danger); border: 1px solid rgba(220, 38, 38, 0.30); }
+  .task-status-icon.failed { background: rgba(239, 68, 68, 0.12); color: var(--accent-danger); border: 1px solid rgba(239, 68, 68, 0.30); }
 
   .task-status-icon .icon { width: 24px; height: 24px; }
 
@@ -186,10 +186,10 @@
   }
   .pagination .page-item:hover { background: #fff; color: var(--text-primary); border-color: var(--glass-border-strong); }
   .pagination .page-item.active {
-    background:#047857;
+    background:#1A3A5C;
     color: #fff;
-    border-color: rgba(4, 120, 87, 0.3);
-    box-shadow: 0 2px 8px rgba(4, 120, 87, 0.3);
+    border-color: rgba(26, 58, 92, 0.3);
+    box-shadow: 0 2px 8px rgba(26, 58, 92, 0.3);
   }
   .pagination .page-item.disabled { color: var(--text-disabled); cursor: not-allowed; }
   .pagination .page-info {
@@ -253,8 +253,8 @@
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(circle at 30% 30%, rgba(4, 120, 87, 0.12), transparent 50%),
-      radial-gradient(circle at 70% 70%, rgba(5, 150, 105, 0.08), transparent 50%);
+      radial-gradient(circle at 30% 30%, rgba(26, 58, 92, 0.12), transparent 50%),
+      radial-gradient(circle at 70% 70%, rgba(26, 58, 92, 0.08), transparent 50%);
     pointer-events: none;
   }
   .browser-stream .stream-label {
@@ -284,9 +284,9 @@
     padding: 0 12px;
     z-index: 2;
   }
-  .browser-stream .dot-r { width: 8px; height: 8px; border-radius: 50%; background: #DC2626; }
-  .browser-stream .dot-y { width: 8px; height: 8px; border-radius: 50%; background: #D97706; }
-  .browser-stream .dot-g { width: 8px; height: 8px; border-radius: 50%; background: #047857; }
+  .browser-stream .dot-r { width: 8px; height: 8px; border-radius: 50%; background: #EF4444; }
+  .browser-stream .dot-y { width: 8px; height: 8px; border-radius: 50%; background: #F97316; }
+  .browser-stream .dot-g { width: 8px; height: 8px; border-radius: 50%; background: #1A3A5C; }
   .browser-stream .url-bar {
     flex: 1;
     margin-left: 8px;
@@ -308,9 +308,9 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: rgba(220, 38, 38, 0.15);
+    background: rgba(239, 68, 68, 0.15);
     color: var(--accent-danger);
-    border: 1px solid rgba(220, 38, 38, 0.3);
+    border: 1px solid rgba(239, 68, 68, 0.3);
     padding: 2px 8px;
     border-radius: var(--radius-pill);
     font-size: 10px;
@@ -685,7 +685,7 @@
             <span class="stat-item">已运行 <span class="mono">2m 08s</span></span>
           </div>
           <div class="task-progress-wrap">
-            <div class="progress"><div class="progress-bar" style="width:67%;background:linear-gradient(90deg,#2563EB,#2563EB)"></div></div>
+            <div class="progress"><div class="progress-bar" style="width:67%;background:linear-gradient(90deg,#3B82F6,#3B82F6)"></div></div>
             <span class="pct">67%</span>
           </div>
         </div>
@@ -731,7 +731,7 @@
           </div>
         </div>
         <div class="task-actions">
-          <button class="btn btn-sm" style="background:linear-gradient(135deg,#D97706,#D97706);color:#fff;border-color:rgba(217,119,6,0.3);box-shadow:0 4px 12px rgba(217,119,6,0.28)">立即接管</button>
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,#F97316,#F97316);color:#fff;border-color:rgba(249,115,22,0.3);box-shadow:0 4px 12px rgba(249,115,22,0.28)">立即接管</button>
           <button class="btn btn-ghost btn-sm">详情</button>
           <button class="btn btn-ghost btn-sm btn-icon" title="更多">
             <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -905,7 +905,7 @@
           </div>
           <div class="task-meta" style="margin-bottom:6px">个人金融部<span class="dot">·</span>操作人：张三<span class="dot">·</span>招商银行 RPA<span class="dot">·</span>开始于 2026-07-26 14:32:05</div>
           <div class="detail-progress-row">
-            <div class="progress"><div class="progress-bar" style="width:67%;background:linear-gradient(90deg,#2563EB,#2563EB)"></div></div>
+            <div class="progress"><div class="progress-bar" style="width:67%;background:linear-gradient(90deg,#3B82F6,#3B82F6)"></div></div>
             <span class="pct">67%</span>
           </div>
         </div>
@@ -1075,7 +1075,7 @@
         </div>
 
         <!-- 风险提示 -->
-        <div style="margin-top:var(--space-lg);padding:12px 14px;background:rgba(217,119,6,0.10);border:1px solid rgba(217,119,6,0.30);border-radius:var(--radius-sm);font-size:12px;color:var(--accent-warning);display:flex;gap:8px;align-items:flex-start">
+        <div style="margin-top:var(--space-lg);padding:12px 14px;background:rgba(249,115,22,0.10);border:1px solid rgba(249,115,22,0.30);border-radius:var(--radius-sm);font-size:12px;color:var(--accent-warning);display:flex;gap:8px;align-items:flex-start">
           <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:1px;flex-shrink:0">
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
             <line x1="12" y1="9" x2="12" y2="13"/>

@@ -39,9 +39,9 @@
     transition: all 0.2s var(--ease-out);
   }
   .time-filter button.active {
-    background: #047857;
+    background: #1A3A5C;
     color: #fff;
-    box-shadow: 0 2px 8px rgba(4, 120, 87, 0.3);
+    box-shadow: 0 2px 8px rgba(26, 58, 92, 0.3);
   }
   .time-filter button:hover:not(.active) {
     color: var(--text-primary);
@@ -109,14 +109,14 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  .chart-svg .line-primary { stroke: #047857; }   /* 任务量趋势 - 绿 */
-  .chart-svg .line-success { stroke: #7C3AED; }   /* LLM 成本趋势 - 紫 */
+  .chart-svg .line-primary { stroke: #1A3A5C; }   /* 任务量趋势 - 深海蓝 */
+  .chart-svg .line-success { stroke: #C9A84C; }   /* LLM 成本趋势 - 金色 */
   .chart-svg .data-point {
     stroke: #fff;
     stroke-width: 2;
   }
-  .chart-svg .point-primary { fill: #047857; }
-  .chart-svg .point-success { fill: #7C3AED; }
+  .chart-svg .point-primary { fill: #1A3A5C; }
+  .chart-svg .point-success { fill: #C9A84C; }
   .chart-svg .data-area { opacity: 0.4; }
   .chart-svg .data-point-label {
     fill: var(--text-secondary);
@@ -406,8 +406,8 @@
           <svg class="chart-svg" viewBox="0 0 700 260" preserveAspectRatio="xMidYMid meet">
             <defs>
               <linearGradient id="trend-area" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#047857" stop-opacity="0.35"/>
-                <stop offset="100%" stop-color="#047857" stop-opacity="0"/>
+                <stop offset="0%" stop-color="#1A3A5C" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#1A3A5C" stop-opacity="0"/>
               </linearGradient>
             </defs>
             <!-- 网格线 -->
@@ -461,24 +461,24 @@
         <div class="chart-body">
           <div class="biz-row">
             <div class="biz-header">
-              <span class="biz-name"><span class="biz-dot" style="background:#1E40AF"></span>对公业务</span>
+              <span class="biz-name"><span class="biz-dot" style="background:#1A3A5C"></span>对公业务</span>
               <span class="biz-value">38%</span>
             </div>
-            <div class="biz-bar"><div class="biz-bar-fill" style="width:38%;background:linear-gradient(90deg,#1E40AF,#1E3A8A)"></div></div>
+            <div class="biz-bar"><div class="biz-bar-fill" style="width:38%;background:linear-gradient(90deg,#1A3A5C,#0F2440)"></div></div>
           </div>
           <div class="biz-row">
             <div class="biz-header">
-              <span class="biz-name"><span class="biz-dot" style="background:#2563EB"></span>个人金融</span>
+              <span class="biz-name"><span class="biz-dot" style="background:#2A5A8C"></span>个人金融</span>
               <span class="biz-value">27%</span>
             </div>
-            <div class="biz-bar"><div class="biz-bar-fill" style="width:27%;background:linear-gradient(90deg,#2563EB,#1E40AF)"></div></div>
+            <div class="biz-bar"><div class="biz-bar-fill" style="width:27%;background:linear-gradient(90deg,#2A5A8C,#1A3A5C)"></div></div>
           </div>
           <div class="biz-row">
             <div class="biz-header">
               <span class="biz-name"><span class="biz-dot" style="background:#3B82F6"></span>资产管理</span>
               <span class="biz-value">20%</span>
             </div>
-            <div class="biz-bar"><div class="biz-bar-fill" style="width:20%;background:linear-gradient(90deg,#3B82F6,#2563EB)"></div></div>
+            <div class="biz-bar"><div class="biz-bar-fill" style="width:20%;background:linear-gradient(90deg,#3B82F6,#2A5A8C)"></div></div>
           </div>
           <div class="biz-row">
             <div class="biz-header">
@@ -503,8 +503,8 @@
           <svg class="chart-svg" viewBox="0 0 700 260" preserveAspectRatio="xMidYMid meet">
             <defs>
               <linearGradient id="llm-area" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.35"/>
-                <stop offset="100%" stop-color="#7C3AED" stop-opacity="0"/>
+                <stop offset="0%" stop-color="#C9A84C" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#C9A84C" stop-opacity="0"/>
               </linearGradient>
             </defs>
             <!-- 网格线 -->
@@ -559,7 +559,7 @@
           <div class="error-row">
             <div class="error-name">超时</div>
             <div class="error-bar-wrap">
-              <div class="error-bar-fill" style="width:100%;background:#DC2626">
+              <div class="error-bar-fill" style="width:100%;background:#EF4444">
                 <span class="error-count">42</span>
               </div>
             </div>
@@ -567,7 +567,7 @@
           <div class="error-row">
             <div class="error-name">校验</div>
             <div class="error-bar-wrap">
-              <div class="error-bar-fill" style="width:66.7%;background:#D97706">
+              <div class="error-bar-fill" style="width:66.7%;background:#F97316">
                 <span class="error-count">28</span>
               </div>
             </div>
@@ -575,7 +575,7 @@
           <div class="error-row">
             <div class="error-name">网络</div>
             <div class="error-bar-wrap">
-              <div class="error-bar-fill" style="width:35.7%;background:#2563EB">
+              <div class="error-bar-fill" style="width:35.7%;background:#8B5CF6">
                 <span class="error-count">15</span>
               </div>
             </div>

@@ -12,11 +12,11 @@
 
   /* 复用 01 的 Header 组件样式 */
   .logo-mark {
-    background: #047857;
+    background: #1A3A5C;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 20px rgba(4, 120, 87, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
+    box-shadow: 0 8px 20px rgba(26, 58, 92, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
   }
   .logo-mark svg { stroke: #fff; }
   .demo-search { position: relative; }
@@ -35,7 +35,7 @@
     outline: none;
     border-color: var(--accent-primary);
     background: #fff;
-    box-shadow: 0 0 0 4px rgba(4, 120, 87, 0.12);
+    box-shadow: 0 0 0 4px rgba(26, 58, 92, 0.12);
   }
   .user-chip {
     display: flex;
@@ -57,14 +57,14 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: #047857;
+    background: #1A3A5C;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 600;
     font-size: 13px;
     color: #fff;
-    box-shadow: 0 2px 6px rgba(4, 120, 87, 0.3);
+    box-shadow: 0 2px 6px rgba(26, 58, 92, 0.3);
   }
   .icon-btn {
     width: 36px;
@@ -134,7 +134,7 @@
     box-shadow: var(--shadow-sm);
   }
   .takeover-item.active {
-    background: rgba(220, 38, 38, 0.06);
+    background: rgba(239, 68, 68, 0.06);
     border-color: var(--accent-danger);
     box-shadow: inset 3px 0 0 var(--accent-danger), var(--shadow-xs);
   }
@@ -163,8 +163,8 @@
   /* 错误框 */
   .error-box {
     padding: 14px 16px;
-    background: rgba(220, 38, 38, 0.06);
-    border: 1px solid rgba(220, 38, 38, 0.30);
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(239, 68, 68, 0.30);
     border-left: 4px solid var(--accent-danger);
     border-radius: var(--radius-md);
     font-family: var(--font-mono);
@@ -231,9 +231,9 @@
     transition: all 0.2s var(--ease-out);
   }
   .time-filter button.active {
-    background: #047857;
+    background: #1A3A5C;
     color: #fff;
-    box-shadow: 0 2px 8px rgba(4, 120, 87, 0.3);
+    box-shadow: 0 2px 8px rgba(26, 58, 92, 0.3);
   }
 
   /* 模型占比条 */
@@ -256,14 +256,14 @@
   .model-bar-fill {
     height: 100%;
     border-radius: var(--radius-pill);
-    box-shadow: 0 0 8px rgba(4, 120, 87, 0.3);
+    box-shadow: 0 0 8px rgba(26, 58, 92, 0.3);
   }
 
   /* NEEDS_HUMAN 徽章（danger 配色） */
   .badge-NEEDS_HUMAN {
-    background: rgba(220, 38, 38, 0.10);
+    background: rgba(239, 68, 68, 0.10);
     color: var(--accent-danger);
-    border: 1px solid rgba(220, 38, 38, 0.26);
+    border: 1px solid rgba(239, 68, 68, 0.26);
   }
 </style>
 </head>
@@ -594,7 +594,7 @@
               <span class="mono">58% · 1,984 次</span>
             </div>
             <div class="model-bar">
-              <div class="model-bar-fill" style="width:58%;background:#047857"></div>
+              <div class="model-bar-fill" style="width:58%;background:#1A3A5C"></div>
             </div>
           </div>
           <div class="model-row">
@@ -603,7 +603,7 @@
               <span class="mono">27% · 924 次</span>
             </div>
             <div class="model-bar">
-              <div class="model-bar-fill" style="width:27%;background:linear-gradient(90deg,#34D399,#047857)"></div>
+              <div class="model-bar-fill" style="width:27%;background:linear-gradient(90deg,#34D399,#1A3A5C)"></div>
             </div>
           </div>
           <div class="model-row">
@@ -638,8 +638,8 @@
             <!-- 渐变填充 -->
             <defs>
               <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#047857" stop-opacity="0.35"/>
-                <stop offset="100%" stop-color="#047857" stop-opacity="0"/>
+                <stop offset="0%" stop-color="#1A3A5C" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#1A3A5C" stop-opacity="0"/>
               </linearGradient>
             </defs>
 
@@ -649,16 +649,16 @@
 
             <!-- 折线 -->
             <polyline points="70,70 130,55 190,80 250,100 310,115 370,130 430,150"
-                      fill="none" stroke="#047857" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      fill="none" stroke="#1A3A5C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
 
             <!-- 数据点 -->
-            <circle cx="70" cy="70" r="3.5" fill="#047857" stroke="#fff" stroke-width="2"/>
-            <circle cx="130" cy="55" r="3.5" fill="#047857" stroke="#fff" stroke-width="2"/>
-            <circle cx="190" cy="80" r="3.5" fill="#047857" stroke="#fff" stroke-width="2"/>
-            <circle cx="250" cy="100" r="3.5" fill="#047857" stroke="#fff" stroke-width="2"/>
-            <circle cx="310" cy="115" r="3.5" fill="#047857" stroke="#fff" stroke-width="2"/>
-            <circle cx="370" cy="130" r="3.5" fill="#047857" stroke="#fff" stroke-width="2"/>
-            <circle cx="430" cy="150" r="4.5" fill="#065F46" stroke="#fff" stroke-width="2"/>
+            <circle cx="70" cy="70" r="3.5" fill="#1A3A5C" stroke="#fff" stroke-width="2"/>
+            <circle cx="130" cy="55" r="3.5" fill="#1A3A5C" stroke="#fff" stroke-width="2"/>
+            <circle cx="190" cy="80" r="3.5" fill="#1A3A5C" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="100" r="3.5" fill="#1A3A5C" stroke="#fff" stroke-width="2"/>
+            <circle cx="310" cy="115" r="3.5" fill="#1A3A5C" stroke="#fff" stroke-width="2"/>
+            <circle cx="370" cy="130" r="3.5" fill="#1A3A5C" stroke="#fff" stroke-width="2"/>
+            <circle cx="430" cy="150" r="4.5" fill="#2A5A8C" stroke="#fff" stroke-width="2"/>
 
             <!-- X 轴标签 -->
             <text x="70" y="196" text-anchor="middle" fill="#94A3B8" font-size="10">07-20</text>
@@ -667,7 +667,7 @@
             <text x="250" y="196" text-anchor="middle" fill="#94A3B8" font-size="10">07-23</text>
             <text x="310" y="196" text-anchor="middle" fill="#94A3B8" font-size="10">07-24</text>
             <text x="370" y="196" text-anchor="middle" fill="#94A3B8" font-size="10">07-25</text>
-            <text x="430" y="196" text-anchor="middle" fill="#065F46" font-size="10" font-weight="600">07-26</text>
+            <text x="430" y="196" text-anchor="middle" fill="#2A5A8C" font-size="10" font-weight="600">07-26</text>
           </svg>
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:4px">
             <span>7 日下降趋势</span>
