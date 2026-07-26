@@ -178,7 +178,7 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 
 ### M0 基础设施
 
-#### M0.1 三大子项目骨架搭建
+#### M0.1 三大子项目骨架搭建 ✅
 
 | 项 | 内容 |
 |----|------|
@@ -187,6 +187,7 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 | **产出物** | `finance-backend/`（Maven + Spring Boot 3.2 + Java 21）、`finance-ai/`（uv + FastAPI + Python 3.11）、`finance-frontend/`（Vite + React 18 + TS）、顶层 `Makefile` + `.env.example` |
 | **描述** | 1. Java：`pom.xml` 配置 Spring Boot 3.2 / MyBatis-Plus / Flyway / Redisson / jjwt / springdoc；启动类 `FinRpaApplication`；`application.yml` 基础配置<br>2. Python：`pyproject.toml` 配置 FastAPI / Uvicorn / SQLAlchemy / Playwright / LiteLLM；`app/main.py` FastAPI 入口<br>3. 前端：`package.json` 配置 React / Vite / Tailwind / Zustand / React Query；`App.tsx` 根组件<br>4. 顶层 Makefile：`make dev` / `make build` / `make test` 入口 |
 | **验收标准** | 三个子项目能独立启动（Java 8080、Python 8000、前端 8081）；健康检查端点返回 200 |
+| **状态** | ✅ 已完成（2026-07-27）。三服务均验证启动+健康检查 200：Java `/actuator/health` 返回 UP；Python `/api/v1/ai/health` 返回 `{"status":"up"}`；前端 `localhost:8081` 返回 200 含 #root。骨架阶段 Java 排除中间件自动配置（PG/Redis/Flyway/Security）使可独立启动；通用基础类（BaseResponse/ErrorCode/异常处理/AOP/工具类）从用户模板 `springboot3-java21-backend` 迁移并改包名为 `com.finrpa`；litellm 降级到 1.89.6（1.90+ 含 Rust 扩展，本机 dlltool 被策略阻止无法编译） |
 
 #### M0.2 Docker Compose 环境搭建
 
