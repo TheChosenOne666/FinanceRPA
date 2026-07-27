@@ -24,7 +24,11 @@ spring:
       timeout: 5000ms
   # Flyway 暂时禁用（M0.3 数据库迁移脚本初始化后启用）
   flyway:
-    enabled: false
+    enabled: true
+    locations: classpath:db/migration
+    schemas: finrpa
+    baseline-on-migrate: true
+    baseline-version: 0
 
 # 开发环境开启 SQL 日志
 mybatis-plus:
