@@ -1,0 +1,191 @@
+# docker-compose.prod.yml
+# 生产环境配置（独立使用：docker-compose -f docker-compose.prod.yml up -d）
+# 与 docker-compose.yml 的区别：应用服务用构建镜像（非 volume 挂载源码），启用资源限制
+
+name: finrpa-prod
+
+services:
+  # ========== 数据层（与开发环境一致） ==========
+  postgres:
+    image: postgres:16-alpine
+    container_name: finrpa-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-finrpa}
+      POSTGRES_USER: ${POSTGRES_USER:-finrpa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finrpa}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finrpa-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: finrpa-redis
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finrpa-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: finrpa-minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?请在 .env 中设置 MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finrpa-net
+
+  # ========== 应用层（构建镜像，非 volume 挂载） ==========
+  finance-backend:
+    build:
+      context: ./finance-backend
+    image: finrpa/finance-backend:latest
+    container_name: finrpa-backend
+    restart: always
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-finrpa}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-finrpa}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    networks:
+      - finrpa-net
+
+  finance-ai:
+    build:
+      context: ./finance-ai
+    image: finrpa/finance-ai:latest
+    container_name: finrpa-ai
+    restart: always
+    environment:
+      DATABASE_URL: postgresql+asyncpg://finrpa:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-finrpa}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+      BACKEND_BASE_URL: http://finance-backend:8080
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/ai/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    networks:
+      - finrpa-net
+
+  finance-frontend:
+    build:
+      context: ./finance-frontend
+    image: finrpa/finance-frontend:latest
+    container_name: finrpa-frontend
+    restart: always
+    ports:
+      - "8081:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - finrpa-net
+
+  # ========== 网关层 ==========
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: finrpa-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      finance-backend:
+        condition: service_healthy
+      finance-ai:
+        condition: service_healthy
+      finance-frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - finrpa-net
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  nginx-logs:
+
+networks:
+  finrpa-net:
+    driver: bridge

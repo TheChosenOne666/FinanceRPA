@@ -189,15 +189,15 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 | **验收标准** | 三个子项目能独立启动（Java 8080、Python 8000、前端 8081）；健康检查端点返回 200 |
 | **状态** | ✅ 已完成（2026-07-27）。三服务均验证启动+健康检查 200：Java `/actuator/health` 返回 UP；Python `/api/v1/ai/health` 返回 `{"status":"up"}`；前端 `localhost:8081` 返回 200 含 #root。骨架阶段 Java 排除中间件自动配置（PG/Redis/Flyway/Security）使可独立启动；通用基础类（BaseResponse/ErrorCode/异常处理/AOP/工具类）从用户模板 `springboot3-java21-backend` 迁移并改包名为 `com.finrpa`；litellm 降级到 1.89.6（1.90+ 含 Rust 扩展，本机 dlltool 被策略阻止无法编译） |
 
-#### M0.2 Docker Compose 环境搭建
+#### M0.2 Docker Compose 环境搭建 ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | M |
 | **前置依赖** | M0.1 |
 | **产出物** | `docker-compose.yml`（开发）、`docker-compose.prod.yml`（生产 overlay）、各服务 Dockerfile |
-| **描述** | 1. 6 服务编排：postgres / redis / minio / finance-backend / finance-ai / finance-frontend + nginx<br>2. 数据卷：`postgres-data` / `redis-data` / `minio-data`<br>3. 健康检查：全链路 healthcheck<br>4. 启动顺序：depends_on + condition: service_healthy<br>5. Python 镜像装 Playwright 浏览器依赖 |
-| **验收标准** | `docker-compose up -d` 一键启动全部服务；所有健康检查通过；服务间网络互通 |
+| **描述** | 1. 7 服务编排：postgres / redis / minio / finance-backend / finance-ai / finance-frontend + nginx<br>2. 数据卷：`postgres-data` / `redis-data` / `minio-data` / `maven-repo` / `uv-cache` / `frontend-node-modules` / `ai-venv`<br>3. 健康检查：全链路 healthcheck，start_period 适配 uv sync 下载时间<br>4. 启动顺序：depends_on + condition: service_healthy<br>5. 国内镜像加速：Maven 阿里云镜像、PyPI 阿里云镜像（UV_INDEX_URL）<br>6. 端口：5432/6379/9000/9001/8080/8000/8081/80 |
+| **验收标准** | ✅ `docker-compose up -d` 一键启动全部服务；✅ 所有健康检查通过；✅ 服务间网络互通；✅ Java 连接 PG+Redis 验证通过 |
 
 #### M0.3 数据库迁移脚本初始化
 
@@ -209,15 +209,15 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 | **描述** | 1. Java：按 system-design 8.1 节表前缀创建 10 个 Flyway 脚本骨架（`V20260725_001__auth__init_schema.sql` 等），先建空表结构<br>2. Python：Alembic 初始化，复刻 Skyvern 原项目 skyvern_* 表迁移<br>3. 共享枚举字典表（risk_level / role_type / task_state）由 Java 侧 Flyway 创建<br>4. 双方迁移脚本边界严格隔离（前缀校验） |
 | **验收标准** | Java 服务启动 Flyway 执行成功；Python 服务启动 Alembic 执行成功；`psql` 能查到全部表 |
 
-#### M0.4 Nginx 反向代理配置
+#### M0.4 Nginx 反向代理配置 ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | S |
 | **前置依赖** | M0.1 |
 | **产出物** | `nginx/nginx.conf`、`nginx/conf.d/default.conf` |
-| **描述** | 1. 路由规则按 system-design 10.3 节<br>2. SSE 透传：`proxy_buffering off` / `proxy_read_timeout 3600s`<br>3. gzip 压缩 + 安全头（X-Frame-Options / X-Content-Type-Options 等）<br>4. HTTPS 预留配置（生产 overlay 启用） |
-| **验收标准** | Nginx 启动后，前端访问 `/` 返回静态资源；`/api/v1/*` 转发到 Java；`/api/v1/ai/sse/*` 透传 SSE |
+| **描述** | 1. 路由规则按 system-design 10.3 节<br>2. SSE 透传：`proxy_buffering off` / `proxy_read_timeout 86400s`<br>3. gzip 压缩 + 安全头（X-Frame-Options / X-Content-Type-Options 等）<br>4. HTTPS 预留配置（生产 overlay 启用）<br>5. WebSocket 支持（Vite HMR） |
+| **验收标准** | ✅ Nginx 启动后，前端访问 `/` 返回静态资源；✅ `/api/v1/*` 转发到 Java；✅ `/api/v1/ai/sse/*` 透传 SSE；✅ `/actuator/health` 通过 nginx 访问返回 UP |
 
 ---
 

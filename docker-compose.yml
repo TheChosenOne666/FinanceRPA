@@ -1,0 +1,203 @@
+# docker-compose.yml（开发环境）
+# 一键启动：docker-compose up -d
+# 停止：docker-compose down
+# 查看日志：docker-compose logs -f <service>
+#
+# 设计说明：
+# - 中间件（postgres/redis/minio）用官方镜像
+# - 应用服务（backend/ai/frontend）用官方镜像 + volume 挂载源码，支持热重载
+# - nginx 作为统一入口反向代理（端口 80）
+# - 生产环境用 docker-compose.prod.yml overlay 覆盖为构建镜像
+
+name: finrpa
+
+services:
+  # ========== 数据层 ==========
+  postgres:
+    image: postgres:16-alpine
+    container_name: finrpa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-finrpa}
+      POSTGRES_USER: ${POSTGRES_USER:-finrpa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finrpa}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finrpa} -d ${POSTGRES_DB:-finrpa}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - finrpa-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: finrpa-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - finrpa-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: finrpa-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - finrpa-net
+
+  # ========== 应用层 ==========
+  finance-backend:
+    image: maven:3.9-eclipse-temurin-21
+    container_name: finrpa-backend
+    restart: unless-stopped
+    working_dir: /app
+    command: mvn spring-boot:run -DskipTests
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-finrpa}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-finrpa}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-finrpa}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./finance-backend:/app
+      - maven-repo:/root/.m2
+      - ./maven-settings.xml:/root/.m2/settings.xml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    networks:
+      - finrpa-net
+
+  finance-ai:
+    image: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+    container_name: finrpa-ai
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "uv sync && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://finrpa:${POSTGRES_PASSWORD:-finrpa}@postgres:5432/${POSTGRES_DB:-finrpa}
+      REDIS_URL: redis://redis:6379/1
+      BACKEND_BASE_URL: http://finance-backend:8080
+      # PyPI 国内镜像加速
+      UV_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+      UV_HTTP_TIMEOUT: "300"
+      UV_DEFAULT_INDEX_RETRIES: "5"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./finance-ai:/app
+      - uv-cache:/root/.cache/uv
+      - ai-venv:/app/.venv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ai/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+    networks:
+      - finrpa-net
+
+  finance-frontend:
+    image: node:20-alpine
+    container_name: finrpa-frontend
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm install --registry=https://registry.npmmirror.com && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./finance-frontend:/app
+      - frontend-node-modules:/app/node_modules
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - finrpa-net
+
+  # ========== 网关层 ==========
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: finrpa-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      finance-backend:
+        condition: service_healthy
+      finance-ai:
+        condition: service_healthy
+      finance-frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - finrpa-net
+
+# ========== 数据卷 ==========
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  maven-repo:
+  uv-cache:
+  frontend-node-modules:
+  ai-venv:
+
+# ========== 网络 ==========
+networks:
+  finrpa-net:
+    driver: bridge
