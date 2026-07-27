@@ -4,12 +4,8 @@
 # 禁用：Flyway（M0.3 启用）/ Security（M1.1 启用）
 
 spring:
-  # 覆盖 application.yml 的排除列表：仅保留 Security 排除
   autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
-      - org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration
-      - org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration
+    exclude: []
   # PostgreSQL 数据源
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/finrpa}

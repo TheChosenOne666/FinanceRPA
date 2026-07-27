@@ -61,3 +61,9 @@ springdoc:
   group-configs:
     - group: 'default'
       packages-to-scan: com.finrpa
+
+# JWT 配置
+jwt:
+  secret: finrpa-finance-rpa-jwt-secret-key-2026-longer-than-256-bits
+  access-token-expire-minutes: 60
+  refresh-token-expire-days: 7
