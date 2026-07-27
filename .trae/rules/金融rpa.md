@@ -39,7 +39,7 @@
 - **禁止** `git push --force` 到主分支
 - **禁止** `git reset --hard` 远程已有提交
 - **禁止** `rm -rf` 任何路径
-- 提交信息遵循 Conventional Commits：`feat:` / `fix:` / `refactor:` / `docs:` / `chore:`
+- 提交信息尽量使用中文且遵循 Conventional Commits：`feat:` / `fix:` / `refactor:` / `docs:` / `chore:`
 - 不主动 commit，除非用户明确要求
 
 ## 沟通
@@ -48,3 +48,15 @@
 - 给结论，不啰嗦过程
 - 有风险/不确定时明确标注，不要假装确定
 - 用中文回复
+
+## 后端代码风格
+
+- 注释规范 （MANDATORY）：类级 Javadoc（含 @author / @from 标签）、字段注释、方法注释（ @param / @return ）、步骤注释（ // 1. xxx ）、行内中文注释、 // region 区域划分
+- 包结构 ：annotation/aop/common/config/constant/controller/exception/manager/mapper/model(dto/entity/enums/vo)/service(impl)/utils
+- 命名规范 ： XxxController 、 XxxService extends IService 、 XxxServiceImpl extends ServiceImpl 、 XxxAddRequest / XxxVO 等
+- 依赖注入 ：统一 @Resource （不用 @Autowired ）、 @Slf4j 、 @Data
+- 统一返回与异常 ： BaseResponse<T> + ResultUtils 、 BusinessException + ErrorCode + ThrowUtils.throwIf()
+- Entity/DTO/VO ： implements Serializable + serialVersionUID 、 @TableName / @TableId / @TableLogic 、VO 必须脱敏
+- Service 接口与实现分离 （MANDATORY）
+- Mapper ：PostgreSQL UUID 需 ::uuid 转换
+- 其他 ：参数校验、分页 PageRequest 、枚举 getEnumByValue

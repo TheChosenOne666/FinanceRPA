@@ -4,6 +4,7 @@ import com.finrpa.auth.entity.RoleEO;
 import com.finrpa.auth.entity.UserEO;
 import com.finrpa.auth.mapper.RoleMapper;
 import com.finrpa.auth.mapper.UserMapper;
+import com.finrpa.auth.service.impl.PermissionServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,7 @@ class PermissionServiceTest {
     private RoleMapper roleMapper;
 
     @InjectMocks
-    private PermissionService permissionService;
+    private PermissionServiceImpl permissionService;
 
     private UserEO createUser(String userId, String orgId) {
         UserEO user = new UserEO();

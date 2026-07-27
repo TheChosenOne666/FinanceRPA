@@ -4,6 +4,7 @@ import com.finrpa.auth.dto.response.LoginResponse;
 import com.finrpa.auth.dto.response.UserInfoResponse;
 import com.finrpa.auth.entity.UserEO;
 import com.finrpa.auth.mapper.UserMapper;
+import com.finrpa.auth.service.impl.AuthServiceImpl;
 import com.finrpa.auth.util.JwtUtil;
 import com.finrpa.common.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
@@ -36,7 +37,7 @@ class AuthServiceTest {
     private PasswordEncoder passwordEncoder;
 
     @InjectMocks
-    private AuthService authService;
+    private AuthServiceImpl authService;
 
     private UserEO createUser(String userId, String username, String password, Integer status, String orgId) {
         UserEO user = new UserEO();

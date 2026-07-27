@@ -9,6 +9,9 @@ import java.lang.annotation.Target;
  * 权限校验注解
  *
  * <p>M1.1 将由 {@code PermissionInterceptor} 基于 JWT 解析当前用户角色并校验。</p>
+ *
+ * @author <a href="https://github.com/TheChosenOne666">小楼</a>
+ * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
@@ -16,6 +19,8 @@ public @interface AuthCheck {
 
     /**
      * 必须具备的角色标识（对齐系统设计 6.1.1 角色枚举：super_admin / org_admin / operator / approver / viewer）
+     *
+     * @return 角色标识，默认空字符串表示不限制
      */
     String mustRole() default "";
 }

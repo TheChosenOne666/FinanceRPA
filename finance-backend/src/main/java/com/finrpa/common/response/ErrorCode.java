@@ -2,6 +2,9 @@ package com.finrpa.common.response;
 
 /**
  * 业务错误码
+ *
+ * @author <a href="https://github.com/TheChosenOne666">小楼</a>
+ * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
  */
 public enum ErrorCode {
 
@@ -14,19 +17,41 @@ public enum ErrorCode {
     SYSTEM_ERROR(50000, "系统内部异常"),
     OPERATION_ERROR(50001, "操作失败");
 
+    /**
+     * 错误码
+     */
     private final int code;
 
+    /**
+     * 错误消息
+     */
     private final String message;
 
+    /**
+     * 构造错误码枚举
+     *
+     * @param code    错误码
+     * @param message 错误消息
+     */
     ErrorCode(int code, String message) {
         this.code = code;
         this.message = message;
     }
 
+    /**
+     * 获取错误码
+     *
+     * @return 错误码
+     */
     public int getCode() {
         return code;
     }
 
+    /**
+     * 获取错误消息
+     *
+     * @return 错误消息
+     */
     public String getMessage() {
         return message;
     }
