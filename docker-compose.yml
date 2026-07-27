@@ -21,6 +21,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-finrpa}
       POSTGRES_USER: ${POSTGRES_USER:-finrpa}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finrpa}
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
     ports:
       - "5432:5432"
     volumes:
@@ -122,6 +124,7 @@ services:
       UV_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
       UV_HTTP_TIMEOUT: "300"
       UV_DEFAULT_INDEX_RETRIES: "5"
+      UV_LINK_MODE: "copy"
     ports:
       - "8000:8000"
     volumes:
@@ -179,7 +182,7 @@ services:
       finance-frontend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
