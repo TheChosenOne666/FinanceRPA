@@ -21,8 +21,8 @@ function RootLayout() {
   const navigate = useNavigate()
 
   // 1. 退出登录：清空状态 + 跳登录页
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     navigate('/login', { replace: true })
   }
 

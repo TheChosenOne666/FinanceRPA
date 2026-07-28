@@ -69,10 +69,20 @@ export async function checkPermission(
   return res.data.data
 }
 
+/**
+ * 用户登出
+ *
+ * @returns 登出结果
+ */
+export async function logout(): Promise<void> {
+  await axiosClient.post<BaseResponse>('/auth/logout')
+}
+
 /** 认证 API 聚合导出 */
 export const authApi = {
   login,
   refresh,
   getCurrentUser,
   checkPermission,
+  logout,
 }

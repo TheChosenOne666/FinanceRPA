@@ -101,7 +101,14 @@ export const useAuthStore = create<AuthState>()(
 
       // region 登出
 
-      logout: () => {
+      logout: async () => {
+        // 1. 调用后端登出接口（失败不影响前端登出流程）
+        try {
+          await authApi.logout()
+        } catch (e) {
+          console.warn('[AuthStore] 后端登出接口调用失败:', e)
+        }
+        // 2. 清空前端状态
         set({
           accessToken: null,
           refreshToken: null,

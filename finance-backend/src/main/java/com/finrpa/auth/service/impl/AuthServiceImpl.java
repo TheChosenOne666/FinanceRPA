@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @RequiredArgsConstructor
+@lombok.extern.slf4j.Slf4j
 public class AuthServiceImpl implements AuthService {
 
     /** 用户 Mapper */
@@ -185,5 +186,17 @@ public class AuthServiceImpl implements AuthService {
     public boolean checkPermission(String userId, String resourceType, String resourceId, String action) {
         // 委托给权限服务校验
         return permissionService.checkPermission(userId, resourceType, resourceId, action);
+    }
+
+    /**
+     * 用户登出
+     *
+     * @param userId 用户 ID
+     */
+    @Override
+    public void logout(String userId) {
+        // 当前版本为无状态 JWT 认证，服务端无需存储 session
+        // 登出主要由前端清除 token 完成，此接口预留用于后续扩展（如黑名单机制）
+        log.info("用户登出: {}", userId);
     }
 }

@@ -14,11 +14,10 @@ export default defineConfig({
     port: 8081,
     host: '0.0.0.0',
     // 代理后端 API（避免开发环境 CORS）
-    // Docker 环境：使用 Docker 网络服务名
-    // 本地开发：将下方 target 改为 http://localhost:8080
+    // 通过环境变量 VITE_API_PROXY_TARGET 配置，默认 Docker 网络服务名
     proxy: {
       '/api': {
-        target: 'http://finance-backend:8080',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://finance-backend:8080',
         changeOrigin: true,
       },
     },

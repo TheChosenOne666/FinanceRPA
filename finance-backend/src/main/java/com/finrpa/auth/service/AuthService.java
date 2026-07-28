@@ -46,4 +46,11 @@ public interface AuthService {
      * @return 是否有权限
      */
     boolean checkPermission(String userId, String resourceType, String resourceId, String action);
+
+    /**
+     * 用户登出
+     *
+     * @param userId 用户 ID
+     */
+    void logout(String userId);
 }

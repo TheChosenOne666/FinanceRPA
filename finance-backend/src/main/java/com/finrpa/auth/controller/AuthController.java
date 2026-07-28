@@ -124,6 +124,26 @@ public class AuthController {
 
     // endregion
 
+    // region 登出
+
+    /**
+     * 用户登出
+     *
+     * @param request HTTP 请求（用于提取 token）
+     * @return 登出结果
+     */
+    @PostMapping("/logout")
+    @Operation(summary = "登出", description = "用户登出")
+    public BaseResponse<Void> logout(HttpServletRequest request) {
+        // 从请求头提取 token 并解析用户 ID
+        String token = extractToken(request);
+        String userId = jwtUtil.getUserIdFromToken(token);
+        authService.logout(userId);
+        return ResultUtils.success(null);
+    }
+
+    // endregion
+
     /**
      * 从请求头中提取 Bearer token
      *
