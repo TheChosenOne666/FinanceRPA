@@ -158,7 +158,7 @@ finance-backend/
 
 ```
 finance-ai/
-├── skyvern/                  # Skyvern 核心（最小改动，Playwright 浏览器管理）
+├── skyvern/                  # Skyvern 核心（最小改动，内置 Playwright）
 ├── app/
 │   ├── agent/                # Planner + Executor + Coordinator 执行逻辑
 │   ├── skills/               # 7 个 Skill 实现 + Pipeline 执行器
@@ -166,7 +166,7 @@ finance-ai/
 │   ├── approval/             # LLM 风险二次判断（被 Java 调用）
 │   ├── audit/                # 审计回调客户端（上报 Java 后端）
 │   ├── workflows/            # Skill 编排执行（被 Java 触发）
-│   ├── browser/              # Playwright 浏览器会话管理
+│   ├── clients/              # JavaBackendClient 回调客户端
 │   └── api/                  # FastAPI 路由
 └── alembic/                  # skyvern_* 表迁移
 ```
@@ -333,42 +333,40 @@ finance-ai/
 │   ├── forge/                                 # ForgeAgent + LLM 调度
 │   └── cli/                                   # Skyvern CLI
 ├── app/
-│   ├── main.py                                # FastAPI 入口
+│   ├── main.py                                # FastAPI 入口（注册路由 + lifespan 初始化）
 │   ├── config.py                              # 配置（pydantic-settings）
+│   ├── schemas.py                             # 全局数据模型（TaskTriggerRequest / SseEvent 等）
+│   ├── demo_seed.py                           # 内存演示数据（任务/审批/审计/LLM 调用，M2.1）
 │   ├── api/
-│   │   ├── tasks.py                           # 任务触发 / 状态查询
-│   │   ├── sse.py                             # SSE 流推送
-│   │   ├── skills.py                          # Skill 元数据查询
-│   │   ├── risk.py                            # LLM 风险判断（被 Java 调用）
+│   │   ├── tasks.py                           # 任务触发 / 状态查询 / 终止（M2.1）
+│   │   ├── sse.py                             # SSE 流推送（M2.1）
+│   │   ├── skills.py                          # Skill 元数据查询（M3.3）
+│   │   ├── risk.py                            # LLM 风险判断（M6.2）
 │   │   └── health.py                          # 健康检查
-│   ├── agent/
-│   │   ├── planner.py                         # Planner（任务拆解 + replan）
-│   │   ├── executor.py                        # Executor（子任务执行）
-│   │   ├── coordinator.py                     # Coordinator（编排 + 失败策略）
-│   │   └── schemas.py                         # SubTask / TaskPlan / ExecutionResult
-│   ├── skills/
-│   │   ├── base.py                            # Skill 基类接口
-│   │   ├── executor.py                        # Skill Pipeline 执行器
-│   │   ├── auth_skills.py                     # LoginSkill + SessionKeepAliveSkill
-│   │   ├── interaction_skills.py              # FormFillSkill + SearchAndSelectSkill + PaginationSkill
-│   │   └── extraction_skills.py               # TableExtractSkill + FileDownloadSkill
-│   ├── llm/
-│   │   ├── resilient_caller.py                # 三层容错（Prompt + Pydantic + NEEDS_HUMAN）
-│   │   ├── action_cache.py                    # Action 缓存读写（Redis）
-│   │   ├── model_router.py                    # 模型路由执行（按页面复杂度）
-│   │   └── task_states.py                     # NEEDS_HUMAN 状态机
-│   ├── approval/
-│   │   └── risk_judge.py                      # LLM 风险二次判断
-│   ├── audit/
-│   │   └── reporter.py                        # 审计回调客户端（上报 Java）
-│   ├── workflows/
-│   │   └── runner.py                          # Skill 编排执行
-│   ├── browser/
-│   │   ├── session_manager.py                 # Playwright 会话管理
-│   │   └── browser_ops.py                     # 浏览器操作封装
+│   ├── agent/                                 # Agent 三层架构（对齐 enterprise/agent/）
+│   │   ├── schemas.py                         # SubTask / TaskPlan / ExecutionResult / CoordinationState（M2.1）
+│   │   ├── planner.py                         # PlannerAgent fallback 版：单步计划（M2.1）→ LLM 版（M4.1）
+│   │   ├── executor.py                        # ExecutorAgent：子任务执行 + 重试（M2.1）
+│   │   └── coordinator.py                     # AgentCoordinator：编排调度 + 失败策略 SKIP/ABORT/REPLAN（M2.1）
+│   ├── skills/                                # Skills 系统（对齐 enterprise/skills/）
+│   │   ├── base.py                            # BaseSkill + SKILL_REGISTRY + ErrorStrategy + SkillStatus（M2.1）
+│   │   ├── executor.py                        # execute_pipeline() 流水线执行（M2.1）
+│   │   ├── auth_skills.py                     # LoginSkill + SessionKeepAliveSkill（M3.1）
+│   │   ├── interaction_skills.py              # FormFillSkill + SearchAndSelectSkill + PaginationSkill（M3.2）
+│   │   └── extraction_skills.py               # TableExtractSkill + FileDownloadSkill（M3.3）
+│   ├── llm/                                   # LLM 容错模块（对齐 enterprise/llm/）
+│   │   ├── action_cache.py                    # Action 缓存（M5.2）
+│   │   ├── model_router.py                    # 模型路由（M5.3）
+│   │   ├── resilient_caller.py               # 三层容错调用（M5.1）
+│   │   └── task_states.py                     # NEEDS_HUMAN 状态机（M5 实现）
+│   ├── approval/                              # 审批路由（对齐 enterprise/approval/）
+│   │   └── risk_detector.py                   # LLM 风险二次判断（M6.2）
+│   ├── audit/                                 # 审计路由（对齐 enterprise/audit/）
+│   │   └── reporter.py                       # 审计回调客户端（M7 实现）
+│   ├── workflows/                            # Skill 编排执行（M3 实现）
+│   │   └── runner.py
 │   └── clients/
-│       ├── java_backend.py                    # Java 后端 HTTP 客户端（httpx）
-│       └── sse_proxy.py                       # SSE 流转发
+│       └── java_backend.py                    # Java 后端 HTTP 客户端（M2.1）
 ├── tests/
 │   ├── unit/                                  # pytest 单元测试
 │   ├── integration/                           # 端到端集成测试
@@ -450,6 +448,21 @@ finance-frontend/
 > - **2FA 输入框暂未实现**：原型登录表单的 2FA 验证码字段在 M1.3 未实现，因后端 `LoginRequest` DTO 仅含 `username` / `password` 两字段；后续如启用 2FA 需后端先扩展 DTO，前端再补字段。
 > - **RootLayout 占位实现**：M1.3 阶段 `RootLayout.tsx` 仅实现 Header + Outlet，未实现 SideNav 完整菜单（M1.5 + 后续业务页面统一实现）；当前首页为 `HomePlaceholder` 占位组件，展示当前登录用户的角色与权限列表，用于 M1.3 验收"5 种角色登录后看到不同"。
 > - **路由跳转方式**：AxiosClient 在 refresh 失败时通过 `window.location.href` 强制跳转 `/login?expired=1`（非 SPA navigate），保证状态彻底重置；后续可优化为 `router.navigate`。
+
+> **实现说明（M2.1 Skyvern 集成 + Agent 对齐）**：
+> - **Playwright 不单独引入**：Skyvern 已内置 Playwright 作为浏览器自动化引擎，`finance-ai` 不再独立安装/管理 Playwright，直接通过 Skyvern `ForgeAgent` 的 Step 抽象（NavigationStep / ScreenshotStep 等）操作浏览器。
+> - **Docker 基础镜像**：从 `uv:python3.11-bookworm-slim` 切换为 `mcr.microsoft.com/playwright:v1.49.0-jammy-full`，该镜像已预装 Chromium 浏览器驱动。
+> - **不实现独立 browser 模块**：原计划的 `app/browser/session_manager.py` 已移除，改由 Skyvern 内部管理 Browser/Context 生命周期。
+> - **Agent 三层架构（骨架版）**：对齐参考项目 `enterprise/agent/`，采用 Planner → Executor → Coordinator 三层架构。Planner 在 M2.1 实现 fallback 版（单步计划），M4.1 替换为 LLM 版。外部接口稳定，内部实现分阶段增强。
+> - **Skills 系统前置**：对齐参考项目 `enterprise/skills/`，BaseSkill + SKILL_REGISTRY + execute_pipeline() 在 M2.1 实现，具体 Skill（auth/interaction/extraction）在 M3 实现。
+> - **LLM 模块推迟**：ActionCache（M5.2）和 ModelRouter（M5.3）不在 M2.1 实现，需要真实 LLM 调用数据才有意义。
+> - **Demo Seed 前置**：对齐参考项目 `enterprise/demo_seed.py`，启动时填充内存 store（任务/审批/审计/LLM 调用），供后续 Dashboard/Approval/Audit 路由使用。
+> - **数据持久化策略**：Python 仅存 demo 演示数据（内存 store），业务状态全部回调 Java 持久化，保证数据权威单一。
+> - **渐进增强策略**：M2.1 搭骨架接口 → M3 填具体 Skill → M4 接入 LLM Planner → M5 加容错，每步都是增量增强，不破坏已有代码。
+
+> **实现说明（M2.1 落地偏差）**：
+> - **Skyvern 源码暂未引入**：M2.1 落地为 fallback 模式（Planner 单步计划、Executor 模拟执行），不需要真实浏览器操作，因此 Skyvern 源码（`finance-ai/skyvern/`）暂未引入；待 M3 实现具体 Skill（涉及真实浏览器操作）时再引入 Skyvern 源码与 `ForgeAgent`。
+> - **任务状态**：M2.1 已完成（2026-07-29），20 个单元测试全部通过（test_planner / test_executor / test_coordinator / test_skills）。
 
 ---
 
@@ -1289,7 +1302,7 @@ services:
 ```
 1. postgres + redis + minio（数据层就绪）
 2. finance-backend（Flyway 执行 enterprise_* 迁移）
-3. finance-ai（Alembic 执行 skyvern_* 迁移，Playwright 安装浏览器）
+3. finance-ai（Alembic 执行 skyvern_* 迁移，Playwright 镜像已预装浏览器）
 4. finance-frontend（构建静态资源）
 5. nginx（反向代理就绪）
 6. 健康检查全链路通过
@@ -1418,3 +1431,4 @@ services:
 | 版本 | 日期 | 修订人 | 说明 |
 |------|------|--------|------|
 | v1.0 | 2026-07-25 | - | 初稿，覆盖整体架构、模块划分、目录结构、跨语言协作、核心模块详设、关键流程、数据模型概要、API 划分、部署架构与 ADR |
+| v1.1 | 2026-07-29 | - | 同步 M2.1 完成进度：新增"实现说明（M2.1 落地偏差）"段落，记录 Skyvern 源码暂未引入（M2.1 fallback 模式不需要，M3 实际浏览器操作时引入）；记录 20 个单元测试全部通过 |

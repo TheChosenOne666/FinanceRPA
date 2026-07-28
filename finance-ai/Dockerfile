@@ -1,8 +1,8 @@
 # finance-ai/Dockerfile
-# 基于 uv 官方镜像（Python 3.11 + uv）
-# M0.2 骨架阶段不安装 Playwright 浏览器，M2 Skyvern 集成时切换到 mcr.microsoft.com/playwright 镜像
+# M2.1：使用 Playwright 预装镜像（Skyvern 集成时需要，M3 引入 Skyvern 源码后生效）
+# 当前 M2.1 fallback 模式不需要浏览器，但提前使用此镜像为后续做准备
 
-FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+FROM mcr.microsoft.com/playwright:v1.49.0-jammy-full
 
 WORKDIR /app
 

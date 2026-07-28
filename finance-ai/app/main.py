@@ -44,6 +44,8 @@ def create_app() -> FastAPI:
     )
     # 注册路由
     app.include_router(health.router)
+    app.include_router(tasks.router)
+    app.include_router(sse.router)
     return app
 
 

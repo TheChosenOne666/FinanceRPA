@@ -38,11 +38,21 @@ class Settings(BaseSettings):
     # Redis（M0.2 启用）
     redis_url: str = "redis://localhost:6379/1"
 
-    # LLM（M2 启用）
+    # LLM（M4.1 启用，Planner fallback 版不需要）
     llm_provider: str = "openai"
     llm_api_key: str = ""
     llm_base_url: str = ""
     llm_model: str = "gpt-4o-mini"
+
+    # 执行器配置
+    executor_max_concurrent: int = 5       # 最大并发任务数
+    executor_step_timeout: int = 60        # 单步执行超时（秒）
+
+    # Demo seed
+    demo_seed_enabled: bool = True
+
+    # 内部鉴权（服务间通信）
+    internal_api_token: str = "finrpa-internal-secret"
 
 
 @lru_cache

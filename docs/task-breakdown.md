@@ -312,15 +312,441 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 
 > 本里程碑是端到端最小闭环，验证 Java ↔ Python ↔ 前端 协作链路。
 
-#### M2.1 Python finance-ai 服务骨架 + Skyvern 集成
+#### M2.1 Python finance-ai 服务骨架 + Skyvern 集成 ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | L |
 | **前置依赖** | M0.1、M0.3 |
-| **产出物** | `finance-ai/app/` 骨架 + Skyvern 集成 |
-| **描述** | 1. FastAPI 路由：`POST /api/v1/ai/tasks` / `GET /api/v1/ai/tasks/{id}/state` / `GET /api/v1/ai/sse/tasks/{id}` / `GET /api/v1/ai/health`<br>2. Skyvern 集成：volume 挂载 Skyvern 源码，最小改动接入 ForgeAgent<br>3. Playwright 浏览器会话管理：`browser/session_manager.py`<br>4. 简单 Executor：接收任务 → 调用 Skyvern 执行 → SSE 推送进度<br>5. 配置：`config.py` 使用 pydantic-settings，从环境变量读取 |
-| **验收标准** | `POST /api/v1/ai/tasks` 能触发 Skyvern 执行一个简单导航任务；SSE 推送 step 事件；`/health` 返回 200 |
+| **产出物** | `finance-ai/app/` 完整骨架 + Skyvern 集成 + Agent 三层架构（骨架版）+ Skills 基础层 + demo_seed + 单元测试 |
+| **验收标准** | `POST /api/v1/ai/tasks` 能触发 Agent 执行简单导航任务；Planner（fallback 版）拆解任务为子任务列表；Executor 逐个执行并产出 SSE 事件流；Coordinator 处理失败与 replan；`/health` 返回 200；启动时自动加载 demo 数据 |
+| **状态** | ✅ 已完成（2026-07-29）。新增文件：`app/agent/__init__.py`、`app/agent/schemas.py`、`app/agent/planner.py`、`app/agent/executor.py`、`app/agent/coordinator.py`、`app/skills/__init__.py`、`app/skills/base.py`、`app/skills/executor.py`、`app/clients/__init__.py`、`app/clients/java_backend.py`、`app/schemas.py`、`app/demo_seed.py`、`app/api/tasks.py`、`app/api/sse.py`；更新文件：`app/config.py`、`app/main.py`、`pyproject.toml`、`Dockerfile`；单元测试：`tests/unit/test_planner.py`、`test_executor.py`、`test_coordinator.py`、`test_skills.py`，20 个单元测试全部通过。Skyvern 源码暂未引入（M2.1 fallback 模式不需要，M3 实际浏览器操作时引入） |
+
+##### 技术实现方案
+
+**核心设计原则**：
+1. Skyvern 已内置 Playwright，**不再单独引入/管理 Playwright**，直接基于 Skyvern `ForgeAgent` 构建底层执行
+2. Agent 采用**三层架构**（骨架版）：Planner（fallback 单步计划，LLM 版在 M4.1）→ Executor（子任务执行 + 重试）→ Coordinator（编排调度 + 失败处理），与参考项目 `enterprise/agent/` 接口对齐
+3. Skills 系统采用**注册表模式**：`BaseSkill` 抽象基类 + `SKILL_REGISTRY` 全局注册 + `execute_pipeline()` 流水线执行，与参考项目 `enterprise/skills/` 完全对齐
+4. Demo 数据采用**内存 store**：`demo_seed.py` 在启动时填充任务/审批/审计/模型调用缓存，供 Dashboard 和 Approval 路由使用
+5. **LLM 模块推迟**：ActionCache 和 ModelRouter 不在 M2.1 实现，推迟到 M5.2/M5.3；PlannerAgent 先用 fallback 模式，M4.1 接入 LLM 版
+
+**目录结构**：
+
+```
+finance-ai/
+├── skyvern/                    # Skyvern 源码（volume 挂载，最小改动）
+│   ├── forge/                  # ForgeAgent 核心
+│   └── ...
+├── app/
+│   ├── main.py                 # FastAPI 入口（注册路由 + 初始化 + demo seed）
+│   ├── config.py               # 配置（扩展新增项）
+│   ├── schemas.py              # 全局数据模型（TaskTriggerRequest / SseEvent 等）
+│   ├── demo_seed.py            # 内存演示数据生成器（新增）
+│   ├── api/
+│   │   ├── health.py           # 已存在
+│   │   ├── tasks.py            # 任务触发/状态查询/终止 API（新增）
+│   │   └── sse.py              # SSE 流推送端点（新增）
+│   ├── agent/                  # Agent 三层架构（骨架版，接口对齐 enterprise/agent/）
+│   │   ├── schemas.py          # SubTask / TaskPlan / ExecutionResult / CoordinationState
+│   │   ├── planner.py          # PlannerAgent（fallback 版：单步计划，LLM 版 M4.1 接入）
+│   │   ├── executor.py         # ExecutorAgent（子任务执行 + 重试）
+│   │   └── coordinator.py      # AgentCoordinator（编排调度 + 失败处理）
+│   ├── skills/                 # Skills 基础层（新增，对齐 enterprise/skills/）
+│   │   ├── base.py             # BaseSkill + SKILL_REGISTRY + ErrorStrategy + SkillStatus
+│   │   └── executor.py         # execute_pipeline() 流水线执行 + PipelineResult
+│   └── clients/
+│       └── java_backend.py     # Java 后端回调客户端（新增）
+└── tests/
+    └── unit/
+        ├── test_planner.py     # PlannerAgent 单元测试（fallback 版）
+        ├── test_executor.py    # ExecutorAgent 单元测试
+        ├── test_coordinator.py # AgentCoordinator 单元测试
+        └── test_skills.py      # Skills 系统单元测试
+```
+
+**新增文件清单**：
+
+| 文件 | 行数估算 | 职责 | 对齐参考 | 说明 |
+|------|----------|------|----------|------|
+| `app/schemas.py` | ~80 | 全局 Pydantic 模型（TaskTriggerRequest / TaskStateResponse / SseEvent） | — | |
+| `app/demo_seed.py` | ~120 | 内存 store + 演示数据生成（任务/审批/审计/模型调用） | `enterprise/demo_seed.py` | |
+| `app/api/tasks.py` | ~100 | 任务触发、状态查询、终止、断点续跑 4 个端点 | — | |
+| `app/api/sse.py` | ~60 | SSE 订阅端点 | — | |
+| `app/agent/schemas.py` | ~100 | SubTask / TaskPlan / ExecutionResult / CoordinationState / FailureStrategy | `enterprise/agent/schemas.py` | |
+| `app/agent/planner.py` | ~80 | PlannerAgent **fallback 版**：单步计划 + replan 空实现（LLM 版 M4.1 接入） | `enterprise/agent/planner.py` | 接口对齐，内部用 fallback |
+| `app/agent/executor.py` | ~130 | ExecutorAgent：子任务执行 + 重试 + 错误处理 | `enterprise/agent/executor.py` | |
+| `app/agent/coordinator.py` | ~250 | AgentCoordinator：编排调度 + 失败策略（SKIP/ABORT/REPLAN）+ 断点续跑 | `enterprise/agent/coordinator.py` | |
+| `app/skills/base.py` | ~120 | BaseSkill 抽象基类 + SKILL_REGISTRY + ErrorStrategy + SkillStatus + register_skill | `enterprise/skills/base.py` | |
+| `app/skills/executor.py` | ~170 | execute_pipeline() 流水线执行 + PipelineResult + audit_callback | `enterprise/skills/executor.py` | |
+| `app/clients/java_backend.py` | ~100 | httpx 客户端，回调 Java 内部 API | — | |
+| `tests/unit/test_planner.py` | ~40 | PlannerAgent 测试（fallback 单步计划） | — | |
+| `tests/unit/test_executor.py` | ~80 | ExecutorAgent 测试（执行 + 重试 + 失败） | — | |
+| `tests/unit/test_coordinator.py` | ~100 | AgentCoordinator 测试（编排 + replan + abort） | — | |
+| `tests/unit/test_skills.py` | ~80 | Skills 系统测试（pipeline + 错误策略 + registry） | — | |
+
+**推迟到后续里程碑**：
+
+| 文件 | 推迟到 | 原因 |
+|------|--------|------|
+| `app/llm/action_cache.py` | M5.2 | 需要真实 LLM 调用数据才有意义，MVP 阶段无实际缓存命中 |
+| `app/llm/model_router.py` | M5.3 | 需要 DOM 复杂度分析，M2 阶段无多模型选择需求 |
+| `app/llm/resilient_caller.py` | M5.1 | 三层容错依赖 LLM 真实调用 |
+| `PlannerAgent` LLM 版（`_plan_with_llm`） | M4.1 | fallback 版先跑通接口，M4 替换内部实现 |
+
+**修改文件清单**：
+
+| 文件 | 改动 |
+|------|------|
+| `app/config.py` | 新增执行器/LLM/Skill/内部鉴权配置项 |
+| `app/main.py` | 注册新路由（tasks.router / sse.router），lifespan 初始化 Agent + demo_seed |
+| `pyproject.toml` | 新增 `skyvern`（通过 git/volume 引入）、`sse-starlette` 依赖 |
+| `Dockerfile` | 基础镜像切换为 `mcr.microsoft.com/playwright:v1.49.0-jammy-full` |
+
+---
+
+#### Agent 三层架构详解
+
+**架构关系图**：
+
+```
+用户请求 → POST /api/v1/ai/tasks
+         │
+         ▼
+┌──────────────────────────────────────────────────┐
+│  AgentCoordinator (agent/coordinator.py)          │
+│  1. 调 PlannerAgent.create_plan() 生成任务计划    │
+│  2. 遍历 SubTask 列表，逐个调 ExecutorAgent       │
+│  3. 监听 ExecutionResult，处理失败策略           │
+│  4. 产出 CoordinationState 最终状态              │
+└──────────┬───────────────────────────────────────┘
+           │
+    ┌──────┴──────┐
+    ▼              ▼
+┌────────┐  ┌──────────────┐
+│Planner │  │  Executor    │
+│ Agent  │  │  Agent       │
+└────────┘  └──────┬───────┘
+    │              │
+    │    ┌─────────┴──────────┐
+    │    ▼                     ▼
+    │  SkillPipeline    Skyvern ForgeAgent
+    │  (skills/exec)    (底层浏览器执行)
+    │    │                     │
+    │    └────────┬────────────┘
+    ▼             ▼
+  LLM         Playwright
+  (task 执行) (浏览器操作)
+  拆解)
+```
+
+**`agent/schemas.py`** — 数据模型（对齐参考项目）：
+
+```python
+class FailureStrategy(str, enum.Enum):
+    """子任务失败策略。"""
+    RETRY = "retry"       # 重试（由 Executor 内部处理）
+    SKIP = "skip"         # 跳过，继续下一个
+    ABORT = "abort"       # 终止整个任务
+    REPLAN = "replan"     # 让 Planner 重新规划剩余步骤
+
+class SubTaskStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    REPLANNED = "replanned"
+
+class SubTask(BaseModel):
+    """Planner 产出的单个子任务。"""
+    subtask_id: str
+    index: int
+    goal: str                              # 该子任务要做什么
+    completion_condition: str              # 如何验证成功
+    max_retries: int = 2
+    failure_strategy: FailureStrategy = FailureStrategy.REPLAN
+    status: SubTaskStatus = SubTaskStatus.PENDING
+    error_message: str | None = None
+    result_data: dict | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+class TaskPlan(BaseModel):
+    """Planner 产出的完整计划。"""
+    plan_id: str
+    navigation_goal: str
+    subtasks: list[SubTask]
+    is_replan: bool = False
+    replan_reason: str | None = None
+    version: int = 1
+
+class ExecutionResult(BaseModel):
+    """Executor 执行子任务的结果。"""
+    subtask_id: str
+    success: bool
+    result_data: dict | None = None
+    error_message: str | None = None
+    screenshot_key: str | None = None
+    page_url: str | None = None
+    duration_ms: int | None = None
+
+class CoordinationState(BaseModel):
+    """Coordinator 维护的全局状态。"""
+    task_id: str
+    org_id: str
+    navigation_goal: str
+    current_plan: TaskPlan | None = None
+    completed_subtasks: list[str] = Field(default_factory=list)
+    total_replans: int = 0
+    max_replans: int = 3
+    status: str = "running"       # running / completed / failed / needs_human
+    error_message: str | None = None
+```
+
+**`agent/planner.py`** — PlannerAgent（**fallback 版**，LLM 版 M4.1 接入）：
+
+```
+PlannerAgent.create_plan(navigation_goal, context) → TaskPlan
+  │
+  ├── llm_callable 已注入？
+  │   └── No（M2.1 默认）→ _create_fallback_plan()
+  │       └── 单步计划（goal 直接作为唯一 SubTask）
+  │
+  └── LLM 失败 → 自动 fallback 到单步计划
+
+PlannerAgent.replan(original_goal, completed, failed, reason, context) → TaskPlan
+  └── M2.1 返回 replanned=True 空计划（占位实现）
+      └── M4.1: 接入 LLM → REPLAN_SYSTEM_PROMPT → 重新规划
+```
+
+**`agent/executor.py`** — ExecutorAgent（对齐参考项目）：
+
+```
+ExecutorAgent.execute_subtask(subtask, context) → ExecutionResult
+  │
+  ├── 标记状态为 RUNNING
+  │
+  ├── for attempt in range(max_retries + 1):
+  │   ├── 调 action_handler(goal, context)
+  │   │   ├── 有 action_handler → 异步调用（封装 Skyvern/技能管线）
+  │   │   └── 无 → _simulate_execution()（测试用模拟）
+  │   │
+  │   ├── 成功 → 标记 COMPLETED，返回结果
+  │   └── 失败 → 记录错误，继续重试
+  │
+  └── 全部重试耗尽 → 标记 FAILED，返回失败结果
+```
+
+**`agent/coordinator.py`** — AgentCoordinator（对齐参考项目）：
+
+```
+AgentCoordinator.run(task_id, org_id, navigation_goal, context, resume_from)
+  │
+  ├── 1. Planner.create_plan() → TaskPlan
+  │
+  ├── 2. _execute_plan(state, plan, completed, context)
+  │      └── for subtask in plan.subtasks:
+  │          ├── 跳过已完成（断点续跑）
+  │          ├── Executor.execute_subtask()
+  │          ├── audit_callback（可选，记录审计日志）
+  │          ├── 成功 → 加入 completed_subtasks
+  │          └── 失败 → _handle_failure()
+  │              ├── SKIP → 标记 SKIPPED，继续
+  │              ├── ABORT → 标记 failed，终止
+  │              ├── REPLAN（次数内） → Planner.replan() → 递归执行新计划
+  │              └── REPLAN（超限）→ 标记 needs_human，终止
+  │
+  └── 3. 返回 CoordinationState
+```
+
+---
+
+#### Skills 系统详解
+
+**`skills/base.py`** — 抽象基类 + 注册表（对齐参考项目）：
+
+```python
+class ErrorStrategy(str, enum.Enum):
+    RETRY = "retry"      # 重试 max_retries 次
+    SKIP = "skip"        # 跳过继续
+    ABORT = "abort"      # 终止整个管线
+
+class SkillStatus(str, enum.Enum):
+    PENDING / RUNNING / COMPLETED / FAILED / SKIPPED
+
+class SkillResult(BaseModel):
+    status: SkillStatus = SkillStatus.COMPLETED
+    data: dict | None = None
+    error_message: str | None = None
+    screenshots: list[str] | None = None    # MinIO keys
+    duration_ms: int | None = None
+
+class BaseSkill(ABC):
+    skill_name: ClassVar[str]
+    description: ClassVar[str]
+    params_model: ClassVar[type[BaseModel]]
+    error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.RETRY
+    max_retries: ClassVar[int] = 2
+
+    @abstractmethod
+    async def execute(self, params: BaseModel, context: dict | None) -> SkillResult: ...
+
+    def validate_params(self, raw_params: dict) -> BaseModel: ...
+    def to_audit_dict(self, params: BaseModel) -> dict: ...   # 脱敏审计
+
+SKILL_REGISTRY: dict[str, type[BaseSkill]] = {}
+def register_skill(cls): ...   # 装饰器注册
+def get_skill(name): ...        # 按名查找
+def list_skills(): ...          # 列出全部
+```
+
+**`skills/executor.py`** — 流水线执行（对齐参考项目）：
+
+```
+execute_pipeline(steps: list[SkillStep], context, audit_callback) → PipelineResult
+  │
+  └── for step in steps:
+      ├── get_skill(step.skill_name) → BaseSkill
+      ├── skill.validate_params(step.params) → 校验参数
+      ├── for attempt in range(max_attempts):
+      │   └── skill.execute(params, context) → SkillResult
+      ├── 记录 step_result
+      ├── audit_callback(step_index, skill_name, audit_dict, result)
+      └── 按 error_strategy 处理失败：
+          ├── RETRY → 已在内部完成重试
+          ├── SKIP → 跳过继续
+          └── ABORT → 终止管线
+```
+
+---
+
+#### Demo Seed 详解
+
+**`demo_seed.py`** — 内存演示数据生成器（对齐参考项目）：
+
+```
+populate_all_stores()  ← FastAPI lifespan 中调用
+  │
+  ├── 1. _generate_tasks(rng, now, count=250)
+  │      └── 250 条任务记录（30 天分布，状态/时长/错误类型随机）
+  │
+  ├── 2. _generate_approvals(rng, tasks)
+  │      └── 约 50 条审批记录（pending/approved/rejected）
+  │
+  ├── 3. _generate_audit_logs(rng, tasks, approval_store)
+  │      └── 约 120 条审计日志（NAVIGATE/CLICK/INPUT_TEXT 等动作）
+  │
+  ├── 4. _generate_model_calls(rng, tasks, count=1200)
+  │      └── 1200 条 LLM 调用记录（light/standard/heavy 三档 token 分布）
+  │
+  ├── 5. _seed_cache_stats()
+  │      └── 25 条 Action 缓存 + 历史命中统计
+  │
+  └── 6. configure 各 store（供后续 Approval/Audit/Dashboard 路由使用）
+```
+
+---
+
+#### 全局数据模型
+
+**`app/schemas.py`**：
+
+```python
+class TaskTriggerRequest(BaseModel):
+    """任务触发请求（Java → Python）。"""
+    task_id: str
+    org_id: str
+    user_id: str
+    goal: str
+    params: dict = {}
+    workflow_id: str | None = None
+
+class TaskStateResponse(BaseModel):
+    """任务状态响应。"""
+    task_id: str
+    state: str
+    current_step: int = 0
+    total_steps: int = 0
+    message: str = ""
+
+class SseEvent(BaseModel):
+    """SSE 事件。"""
+    task_id: str
+    event_type: str
+    data: dict
+    timestamp: datetime
+```
+
+#### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/ai/tasks` | 触发任务执行（经 Coordinator 编排） |
+| GET | `/api/v1/ai/tasks/{id}/state` | 查询任务当前状态 |
+| POST | `/api/v1/ai/tasks/{id}/abort` | 终止任务 |
+| POST | `/api/v1/ai/tasks/{id}/resume` | 断点续跑（跳过已完成 SubTask） |
+| GET | `/api/v1/ai/sse/tasks/{id}` | SSE 订阅，推送 CoordinationState 变更 |
+
+#### 执行流程
+
+```
+POST /api/v1/ai/tasks
+  │
+  ├── 1. Coordinator.run(task_id, org_id, goal)
+  │      └── Planner.create_plan(goal) → TaskPlan (N 个 SubTask)
+  │
+  ├── 2. Coordinator._execute_plan(state, plan)
+  │      └── for subtask in plan.subtasks:
+  │          ├── SSE 推送 {event_type: "subtask_start", data: {subtask}}
+  │          ├── Executor.execute_subtask(subtask) → ExecutionResult
+  │          ├── SSE 推送 {event_type: "subtask_end", data: {result}}
+  │          ├── JavaBackendClient.update_task_state()
+  │          └── 失败 → _handle_failure()
+  │              ├── REPLAN → Planner.replan() → 重新执行
+  │              ├── ABORT → SSE 推送 error，回调 failed
+  │              └── SKIP → 继续
+  │
+  └── 3. 结束：SSE 推送 {event_type: "complete", data: {state}}
+         └── JavaBackendClient.update_task_state(final)
+```
+
+#### 配置扩展
+
+```python
+# 执行器配置
+executor_max_concurrent: int = 5
+executor_step_timeout: int = 60
+
+# LLM 配置（Planner fallback 版不需要；M4.1 接入时启用）
+# llm_provider / llm_api_key / llm_model — M4.1 配置
+
+# Demo seed
+demo_seed_enabled: bool = True
+
+# 内部鉴权
+internal_api_token: str = "finrpa-internal-secret"
+```
+
+#### Docker 基础镜像
+
+从 `ghcr.io/astral-sh/uv:python3.11-bookworm-slim` 切换为 `mcr.microsoft.com/playwright:v1.49.0-jammy-full`，该镜像已预装 Chromium 浏览器驱动。
+
+#### 关键设计决策
+
+| 决策 | 方案 | 理由 |
+|------|------|------|
+| Agent 架构 | Planner（fallback 版）+ Executor + Coordinator 三层 | 接口对齐参考项目，Planner 内部实现 M4.1 替换 |
+| 执行器底层 | Skyvern ForgeAgent + Skills Pipeline | Agent 编排 → Skill 执行 → Skyvern 浏览器操作 |
+| Skills 系统 | BaseSkill + SKILL_REGISTRY + execute_pipeline | 与参考项目完全对齐，支持错误策略和审计 |
+| Demo 数据 | Python 内存 store（dict） | 启动时填充，无需数据库依赖，供 Dashboard 等路由使用 |
+| LLM 容错 | ActionCache / ModelRouter 推迟到 M5 | 需要真实 LLM 调用数据才有意义 |
+| 浏览器管理 | 完全委托 Skyvern | 避免重复实现，利用已验证的隔离机制 |
+| 状态持久化 | Python 不存业务状态，全部回调 Java | 数据权威单一原则 |
+| 并发控制 | `asyncio.Semaphore` | MVP 阶段无需复杂调度 |
+| 渐进增强 | Planner 接口稳定，内部实现分阶段替换 | M2.1 fallback → M4.1 LLM → M5 容错，外部接口不变 |
+
+---
 
 #### M2.2 Java↔Python HTTP 客户端 + SSE 透传
 
@@ -328,9 +754,156 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 |----|------|
 | **规模** | M |
 | **前置依赖** | M2.1 |
-| **产出物** | Java `ai/` 模块完整代码 |
-| **描述** | 1. `AiServiceClient`：Spring 6 HTTP Interface 声明式客户端，调用 Python API<br>2. `AiSseProxy`：透传 Python SSE 流到前端，附加鉴权与审计<br>3. Spring Retry：瞬态错误重试 3 次，指数退避<br>4. W3C Trace Context：traceparent header 透传<br>5. 配置：Python 服务地址、超时、重试参数 |
+| **产出物** | Java `ai/` 模块完整代码 + 单元测试 + 集成测试 |
 | **验收标准** | Java 调 Python 接口成功；SSE 流透传到前端无丢失；Python 服务不可用时返回 503 + 重试 |
+
+##### 技术实现方案
+
+**核心设计原则**：Java 作为前端与 Python 之间的**中间层**，承担鉴权、路由、SSE 透传三项职责。前端不直接调用 Python，全部经 Java 转发。
+
+**新增文件清单**：
+
+```
+finance-backend/src/main/java/com/finrpa/ai/
+├── client/
+│   ├── AiServiceClient.java       # HTTP Interface 客户端（~80 行）
+│   └── dto/
+│       ├── TaskTriggerRequest.java  # Java → Python 触发请求 DTO（~40 行）
+│       ├── TaskTriggerResponse.java # Python 返回触发响应（~20 行）
+│       ├── TaskStateResponse.java   # Python 返回状态响应（~30 行）
+│       └── AiException.java         # AI 服务调用异常（~30 行）
+├── sse/
+│   ├── AiSseProxy.java             # SSE 透传服务（~100 行）
+│   └── SseEventDto.java            # SSE 事件 DTO（~30 行）
+├── controller/
+│   └── AiProxyController.java      # 对外暴露的代理端点（~80 行）
+└── config/
+    └── WebClientConfig.java        # WebClient + 鉴权 Header 配置（~50 行）
+```
+
+**新增文件明细**：
+
+| 文件 | 行数估算 | 职责 |
+|------|----------|------|
+| `AiServiceClient.java` | ~80 | Spring HTTP Interface 声明式客户端，调用 Python API |
+| `TaskTriggerRequest.java` | ~40 | 触发任务请求 DTO（含 taskId/orgId/userId/goal/params） |
+| `TaskTriggerResponse.java` | ~20 | 触发响应（含 taskId） |
+| `TaskStateResponse.java` | ~30 | 状态响应（含 state/currentStep/totalSteps/message） |
+| `AiException.java` | ~30 | AI 服务不可用/超时异常 |
+| `AiSseProxy.java` | ~100 | SSE 透传：从 Python 订阅 Flux → 写入 Java SseEmitter → 推给前端 |
+| `SseEventDto.java` | ~30 | SSE 事件结构（eventType/data/timestamp） |
+| `AiProxyController.java` | ~80 | 对外代理端点：触发任务 + SSE 订阅 |
+| `WebClientConfig.java` | ~50 | WebClient 配置（baseUrl/超时/重试/X-Internal-Token Header） |
+
+**核心接口定义**：
+
+`AiServiceClient.java` — Spring 6 HTTP Interface：
+
+```java
+@HttpExchange("/api/v1/ai")
+public interface AiServiceClient {
+
+    @PostExchange("/tasks")
+    TaskTriggerResponse triggerTask(@RequestBody TaskTriggerRequest request);
+
+    @GetExchange("/tasks/{taskId}/state")
+    TaskStateResponse getTaskState(@PathVariable String taskId);
+
+    @PostExchange("/tasks/{taskId}/abort")
+    void abortTask(@PathVariable String taskId);
+
+    @PostExchange("/tasks/{taskId}/resume")
+    void resumeTask(@PathVariable String taskId, @RequestBody ResumeRequest request);
+}
+```
+
+`AiSseProxy.java` — SSE 透传核心逻辑：
+
+```
+AiSseProxy.proxySse(taskId, httpServletResponse)
+  │
+  ├── 1. 构建 WebClient 请求 GET /api/v1/ai/sse/tasks/{taskId}
+  ├── 2. 订阅 Flux<ServerSentEvent>（timeout: 1h）
+  ├── 3. 将每个 event 转换为 SSE 格式写入 HttpServletResponse
+  ├── 4. 连接断开 / 超时 → 自动清理
+  └── 5. 异常处理：Python 不可用时发送 error 事件
+```
+
+`AiProxyController.java` — 对外端点：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/ai/tasks` | 触发任务（前端 → Java → Python） |
+| GET | `/api/v1/ai/sse/tasks/{id}` | SSE 订阅（Java 透传 Python 流） |
+| GET | `/api/v1/ai/tasks/{id}/state` | 代理查询任务状态 |
+
+**配置项**（`application.yml` 新增）：
+
+```yaml
+ai:
+  base-url: http://finance-ai:8000      # Python 服务地址
+  internal-token: ${AI_INTERNAL_TOKEN:finrpa-internal-secret}
+  connect-timeout: 5s                     # 连接超时
+  read-timeout: 60s                       # 读取超时
+  sse-timeout: 3600s                      # SSE 长连接超时（1 小时）
+  retry:
+    max-attempts: 3
+    backoff: 1000ms                       # 初始退避 1s，指数递增
+```
+
+**Docker Compose 配置**：
+
+```yaml
+finance-ai:
+  environment:
+    - BACKEND_BASE_URL=http://finance-backend:8080
+    - INTERNAL_API_TOKEN=finrpa-internal-secret
+  networks:
+    - finrpa-network
+
+finance-backend:
+  environment:
+    - AI_BASE_URL=http://finance-ai:8000
+    - AI_INTERNAL_TOKEN=finrpa-internal-secret
+  networks:
+    - finrpa-network
+```
+
+**服务鉴权机制**：
+
+```
+Java → Python 请求：X-Internal-Token: finrpa-internal-secret（WebClient 默认 Header）
+Python → Java 请求：X-Internal-Token: finrpa-internal-secret（JavaBackendClient 添加）
+```
+
+两端共享同一密钥，通过 Docker 网络隔离 + Header 校验实现服务间安全。
+
+**M2.2 与 M2.3 的接口约定**：
+
+M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实现以下端点（接口契约在 M2.2 阶段确定，实现在 M2.3 完成）：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/internal/tasks/{id}/state` | 更新任务状态 |
+| POST | `/api/v1/internal/tasks/{id}/subtasks` | 更新子任务状态 |
+| POST | `/api/v1/internal/screenshots` | 上传截图（转发 MinIO） |
+| POST | `/api/v1/internal/audit/logs` | 上报审计日志 |
+| POST | `/api/v1/internal/llm/calls` | 记录 LLM 调用 |
+| POST | `/api/v1/internal/llm/needs-human` | 转人工接管 |
+
+这些端点统一通过 `X-Internal-Token` Header 鉴权，仅 Docker 内网可达，不对外暴露。
+
+**关键设计决策**：
+
+| 决策 | 方案 | 理由 |
+|------|------|------|
+| HTTP 客户端 | Spring HTTP Interface（`@HttpExchange`） | 类型安全、声明式、统一配置 |
+| SSE 实现 | Java `SseEmitter` + WebClient `bodyToFlux` | Spring Boot 原生支持，无需额外依赖 |
+| 服务鉴权 | `X-Internal-Token` Header + Docker 网络隔离 | 简单有效，后续可升级为 mTLS |
+| 超时策略 | 连接 5s / 读取 60s / SSE 1h | 分离长短任务场景 |
+| 重试 | Spring Retry，指数退避 | 瞬态错误自动恢复 |
+| 任务状态 | Java 为权威源，Python 回调更新 | 保证数据一致性 |
+| 异常处理 | Python 不可用时返回 503 + SSE error 事件 | 前端可感知服务状态 |
 
 #### M2.3 Java agent 模块（任务状态持久化）
 
@@ -907,3 +1480,4 @@ M{里程碑号}.{任务序号}
 | v1.1 | 2026-07-25 | - | 补充原项目 16 天进度对照缺失任务：新增 M1.5（毛玻璃 UI + SVG 图标）、M1.6（全站 i18n）、M9.5（SIT 系统集成测试）、M9.6（前后端字段对齐）；升级 M1.4 为演示数据生成器；新增 9.3 节原项目对照表；任务总数 47 → 51 |
 | v1.2 | 2026-07-28 | - | 更新 M1.2 任务状态为已完成；补充 M1.2 详细产出物描述（TenantContext/TenantInterceptor/TenantLineHandlerImpl/TenantConstant/Entity/Mapper/DTO/Service/Controller/Flyway V6/MyBatisPlusConfig 修改/JwtAuthenticationFilter 修改）；补充验收标准验证结果（91 个单元测试通过）；同步 system-design.md 6.2 节实现说明（字段名 org_id 偏差、ThreadLocal 选择、Filter+Interceptor 分层） |
 | v1.3 | 2026-07-28 | - | 更新 M1.3 任务状态为已完成；补充 M1.3 详细产出物描述（AxiosClient/auth.ts/types.ts/AuthStore/AuthGuard/LoginPage/Forbidden/RootLayout/router/styles）；补充验收标准验证结果（browser 自动化 11 项 PASS）；新增"前后端联调测试步骤"小节；同步 system-design.md 4.4 节实现说明（后端 controller 路径偏差 /api/v1、vite proxy rewrite、M1.5 范围最小化、i18n 暂不实现、2FA 暂不实现、RootLayout 占位、refresh 失败强制跳转） |
+| v1.4 | 2026-07-29 | - | 更新 M2.1 任务状态为已完成；补充 M2.1 实际产出文件清单（agent/skills/clients/api/schemas/demo_seed 14 个新增 + config/main/pyproject/Dockerfile 4 个更新）；记录 20 个单元测试全部通过；记录 Skyvern 源码暂未引入的落地偏差（M2.1 fallback 模式不需要，M3 实际浏览器操作时引入）；同步 system-design.md 4.3 节 M2.1 落地偏差实现说明 |

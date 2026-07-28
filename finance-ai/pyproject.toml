@@ -17,6 +17,7 @@ dependencies = [
     "httpx>=0.28.0",
     "redis>=5.2.0",
     "tenacity>=9.0.0",
+    "sse-starlette>=2.2.0",
 ]
 
 [dependency-groups]
