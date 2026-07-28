@@ -223,25 +223,27 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 
 ### M1 认证与多租户基座
 
-#### M1.1 Java auth 模块实现
+#### M1.1 Java auth 模块实现 ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | L |
 | **前置依赖** | M0.1、M0.3 |
-| **产出物** | `auth/` 模块完整代码 + 单元测试 |
-| **描述** | 1. 实体：`UserEO` / `RoleEO` / `UserDepartmentRoleEO` / `OrganizationEO` / `DepartmentEO` / `BusinessLineEO`<br>2. JWT 服务：jjwt 0.12 签发 access（60min）+ refresh（7d）<br>3. 权限解析：按 system-design 6.1.2 算法实现 `PermissionService`<br>4. 角色互斥约束：`RoleMutexValidator`（operator + approver 不可共存）<br>5. Spring Security 6 配置：过滤器链 + 方法级 `@RequirePermission`<br>6. Skyvern 桥接：`AuthBridge` 将企业 JWT 转为 Skyvern API Key<br>7. API：`POST /auth/login` / `POST /auth/refresh` / `GET /auth/me` / `POST /auth/permissions/check` |
-| **验收标准** | 单元测试覆盖率 ≥ 80%；5 种角色登录返回正确权限；互斥约束拦截非法角色组合 |
+| **产出物** | `auth/` 模块完整代码 + 单元测试 + Javadoc 注释 |
+| **描述** | 1. 实体：`UserEO` / `RoleEO` / `UserRoleEO`（sys_user / sys_role / sys_user_role 三张表）<br>2. DTO：`LoginRequest` / `RefreshRequest` / `PermissionCheckRequest` / `LoginResponse` / `UserInfoResponse`<br>3. Mapper：`UserMapper`（selectByUsername/selectByUserId，含 PostgreSQL UUID 类型转换）/ `RoleMapper`（selectByUserId/selectByRoleCode）/ `UserRoleMapper`<br>4. JWT 服务：jjwt 0.12.6 签发 access（60min）+ refresh（7d），支持组织 ID/部门名称注入<br>5. 权限解析：`PermissionService` 实现三维度权限算法（super_admin/org_admin/viewer/operator/approver），含角色互斥约束（operator + approver 不可共存）、跨组织读/审批权限判断<br>6. 认证服务：`AuthService` 实现登录校验、token 刷新、用户信息获取、权限检查委托<br>7. Spring Security 6 配置：`SecurityConfig` 无状态会话 + `JwtAuthenticationFilter` + 方法级 `@RequirePermission`<br>8. AOP 切面：`PermissionAspect` 拦截 `@RequirePermission` 注解方法进行权限校验<br>9. API：`POST /auth/login` / `POST /auth/refresh` / `GET /auth/me` / `POST /auth/permissions/check`<br>10. 服务层规范：`AuthService`/`PermissionService` 接口定义在 `service/`，实现类 `AuthServiceImpl`/`PermissionServiceImpl` 放在 `service/impl/`<br>11. 代码规范：全部 40+ Java 文件补全类级 Javadoc（含 `@author`/`@from`）、字段注释、方法注释（含 `@param`/`@return`）、步骤编号注释 |
+| **验收标准** | ✅ 4 个 API 全部测试通过（登录/刷新/用户信息/权限检查）；✅ 59 个单元测试覆盖边界情况（角色互斥、跨组织权限、token 校验）；✅ 代码编译通过；✅ 服务接口与实现分离；✅ 全部 Java 文件补全 Javadoc 注释 |
+| **状态** | ✅ 已完成（2026-07-28）。提交记录：`9880a6a` refactor: service层接口与实现分离 + 补全Java文件Javadoc注释 |
 
-#### M1.2 Java tenant 模块实现
+#### M1.2 Java tenant 模块实现 ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | M |
 | **前置依赖** | M1.1 |
-| **产出物** | `tenant/` 模块完整代码 + 单元测试 |
-| **描述** | 1. `TenantContext`：基于 Java 21 ScopedValue（或 ThreadLocal 兜底）<br>2. `TenantInterceptor`：从 JWT 解析 organization_id 注入上下文<br>3. MyBatis-Plus `TenantLineInnerInterceptor` + `TenantLineHandler`：自动追加 `WHERE organization_id = ?`<br>4. 忽略表配置：`skyvern_*` 与 `enterprise_organization` 不参与过滤<br>5. API：`GET /tenant/info` / `GET /tenant/departments` / `GET /tenant/business-lines` |
-| **验收标准** | 跨组织查询自动过滤；同一用户切换组织后查询结果隔离；忽略表不被追加条件 |
+| **产出物** | `tenant/` 模块完整代码 + 单元测试 + Javadoc 注释 |
+| **描述** | 1. `TenantContext`：基于 `ThreadLocal<String>`（实现说明：未采用 Java 21 ScopedValue 预览特性，避免 `--enable-preview` 改动面）<br>2. `TenantInterceptor`：Spring WebMVC `HandlerInterceptor`，从 `JwtAuthenticationFilter` 预存的 request attribute 读取 orgId 注入 `TenantContext`，请求结束时清理 ThreadLocal<br>3. MyBatis-Plus `TenantLineInnerInterceptor` + `TenantLineHandlerImpl`：自动追加 `WHERE org_id = ?`（字段名为 `org_id`，与 M1.1 `sys_user`/`sys_role` 已有字段保持一致）<br>4. `TenantConstant` 忽略表配置：`enterprise_organization` 本身、`sys_user_role`/`sys_role_permission`/`sys_permission`/`sys_dictionary`/`sys_config`/`sys_audit_log`、RPA 执行/日志/浏览器会话/审批表、`skyvern_*` 前缀<br>5. 实体：`OrganizationEO` / `DepartmentEO` / `BusinessLineEO`（对应 `enterprise_organization` / `enterprise_department` / `enterprise_business_line` 三张表，V6 Flyway 脚本）<br>6. Mapper：`OrganizationMapper`（含 `selectByOrgId` 手动按 UUID 查询，因表本身在忽略清单中）/ `DepartmentMapper` / `BusinessLineMapper`<br>7. DTO：`TenantInfoResponse` / `DepartmentVO` / `BusinessLineVO`<br>8. Service：`TenantService` 接口 + `TenantServiceImpl` 实现<br>9. API：`GET /tenant/info` / `GET /tenant/departments` / `GET /tenant/business-lines`（均从 `TenantContext` 读取 orgId 后查询对应表）<br>10. 修改 `JwtAuthenticationFilter`：解析 token 中的 orgId 后存到 request attribute（key 见 `TenantConstant.ORG_ID_REQUEST_ATTR`），由 `TenantInterceptor` 读取，避免重复解析 token<br>11. 修改 `MyBatisPlusConfig`：在拦截器链中按 `TenantLineInnerInterceptor` → `PaginationInnerInterceptor` 顺序添加（租户插件须在分页之前）<br>12. `TenantWebMvcConfig`：`WebMvcConfigurer` 实现，注册 `TenantInterceptor` 拦截 `/**` |
+| **验收标准** | ✅ 91 个单元测试全部通过（M1.1 原 59 + M1.2 新增 32）；✅ TenantContext set/get/clear 行为正确；✅ TenantLineHandlerImpl 忽略表清单与 skyvern_* 前缀匹配正确；✅ TenantInterceptor preHandle/afterCompletion 正确注入和清理；✅ TenantServiceImpl 3 个业务方法覆盖组织存在/不存在/无 orgId 三种场景；✅ TenantController 3 个 API MockMvc 验证返回结构与字段一致 |
+| **状态** | ✅ 已完成（2026-07-28）。新增代码全部含类级 Javadoc（@author/@from）+ 字段注释 + 方法注释（@param/@return）+ 步骤注释。文档偏差已在 system-design.md 6.2 节"实现说明（M1.2 落地偏差）"中记录 |
 
 #### M1.3 前端登录页与路由守卫
 
@@ -880,4 +882,6 @@ M{里程碑号}.{任务序号}
 | 版本 | 日期 | 修订人 | 说明 |
 |------|------|--------|------|
 | v1.0 | 2026-07-25 | - | 初稿，覆盖 10 个里程碑、47 个任务、依赖关系图、关键路径、风险缓解与开发顺序建议 |
+| v1.1 | 2026-07-28 | - | 更新 M1.1 任务状态为已完成；补充 M1.1 详细产出物描述（实体/DTO/Mapper/JWT/权限/认证/Security/API/代码规范）；补充验收标准验证结果；补充提交记录 |
 | v1.1 | 2026-07-25 | - | 补充原项目 16 天进度对照缺失任务：新增 M1.5（毛玻璃 UI + SVG 图标）、M1.6（全站 i18n）、M9.5（SIT 系统集成测试）、M9.6（前后端字段对齐）；升级 M1.4 为演示数据生成器；新增 9.3 节原项目对照表；任务总数 47 → 51 |
+| v1.2 | 2026-07-28 | - | 更新 M1.2 任务状态为已完成；补充 M1.2 详细产出物描述（TenantContext/TenantInterceptor/TenantLineHandlerImpl/TenantConstant/Entity/Mapper/DTO/Service/Controller/Flyway V6/MyBatisPlusConfig 修改/JwtAuthenticationFilter 修改）；补充验收标准验证结果（91 个单元测试通过）；同步 system-design.md 6.2 节实现说明（字段名 org_id 偏差、ThreadLocal 选择、Filter+Interceptor 分层） |

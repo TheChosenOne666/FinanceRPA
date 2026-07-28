@@ -583,23 +583,30 @@ Python 执行流程：
 
 ### 6.2 多租户隔离（tenant）
 
+> **实现说明（M1.2 落地偏差）**：
+> - 字段名使用 `org_id`（与 M1.1 已存在的 `sys_user.org_id` / `sys_role.org_id` 保持一致），而非设计稿原写的 `organization_id`，避免破坏性迁移。
+> - `TenantContext` 采用 `ThreadLocal` 而非 Java 21 `ScopedValue`（后者在 JDK 21 仍为预览特性，启用 `--enable-preview` 改动面大）。如未来 ScopedValue 转正可平滑迁移。
+> - JWT 解析与 TenantContext 设置分两层：`JwtAuthenticationFilter`（Filter 层）解析 orgId 暂存到 request attribute，`TenantInterceptor`（WebMVC 层）读取后注入 `TenantContext`，避免重复解析 token 并保持职责分离。
+
 #### 6.2.1 隔离机制
 
 ```
-请求入口 → JwtInterceptor 解析 token → 提取 organization_id
-         → TenantContext.set(organization_id)（ThreadLocal / 虚拟线程局部）
-         → MyBatis-Plus TenantLineInnerInterceptor 自动追加 WHERE organization_id = ?
-请求结束 → TenantContext.clear()
+请求入口 → JwtAuthenticationFilter 解析 token → 提取 orgId 暂存 request attribute
+         → TenantInterceptor.preHandle 读取 → TenantContext.setOrgId(orgId)（ThreadLocal）
+         → MyBatis-Plus TenantLineInnerInterceptor 自动追加 WHERE org_id = ?
+请求结束 → TenantInterceptor.afterCompletion → TenantContext.clear()
 ```
 
 #### 6.2.2 Java 实现要点
 
 | 组件 | 实现 |
 |------|------|
-| `TenantContext` | 基于 ScopedValue（Java 21）或 ThreadLocal |
-| `TenantInterceptor` | Spring Web MVC HandlerInterceptor |
-| `TenantLineHandler` | MyBatis-Plus 租户处理器，忽略 `skyvern_*` 表 |
-| `TenantIgnoredTables` | 配置不参与租户过滤的表（如 `enterprise_organization` 本身） |
+| `TenantContext` | 基于 `ThreadLocal<String>`，提供 `setOrgId` / `getOrgId` / `clear` 静态方法 |
+| `TenantInterceptor` | Spring Web MVC `HandlerInterceptor`，从 request attribute 读取 orgId 注入 `TenantContext` |
+| `TenantLineHandlerImpl` | 实现 MyBatis-Plus `TenantLineHandler`，`getTenantIdColumn()` 返回 `org_id` |
+| `TenantConstant` | 忽略表清单常量接口：`enterprise_organization`、`sys_user`（登录场景需查）、`sys_role`、`sys_user_role`、`sys_role_permission`、`sys_permission`、`sys_dictionary`、`sys_config`、`sys_audit_log`、RPA 执行/日志/浏览器会话/审批表，及 `skyvern_*` 前缀 |
+| `TenantWebMvcConfig` | `WebMvcConfigurer` 实现，注册 `TenantInterceptor` 拦截所有路径 `/**` |
+| `MyBatisPlusConfig` | 在拦截器链中按 `TenantLineInnerInterceptor` → `PaginationInnerInterceptor` 顺序添加（租户插件须在分页之前） |
 
 ### 6.3 高危操作分级审批（approval）
 

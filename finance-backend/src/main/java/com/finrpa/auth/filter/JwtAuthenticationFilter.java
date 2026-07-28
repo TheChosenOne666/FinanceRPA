@@ -1,11 +1,13 @@
 package com.finrpa.auth.filter;
 
 import com.finrpa.auth.util.JwtUtil;
+import com.finrpa.tenant.constant.TenantConstant;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -20,9 +22,13 @@ import java.util.Collections;
 /**
  * JWT 认证过滤器，从请求头解析 token 并写入 SecurityContext
  *
+ * <p>同时将 token 中的 orgId 暂存到 request attribute（key 见 {@link TenantConstant#ORG_ID_REQUEST_ATTR}），
+ * 供后续的 {@link com.finrpa.tenant.interceptor.TenantInterceptor} 注入 {@link com.finrpa.tenant.context.TenantContext}。</p>
+ *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -53,7 +59,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String userId = jwtUtil.getUserIdFromToken(token);
                 String username = jwtUtil.getUsernameFromToken(token);
 
-                // 4. 设置 SecurityContext
+                // 4. 解析 orgId，暂存到 request attribute 供 TenantInterceptor 读取
+                String orgId = jwtUtil.getOrgIdFromToken(token);
+                if (StringUtils.hasText(orgId)) {
+                    request.setAttribute(TenantConstant.ORG_ID_REQUEST_ATTR, orgId);
+                }
+
+                // 5. 设置 SecurityContext
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         username,
                         null,
@@ -64,6 +76,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             } catch (Exception e) {
                 // 解析失败时清空安全上下文
+                log.warn("JWT token 解析失败：{}", e.getMessage());
                 SecurityContextHolder.clearContext();
             }
         }
