@@ -102,7 +102,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/api/actuator/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -150,6 +150,8 @@ services:
     container_name: finrpa-frontend
     restart: unless-stopped
     working_dir: /app
+    environment:
+      - DOCKER_ENV=1
     command: sh -c "npm install --registry=https://registry.npmmirror.com && npm run dev -- --host 0.0.0.0"
     ports:
       - "8081:8081"

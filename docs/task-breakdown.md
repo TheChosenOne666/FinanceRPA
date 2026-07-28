@@ -245,15 +245,36 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 | **验收标准** | ✅ 91 个单元测试全部通过（M1.1 原 59 + M1.2 新增 32）；✅ TenantContext set/get/clear 行为正确；✅ TenantLineHandlerImpl 忽略表清单与 skyvern_* 前缀匹配正确；✅ TenantInterceptor preHandle/afterCompletion 正确注入和清理；✅ TenantServiceImpl 3 个业务方法覆盖组织存在/不存在/无 orgId 三种场景；✅ TenantController 3 个 API MockMvc 验证返回结构与字段一致 |
 | **状态** | ✅ 已完成（2026-07-28）。新增代码全部含类级 Javadoc（@author/@from）+ 字段注释 + 方法注释（@param/@return）+ 步骤注释。文档偏差已在 system-design.md 6.2 节"实现说明（M1.2 落地偏差）"中记录 |
 
-#### M1.3 前端登录页与路由守卫
+#### M1.3 前端登录页与路由守卫 ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | M |
 | **前置依赖** | M1.1（API 契约确定） |
-| **产出物** | 前端 `routes/auth/LoginPage.tsx`、`components/AuthGuard.tsx`、`store/AuthStore.ts`、`api/AxiosClient.ts` |
-| **描述** | 1. 登录页：用户名密码 + 毛玻璃风格<br>2. Axios 拦截器：自动附加 JWT、401 自动 refresh<br>3. AuthGuard：未登录跳转、权限不足提示<br>4. Zustand AuthStore：token / userInfo / permissions<br>5. 路由配置：基于权限的菜单渲染 |
-| **验收标准** | 5 种角色登录后看到不同菜单；token 过期自动 refresh；无权限访问路由被拦截 |
+| **产出物** | 前端 `src/api/AxiosClient.ts`、`src/api/auth.ts`、`src/api/types.ts`、`src/store/AuthStore.ts`、`src/components/AuthGuard.tsx`、`src/routes/auth/LoginPage.tsx`、`src/routes/Forbidden.tsx`、`src/routes/RootLayout.tsx`、`src/router.tsx`、`src/styles/variables.css`、`src/styles/glass.css`，并更新 `vite.config.ts`（proxy 转发 /api）、`tailwind.config.js`（扩展配色）、`App.tsx`、`index.css`；后端修改 `application.yml`（添加 `server.servlet.context-path: /api`）、`auth/config/SecurityConfig.java`（放行路径同步加 /api 前缀）；修改 `docker-compose.yml` / `docker-compose.prod.yml`（healthcheck 路径改为 `/api/actuator/health`） |
+| **描述** | 1. 登录页：用户名密码 + 毛玻璃风格（对齐 prototypes/01-auth-and-layout.html），含显示/隐藏密码切换、客户端校验、服务端错误提示、已登录自动跳转、URL expired=1 过期提示<br>2. Axios 拦截器：请求拦截器自动附加 `Authorization: Bearer <accessToken>`；响应拦截器处理业务码非 0 抛 ApiError；HTTP 401 或业务码 40100 自动触发 refresh；refresh 并发合并（pendingQueue 排队）；refresh 失败登出并跳 `/login?expired=1`<br>3. AuthGuard：`RequireAuth` 未登录跳 `/login?redirect=...`；`RequirePermission` 权限不足跳 `/403`；`RequireRole` 角色不足跳 `/403`<br>4. Zustand AuthStore：`accessToken / refreshToken / expiresAt / user / permissions / loading` 状态 + `login / logout / setTokens / fetchCurrentUser / isAuthenticated / hasPermission / hasRole` actions；通过 `persist` 中间件持久化到 `localStorage` key `finrpa-auth`<br>5. 路由配置：`/login` 公开；`/` 受 `RequireAuth` 保护，子路由含 `index`（占位首页展示用户角色与权限）、`/403`、`*` 兜底 |
+| **验收标准** | ✅ 登录页按原型图渲染（毛玻璃卡片 + 深海蓝 logo + 表单图标 + 显示密码切换 + 客户端校验 + 错误提示），browser 自动化验证 11 项检查全部 PASS；✅ Axios 拦截器机制完整（请求附加 JWT、401 自动 refresh、并发合并、refresh 失败登出）；✅ AuthGuard 三组件覆盖登录/权限/角色三种守卫；✅ AuthStore 通过 persist 同步 localStorage，刷新页面状态不丢失；✅ 路由配置 `/login` 公开 + `/` 受保护 + `/403` + `*` 兜底；⏳ 5 种角色登录差异、token 过期自动 refresh、权限拦截需前后端联调验证（步骤见下方） |
+| **状态** | ✅ 已完成（2026-07-28）。M1.3 范围最小化：仅落地登录页所需样式（`variables.css` 设计 token + `glass.css` 毛玻璃组件最小集），M1.5（21 个 SVG 图标 + 完整基础组件库）留待后续；登录页 i18n 暂不实现（M1.6 全站 i18n 统一处理），原型中的 2FA 输入框因后端 LoginRequest 不支持暂未实现；前后端联调测试步骤见下方"前后端联调测试步骤"小节 |
+
+##### 前后端联调测试步骤
+
+1. **启动后端**：在 `finance-backend` 目录运行 `mvnw spring-boot:run`（或 Docker Compose 启动全栈），确认 `http://localhost:8080/auth/login` 可访问
+2. **启动前端**：在 `finance-frontend` 目录运行 `npm run dev`，访问 `http://localhost:8081`（如端口被占用会自动切换，看终端日志）
+3. **测试登录流程**：
+   - 浏览器访问 `http://localhost:8081/`，应自动重定向到 `/login`
+   - 输入 M1.1 测试时使用的账号（如 `zhangsan` / 对应密码），点击登录
+   - 登录成功后应跳转到首页，看到欢迎信息、用户名、组织、部门、角色列表、权限列表
+4. **测试 5 种角色差异**：用 5 种不同角色账号（M1.1 数据初始化的演示账号）依次登录，确认首页展示的角色和权限列表不同
+5. **测试 token 过期自动 refresh**：
+   - 登录后打开浏览器 DevTools → Application → Local Storage，找到 `finrpa-auth`，手动修改 `expiresAt` 为过去时间戳
+   - 刷新页面，触发任意需要鉴权的请求（如点击"退出"再登录，或直接访问 `/`）
+   - 观察 Network 面板：原请求返回 401 → 自动发起 `/auth/refresh` → 原请求被重发成功
+6. **测试权限路由拦截**：
+   - 在 `router.tsx` 中临时给某个路由加 `<RequirePermission permission="xxx:yyy">` 包裹（用当前账号没有的权限）
+   - 访问该路由，应自动跳转到 `/403` 页面
+   - `/403` 页面会展示当前账号的角色和拥有的权限列表
+7. **测试已登录访问 /login 自动跳转**：登录后手动访问 `http://localhost:8081/login`，应自动跳回 `/`
+8. **测试 expired 提示**：手动访问 `http://localhost:8081/login?expired=1`，应看到"登录已过期，请重新登录"红色提示
 
 #### M1.4 演示数据生成器
 
@@ -885,3 +906,4 @@ M{里程碑号}.{任务序号}
 | v1.1 | 2026-07-28 | - | 更新 M1.1 任务状态为已完成；补充 M1.1 详细产出物描述（实体/DTO/Mapper/JWT/权限/认证/Security/API/代码规范）；补充验收标准验证结果；补充提交记录 |
 | v1.1 | 2026-07-25 | - | 补充原项目 16 天进度对照缺失任务：新增 M1.5（毛玻璃 UI + SVG 图标）、M1.6（全站 i18n）、M9.5（SIT 系统集成测试）、M9.6（前后端字段对齐）；升级 M1.4 为演示数据生成器；新增 9.3 节原项目对照表；任务总数 47 → 51 |
 | v1.2 | 2026-07-28 | - | 更新 M1.2 任务状态为已完成；补充 M1.2 详细产出物描述（TenantContext/TenantInterceptor/TenantLineHandlerImpl/TenantConstant/Entity/Mapper/DTO/Service/Controller/Flyway V6/MyBatisPlusConfig 修改/JwtAuthenticationFilter 修改）；补充验收标准验证结果（91 个单元测试通过）；同步 system-design.md 6.2 节实现说明（字段名 org_id 偏差、ThreadLocal 选择、Filter+Interceptor 分层） |
+| v1.3 | 2026-07-28 | - | 更新 M1.3 任务状态为已完成；补充 M1.3 详细产出物描述（AxiosClient/auth.ts/types.ts/AuthStore/AuthGuard/LoginPage/Forbidden/RootLayout/router/styles）；补充验收标准验证结果（browser 自动化 11 项 PASS）；新增"前后端联调测试步骤"小节；同步 system-design.md 4.4 节实现说明（后端 controller 路径偏差 /api/v1、vite proxy rewrite、M1.5 范围最小化、i18n 暂不实现、2FA 暂不实现、RootLayout 占位、refresh 失败强制跳转） |

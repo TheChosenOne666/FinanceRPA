@@ -34,6 +34,9 @@ public class SecurityConfig {
     /**
      * 安全过滤器链配置：禁用 CSRF、无状态会话、放行指定路径、注册 JWT 过滤器
      *
+     * <p>路径前缀说明：所有 @RestController 路径由 {@code WebMvcConfig} 统一添加 {@code /api/v1} 前缀，
+     * 故放行规则需同步加前缀；actuator / swagger 端点不受影响（非 @RestController）。</p>
+     *
      * @param http HttpSecurity
      * @return 安全过滤器链
      * @throws Exception 配置异常
@@ -46,6 +49,7 @@ public class SecurityConfig {
                 // 无状态会话
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // 路径放行：登录、刷新、actuator、swagger 及调试接口
+                // SecurityFilter 看到的是去除 context-path 后的路径，故不加 /api 前缀
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/auth/login",

@@ -443,6 +443,14 @@ finance-frontend/
 └── Dockerfile
 ```
 
+> **实现说明（M1.3 落地偏差）**：
+> - **后端接口统一 /api 前缀**：system-design 4.3 节约定 auth/tenant 等接口前缀为 `/api/v1`。按用户模板 `springboot3-java21-backend` 的风格，通过 `application.yml` 配置 `server.servlet.context-path: /api` 实现统一前缀，Controller 的 `@RequestMapping` 保持原样（如 `@RequestMapping("/auth")`），实际访问路径为 `/api/auth/*`。`SecurityConfig` 放行路径已同步加 `/api` 前缀（`/api/auth/login`、`/api/auth/refresh`、`/api/actuator/**` 等）。前端 `AxiosClient.baseURL` 为 `/api`，vite proxy 直接转发 `/api/*` 到 8080；Docker healthcheck 路径已改为 `/api/actuator/health`。
+> - **M1.5 范围最小化**：M1.3 仅落地登录页所需样式（`variables.css` 设计 token + `glass.css` 毛玻璃组件最小集），M1.5 的 21 个 SVG 图标库 + 完整基础组件库（Button / Dialog / Input / Select / Table / Toast / Tooltip / Accordion）留待后续；当前登录页所需 SVG 图标直接内联在 `LoginPage.tsx` 中。
+> - **登录页 i18n 暂不实现**：原型 `01-auth-and-layout.html` 的语言切换按钮在 M1.3 未实现，登录页固定中文文案；M1.6 全站 i18n 统一处理时再补回。
+> - **2FA 输入框暂未实现**：原型登录表单的 2FA 验证码字段在 M1.3 未实现，因后端 `LoginRequest` DTO 仅含 `username` / `password` 两字段；后续如启用 2FA 需后端先扩展 DTO，前端再补字段。
+> - **RootLayout 占位实现**：M1.3 阶段 `RootLayout.tsx` 仅实现 Header + Outlet，未实现 SideNav 完整菜单（M1.5 + 后续业务页面统一实现）；当前首页为 `HomePlaceholder` 占位组件，展示当前登录用户的角色与权限列表，用于 M1.3 验收"5 种角色登录后看到不同"。
+> - **路由跳转方式**：AxiosClient 在 refresh 失败时通过 `window.location.href` 强制跳转 `/login?expired=1`（非 SPA navigate），保证状态彻底重置；后续可优化为 `router.navigate`。
+
 ---
 
 ## 5. 跨语言协作设计
