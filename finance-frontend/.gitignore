@@ -25,3 +25,9 @@ Thumbs.db
 
 # 构建缓存
 *.tsbuildinfo
+
+# TypeScript composite 编译产物（项目使用 .ts 源文件，.js 由 tsc -b 生成，不跟踪）
+vite.config.js
+vite.config.d.ts
+mock/*.js
+mock/*.d.ts
