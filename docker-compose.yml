@@ -85,7 +85,7 @@ services:
     command: mvn spring-boot:run -DskipTests
     environment:
       SPRING_PROFILES_ACTIVE: dev
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-finrpa}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-finrpa}?stringtype=unspecified
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-finrpa}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-finrpa}
       SPRING_DATA_REDIS_HOST: redis

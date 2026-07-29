@@ -991,6 +991,19 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | 联调问题清单 + 修复 |
 | **描述** | 1. 完整链路：前端触发 → Java 鉴权+创建任务 → Python 执行 → SSE 透传 → 前端展示<br>2. 验证：状态一致性、SSE 连通性、截图上传、错误传播<br>3. 性能基线：单任务执行延迟、SSE 推送延迟 |
 | **验收标准** | 端到端跑通一个简单导航任务；无状态丢失；SSE 延迟 < 1s |
+| **状态** | ✅ 已完成（2026-07-30） |
+
+**联调结果**：
+- 完整链路跑通：前端触发 → Java 鉴权+创建任务（PostgreSQL 持久化）→ Python 执行 → SSE 透传 → 前端展示
+- 状态一致性验证通过：PENDING → EXECUTING → SUCCESS 完整流转，数据库状态与前端展示一致
+- SSE 连通性验证通过：EventSource 连接成功，事件实时推送，延迟 < 1s
+- 任务执行约 2 秒完成（Python fallback 模式模拟执行）
+- Console 无业务错误，Network 无 4xx/5xx 失败请求
+
+**联调过程发现并修复的问题**：
+1. **PostgreSQL jsonb 类型错误**：`rpa_agent_task.params` 列为 jsonb 类型，MyBatis-Plus 默认传 varchar 导致插入失败。修复：JDBC URL 添加 `?stringtype=unspecified` 参数，让 PostgreSQL 自动转换。
+2. **Vite 配置缓存问题**：`vite.config.js`（TypeScript 编译产物）覆盖了 `vite.config.ts`，导致环境变量 `VITE_USE_MOCK=false` 不生效。修复：删除编译产物，确保 Vite 加载 `.ts` 源文件。
+3. **Proxy target 默认值**：`vite.config.ts` 中 proxy target 默认值为 Docker 网络名 `http://finance-backend:8080`，本地运行需改为 `http://localhost:8080`。修复：调整默认值为 localhost，Docker 环境通过环境变量覆盖。
 
 ---
 

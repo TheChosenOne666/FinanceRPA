@@ -8,7 +8,7 @@ spring:
     exclude: []
   # PostgreSQL 数据源
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/finrpa}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/finrpa?stringtype=unspecified}
     username: ${SPRING_DATASOURCE_USERNAME:finrpa}
     password: ${SPRING_DATASOURCE_PASSWORD:finrpa}
     driver-class-name: org.postgresql.Driver

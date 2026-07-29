@@ -31,7 +31,7 @@ export default defineConfig({
           proxy: {
             '/api': {
               target:
-                process.env.VITE_API_PROXY_TARGET || 'http://finance-backend:8080',
+                process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080',
               changeOrigin: true,
             },
           },
