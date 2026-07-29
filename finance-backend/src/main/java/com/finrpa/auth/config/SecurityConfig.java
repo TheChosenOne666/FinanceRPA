@@ -62,7 +62,9 @@ public class SecurityConfig {
                                 "/debug/**",
                                 // SSE 端点：EventSource 无法携带 JWT Header，暂时放行
                                 // TODO M2.5：改为 query 参数 token 鉴权
-                                "/ai/sse/**"
+                                "/ai/sse/**",
+                                // 内部回调 API：Python → Java，由 InternalTokenInterceptor 校验 X-Internal-Token
+                                "/internal/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

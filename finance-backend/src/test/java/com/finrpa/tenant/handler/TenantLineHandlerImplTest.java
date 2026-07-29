@@ -2,7 +2,7 @@ package com.finrpa.tenant.handler;
 
 import com.finrpa.tenant.constant.TenantConstant;
 import com.finrpa.tenant.context.TenantContext;
-import net.sf.jsqlparser.expression.StringValue;
+import net.sf.jsqlparser.expression.LongValue;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +20,9 @@ class TenantLineHandlerImplTest {
     /** 被测对象 */
     private final TenantLineHandlerImpl handler = new TenantLineHandlerImpl();
 
+    /** 测试用组织 ID（雪花算法 BIGINT） */
+    private static final String TEST_ORG_ID = "2082333077580967938";
+
     @AfterEach
     void tearDown() {
         // 清理 TenantContext，避免线程污染
@@ -27,17 +30,17 @@ class TenantLineHandlerImplTest {
     }
 
     @Test
-    @DisplayName("getTenantId - 上下文有 orgId 时返回该值")
-    void getTenantId_WithOrgId_ReturnsStringValue() {
+    @DisplayName("getTenantId - 上下文有 orgId 时返回 LongValue")
+    void getTenantId_WithOrgId_ReturnsLongValue() {
         // 1. 设置上下文
-        TenantContext.setOrgId("org-001");
+        TenantContext.setOrgId(TEST_ORG_ID);
 
         // 2. 获取租户 ID
         var expression = handler.getTenantId();
 
-        // 3. 验证为 StringValue 且值正确
-        assertThat(expression).isInstanceOf(StringValue.class);
-        assertThat(((StringValue) expression).getValue()).isEqualTo("org-001");
+        // 3. 验证为 LongValue 且值正确
+        assertThat(expression).isInstanceOf(LongValue.class);
+        assertThat(((LongValue) expression).getValue()).isEqualTo(Long.parseLong(TEST_ORG_ID));
     }
 
     @Test
@@ -46,9 +49,9 @@ class TenantLineHandlerImplTest {
         // 未设置上下文时获取
         var expression = handler.getTenantId();
 
-        // 验证返回 "0"
-        assertThat(expression).isInstanceOf(StringValue.class);
-        assertThat(((StringValue) expression).getValue()).isEqualTo("0");
+        // 验证返回 LongValue(0)
+        assertThat(expression).isInstanceOf(LongValue.class);
+        assertThat(((LongValue) expression).getValue()).isEqualTo(0L);
     }
 
     @Test
@@ -88,6 +91,14 @@ class TenantLineHandlerImplTest {
         assertThat(handler.ignoreTable("skyvern_tasks")).isTrue();
         assertThat(handler.ignoreTable("skyvern_workflows")).isTrue();
         assertThat(handler.ignoreTable("skyvern_artifacts")).isTrue();
+    }
+
+    @Test
+    @DisplayName("ignoreTable - Agent 任务表忽略（内部回调无 JWT 上下文）")
+    void ignoreTable_AgentTables_ReturnsTrue() {
+        assertThat(handler.ignoreTable("rpa_agent_task")).isTrue();
+        assertThat(handler.ignoreTable("rpa_agent_subtask")).isTrue();
+        assertThat(handler.ignoreTable("rpa_agent_coordination_state")).isTrue();
     }
 
     @Test

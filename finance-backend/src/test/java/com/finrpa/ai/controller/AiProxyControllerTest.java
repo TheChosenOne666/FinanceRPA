@@ -1,6 +1,10 @@
 package com.finrpa.ai.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finrpa.agent.constant.AgentConstant;
+import com.finrpa.agent.dto.request.TaskCreateRequest;
+import com.finrpa.agent.entity.AgentTaskEO;
+import com.finrpa.agent.service.TaskService;
 import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.AiException;
 import com.finrpa.ai.client.dto.TaskAbortResponse;
@@ -9,6 +13,9 @@ import com.finrpa.ai.client.dto.TaskTriggerRequest;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
 import com.finrpa.ai.sse.AiSseProxy;
 import com.finrpa.common.response.ErrorCode;
+import com.finrpa.tenant.context.TenantContext;
+import jakarta.servlet.http.HttpServletRequest;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,10 +24,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -37,21 +42,51 @@ class AiProxyControllerTest {
     /** JSON 序列化工具 */
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** 测试用 orgId（雪花算法 ID） */
+    private static final String TEST_ORG_ID = "2082333077580967938";
+    /** 测试用 userId（雪花算法 ID） */
+    private static final String TEST_USER_ID = "2082333078168170497";
+
     private MockMvc mockMvc;
     private AiServiceClient aiServiceClient;
     private AiSseProxy aiSseProxy;
+    private TaskService taskService;
+    private HttpServletRequest httpServletRequest;
 
     @BeforeEach
     void setUp() {
         // 1. 创建 mock 依赖
         aiServiceClient = mock(AiServiceClient.class);
         aiSseProxy = mock(AiSseProxy.class);
-        // 2. 构建 MockMvc（注意：使用 @Resource 注入，需要使用字段注入或构造器）
+        taskService = mock(TaskService.class);
+        httpServletRequest = mock(HttpServletRequest.class);
+
+        // 2. 设置 TenantContext 和 userId 请求属性
+        TenantContext.setOrgId(TEST_ORG_ID);
+        when(httpServletRequest.getAttribute(AgentConstant.USER_ID_REQUEST_ATTR)).thenReturn(TEST_USER_ID);
+
+        // 3. mock TaskService.createTask 返回任务实体
+        AgentTaskEO taskEO = new AgentTaskEO();
+        taskEO.setTaskId(2082333099000000099L);
+        taskEO.setOrgId(Long.parseLong(TEST_ORG_ID));
+        taskEO.setUserId(Long.parseLong(TEST_USER_ID));
+        taskEO.setGoal("下载银行流水");
+        when(taskService.createTask(any(Long.class), any(Long.class), any(TaskCreateRequest.class)))
+                .thenReturn(taskEO);
+
+        // 4. 构建 MockMvc
         AiProxyController controller = new AiProxyController();
-        // 3. 通过反射注入 mock 依赖（@Resource 字段注入）
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiServiceClient", aiServiceClient);
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiSseProxy", aiSseProxy);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "taskService", taskService);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "httpServletRequest", httpServletRequest);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        // 清理 TenantContext，避免线程污染
+        TenantContext.clear();
     }
 
     // region 任务触发
@@ -61,16 +96,13 @@ class AiProxyControllerTest {
     void triggerTask_Success() throws Exception {
         // 1. 准备 mock 响应
         TaskTriggerResponse response = new TaskTriggerResponse();
-        response.setTaskId("task-1");
+        response.setTaskId("2082333099000000099");
         response.setStatus("running");
         response.setMessage("Task triggered successfully");
         when(aiServiceClient.triggerTask(any(TaskTriggerRequest.class))).thenReturn(response);
 
         // 2. 构建请求
         TaskTriggerRequest request = new TaskTriggerRequest();
-        request.setTaskId("task-1");
-        request.setOrgId("org-1");
-        request.setUserId("user-1");
         request.setGoal("下载银行流水");
 
         // 3. 执行请求并验证
@@ -79,10 +111,12 @@ class AiProxyControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.taskId").value("task-1"))
-                .andExpect(jsonPath("$.data.status").value("running"))
-                .andExpect(jsonPath("$.data.message").value("Task triggered successfully"));
+                .andExpect(jsonPath("$.data.taskId").value("2082333099000000099"))
+                .andExpect(jsonPath("$.data.status").value("running"));
 
+        // 4. 验证 TaskService.createTask 被调用
+        verify(taskService, times(1)).createTask(any(Long.class), any(Long.class), any(TaskCreateRequest.class));
+        // 5. 验证 AiServiceClient.triggerTask 被调用
         verify(aiServiceClient, times(1)).triggerTask(any(TaskTriggerRequest.class));
     }
 
@@ -95,12 +129,9 @@ class AiProxyControllerTest {
 
         // 2. 构建请求
         TaskTriggerRequest request = new TaskTriggerRequest();
-        request.setTaskId("task-1");
         request.setGoal("下载银行流水");
 
         // 3. standaloneSetup 不走 GlobalExceptionHandler，异常会向上抛出
-        //    此场景由 triggerTask_ServiceUnavailable_ExceptionShouldContainCorrectCode 验证
-        //    这里只验证 aiServiceClient 被调用
         try {
             mockMvc.perform(post("/ai/tasks")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -109,6 +140,9 @@ class AiProxyControllerTest {
             // 预期异常
         }
 
+        // 4. 验证 TaskService.createTask 被调用（任务已持久化）
+        verify(taskService, times(1)).createTask(any(Long.class), any(Long.class), any(TaskCreateRequest.class));
+        // 5. 验证 AiServiceClient.triggerTask 被调用
         verify(aiServiceClient, times(1)).triggerTask(any(TaskTriggerRequest.class));
     }
 
@@ -121,13 +155,14 @@ class AiProxyControllerTest {
 
         // 2. 构建请求
         TaskTriggerRequest request = new TaskTriggerRequest();
-        request.setTaskId("task-1");
         request.setGoal("下载银行流水");
 
         // 3. 直接调用 Controller 方法验证异常类型
         AiProxyController controller = new AiProxyController();
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiServiceClient", aiServiceClient);
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiSseProxy", aiSseProxy);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "taskService", taskService);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "httpServletRequest", httpServletRequest);
 
         assertThatThrownBy(() -> controller.triggerTask(request))
                 .isInstanceOf(AiException.class)
@@ -175,6 +210,8 @@ class AiProxyControllerTest {
         AiProxyController controller = new AiProxyController();
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiServiceClient", aiServiceClient);
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiSseProxy", aiSseProxy);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "taskService", taskService);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "httpServletRequest", httpServletRequest);
 
         // 3. 验证异常类型
         assertThatThrownBy(() -> controller.getTaskState("task-1"))
@@ -218,6 +255,8 @@ class AiProxyControllerTest {
         AiProxyController controller = new AiProxyController();
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiServiceClient", aiServiceClient);
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiSseProxy", aiSseProxy);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "taskService", taskService);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "httpServletRequest", httpServletRequest);
 
         // 3. 验证异常类型
         assertThatThrownBy(() -> controller.abortTask("task-1"))

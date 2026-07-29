@@ -1,5 +1,6 @@
 package com.finrpa.auth.filter;
 
+import com.finrpa.agent.constant.AgentConstant;
 import com.finrpa.auth.util.JwtUtil;
 import com.finrpa.tenant.constant.TenantConstant;
 import jakarta.servlet.FilterChain;
@@ -65,7 +66,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     request.setAttribute(TenantConstant.ORG_ID_REQUEST_ATTR, orgId);
                 }
 
-                // 5. 设置 SecurityContext
+                // 5. 暂存 userId 到 request attribute，供 Controller 读取（M2.3 任务创建需要）
+                if (StringUtils.hasText(userId)) {
+                    request.setAttribute(AgentConstant.USER_ID_REQUEST_ATTR, userId);
+                }
+
+                // 6. 设置 SecurityContext
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         username,
                         null,

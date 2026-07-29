@@ -949,15 +949,16 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
   - 登录 403 问题（已解决）：根因非 Security 配置，而是密码错误。数据库 `sys_user` 表中所有用户的密码哈希 `$2b$10$JMrmn2lRr...` 对应明文为 `admin123`（经 Spring BCryptPasswordEncoder 验证），与文档记载的 `admin` / `demo123` 不一致。文档已在 M1.4 节"开发环境账号密码表"更正：所有账号密码统一为 `admin123`。
   - Python `main.py` import 缺失（M2.1 遗留）：`from app.api import health` 缺 `sse, tasks`，已修复为 `from app.api import health, sse, tasks`。
 
-#### M2.3 Java agent 模块（任务状态持久化）
+#### M2.3 Java agent 模块（任务状态持久化） ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | L |
 | **前置依赖** | M1.1、M1.2、M0.3 |
 | **产出物** | `agent/` 模块完整代码 + 单元测试 |
-| **描述** | 1. 实体：`TaskEO` / `SubTaskEO` / `CoordinationStateEO`<br>2. `TaskStateMachine`：状态机（pending → executing → success/failed/needs_human）<br>3. `TaskService`：创建任务、查询状态、更新状态<br>4. 内部 API（Python 回调）：`POST /internal/tasks/{id}/state` / `POST /internal/tasks/{id}/subtasks`<br>5. 对外 API：`GET /api/v1/tasks` / `GET /api/v1/tasks/{id}` / `POST /api/v1/tasks/{id}/abort`<br>6. 共享密钥鉴权：`X-Internal-Token` Header 校验 |
-| **验收标准** | 任务创建/查询/状态更新正常；Python 回调能更新状态；内部 API 鉴权生效 |
+| **描述** | 1. 实体：`AgentTaskEO` / `AgentSubTaskEO` / `CoordinationStateEO`（对应 `rpa_agent_task` / `rpa_agent_subtask` / `rpa_agent_coordination_state` 三张表，V7 Flyway 脚本）<br>2. `TaskStateMachine`：状态机（PENDING → EXECUTING → SUCCESS/FAILED/NEEDS_HUMAN/ABORTED），定义合法流转规则与终态判定<br>3. `TaskService` 接口 + `TaskServiceImpl`：创建任务、分页查询、详情查询、终止任务、Python 回调状态更新<br>4. 内部 API（Python 回调）：`POST /internal/tasks/{id}/state` / `POST /internal/tasks/{id}/subtasks`，由 `InternalTokenInterceptor` 拦截 `X-Internal-Token` Header 鉴权<br>5. 对外 API：`GET /tasks`（分页列表）/ `GET /tasks/{id}`（详情含子任务）/ `POST /tasks/{id}/abort`（终止）<br>6. 修改 `AiProxyController.triggerTask`：先持久化任务到 DB（生成雪花 taskId），再转发 Python<br>7. 修改 `JwtAuthenticationFilter`：暂存 userId 到 request attribute 供 Controller 读取<br>8. 租户隔离：Agent 表加入 `TenantConstant.IGNORED_TABLES`（内部回调无 JWT 上下文），对外接口在 Service 层手动按 orgId 过滤 |
+| **验收标准** | ✅ 任务创建/查询/状态更新正常；✅ Python 回调能更新状态；✅ 内部 API 鉴权生效；✅ 编译通过；✅ 全量 177 个单元测试通过（含 agent 模块 67 个新增测试 + M2.2 回归 + 修复 TenantLineHandlerImplTest 预存 bug） |
+| **状态** | ✅ 已完成（2026-07-29）。新增文件 24 个（实体 3 + 枚举 2 + Mapper 3 + DTO 7 + Service 3 + Controller 2 + 拦截器 1 + 常量 1 + 配置 1 + 迁移脚本 1）；修改文件 6 个（SecurityConfig/TenantConstant/JwtAuthenticationFilter/AiProxyController + 2 个测试文件）。修复预存 bug：TenantLineHandlerImplTest 在 UUID→BIGINT 迁移后未同步更新（StringValue→LongValue、"org-001"→雪花 ID）。单元测试补全：新增 agent 模块测试文件 7 个（TaskStateMachineTest 22 + TaskServiceImplTest 28 + TaskStateEnumTest 4 + SubTaskStateEnumTest 4 + InternalTokenInterceptorTest 4 + InternalTaskControllerTest 2 + TaskControllerTest 3），覆盖状态机合法/非法流转、终态判定、任务创建/查询/终止、Python 回调状态更新、内部 API 鉴权拦截器、对外控制器路由 |
 
 #### M2.4 Python Executor 基础执行 + 状态回调
 

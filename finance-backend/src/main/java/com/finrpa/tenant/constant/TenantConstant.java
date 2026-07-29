@@ -39,6 +39,11 @@ public interface TenantConstant {
             "rpa_task_log",
             "rpa_browser_session",
             "rpa_approval",
+            // Agent 任务表：有 org_id 字段，但内部回调（Python → Java）无 JWT 上下文，
+            // 需绕过自动租户过滤；对外接口在 Service 层手动按 orgId 过滤
+            "rpa_agent_task",
+            "rpa_agent_subtask",
+            "rpa_agent_coordination_state",
             // Skyvern 核心表（Python 侧 Alembic 管理，Java 侧不感知字段）
             "skyvern_*"
     );
