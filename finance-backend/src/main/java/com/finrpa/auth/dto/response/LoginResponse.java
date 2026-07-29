@@ -33,14 +33,14 @@ public class LoginResponse {
      */
     @Data
     public static class UserInfo {
-        /** 用户业务 ID */
-        private String userId;
+        /** 用户业务 ID（雪花算法 ID） */
+        private Long userId;
         /** 用户名 */
         private String username;
         /** 真实姓名 */
         private String realName;
-        /** 所属组织 ID */
-        private String orgId;
+        /** 所属组织 ID（雪花算法 ID） */
+        private Long orgId;
         /** 所属组织名称 */
         private String orgName;
         /** 所属部门名称 */

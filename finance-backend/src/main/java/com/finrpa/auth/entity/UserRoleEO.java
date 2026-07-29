@@ -15,23 +15,19 @@ import java.sql.Timestamp;
 @TableName("sys_user_role")
 public class UserRoleEO {
 
-    /** 主键 ID */
+    /** 主键 ID（数据库自增，插入时不设值） */
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 用户业务 ID（UUID） */
+    /** 用户业务 ID（雪花算法 ID） */
     @TableField("user_id")
-    private String userId;
+    private Long userId;
 
-    /** 角色业务 ID（UUID） */
+    /** 角色业务 ID（雪花算法 ID） */
     @TableField("role_id")
-    private String roleId;
+    private Long roleId;
 
-    /** 逻辑删除标识（0-未删除 1-已删除） */
-    @TableField("deleted")
-    private Integer deleted;
-
-    /** 创建时间 */
-    @TableField(value = "create_time", fill = FieldFill.INSERT)
+    /** 创建时间（由数据库 DEFAULT CURRENT_TIMESTAMP 自动填充） */
+    @TableField("create_time")
     private Timestamp createTime;
 }

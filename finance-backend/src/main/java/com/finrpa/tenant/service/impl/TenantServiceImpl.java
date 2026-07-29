@@ -51,7 +51,7 @@ public class TenantServiceImpl implements TenantService {
     @Override
     public TenantInfoResponse getTenantInfo() {
         // 1. 从 TenantContext 获取当前组织 ID
-        String orgId = getCurrentOrgId();
+        Long orgId = getCurrentOrgId();
 
         // 2. 查询组织信息（enterprise_organization 表已在忽略清单中，手动按 org_id 查询）
         OrganizationEO organization = organizationMapper.selectByOrgId(orgId);
@@ -78,7 +78,7 @@ public class TenantServiceImpl implements TenantService {
     @Override
     public List<DepartmentVO> listDepartments() {
         // 1. 从 TenantContext 获取当前组织 ID
-        String orgId = getCurrentOrgId();
+        Long orgId = getCurrentOrgId();
 
         // 2. 构造查询条件：仅查未删除且启用的部门，按 sortOrder 升序
         LambdaQueryWrapper<DepartmentEO> wrapper = new LambdaQueryWrapper<>();
@@ -104,7 +104,7 @@ public class TenantServiceImpl implements TenantService {
     @Override
     public List<BusinessLineVO> listBusinessLines() {
         // 1. 从 TenantContext 获取当前组织 ID
-        String orgId = getCurrentOrgId();
+        Long orgId = getCurrentOrgId();
 
         // 2. 构造查询条件：仅查未删除且启用的业务线，按 sortOrder 升序
         LambdaQueryWrapper<BusinessLineEO> wrapper = new LambdaQueryWrapper<>();
@@ -127,14 +127,14 @@ public class TenantServiceImpl implements TenantService {
     /**
      * 从 TenantContext 获取当前组织 ID；为空时抛异常
      *
-     * @return 当前组织 ID
+     * @return 当前组织 ID（Long 类型，雪花算法 ID）
      */
-    private String getCurrentOrgId() {
+    private Long getCurrentOrgId() {
         String orgId = TenantContext.getOrgId();
         if (orgId == null || orgId.isEmpty()) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "当前请求未携带组织信息");
         }
-        return orgId;
+        return Long.parseLong(orgId);
     }
 
     /**

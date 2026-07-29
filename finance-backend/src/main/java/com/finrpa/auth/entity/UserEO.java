@@ -15,13 +15,13 @@ import java.sql.Timestamp;
 @TableName("sys_user")
 public class UserEO {
 
-    /** 主键 ID */
-    @TableId(type = IdType.AUTO)
+    /** 主键 ID（数据库自增，插入时不设值） */
+    @TableField("id")
     private Long id;
 
-    /** 用户业务 ID（UUID） */
-    @TableField("user_id")
-    private String userId;
+    /** 用户业务 ID（雪花算法 ID） */
+    @TableId(value = "user_id", type = IdType.ASSIGN_ID)
+    private Long userId;
 
     /** 用户名（登录账号） */
     @TableField("username")
@@ -47,9 +47,9 @@ public class UserEO {
     @TableField("phone")
     private String phone;
 
-    /** 所属组织 ID */
+    /** 所属组织 ID（雪花算法 ID） */
     @TableField("org_id")
-    private String orgId;
+    private Long orgId;
 
     /** 所属组织名称 */
     @TableField("org_name")
@@ -67,11 +67,11 @@ public class UserEO {
     @TableField("deleted")
     private Integer deleted;
 
-    /** 创建时间 */
-    @TableField(value = "create_time", fill = FieldFill.INSERT)
+    /** 创建时间（由数据库 DEFAULT CURRENT_TIMESTAMP 自动填充） */
+    @TableField("create_time")
     private Timestamp createTime;
 
-    /** 更新时间 */
-    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
+    /** 更新时间（由数据库 DEFAULT CURRENT_TIMESTAMP 自动填充） */
+    @TableField("update_time")
     private Timestamp updateTime;
 }

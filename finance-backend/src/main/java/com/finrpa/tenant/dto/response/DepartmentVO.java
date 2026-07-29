@@ -18,8 +18,8 @@ public class DepartmentVO implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    /** 部门业务 ID */
-    private String deptId;
+    /** 部门业务 ID（雪花算法 ID） */
+    private Long deptId;
 
     /** 部门名称 */
     private String deptName;

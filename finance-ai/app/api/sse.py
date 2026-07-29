@@ -46,10 +46,10 @@ async def subscribe_task_sse(task_id: str):
                 yield {
                     "event": "progress",
                     "data": json.dumps({
-                        "task_id": task_id,
+                        "taskId": task_id,
                         "state": task_state,
-                        "current_step": current_step,
-                        "total_steps": state["total_steps"],
+                        "currentStep": current_step,
+                        "totalSteps": state["total_steps"],
                         "message": state["message"],
                         "timestamp": datetime.utcnow().isoformat(),
                     }),
@@ -60,7 +60,7 @@ async def subscribe_task_sse(task_id: str):
                 yield {
                     "event": "complete",
                     "data": json.dumps({
-                        "task_id": task_id,
+                        "taskId": task_id,
                         "state": task_state,
                         "message": state["message"],
                         "timestamp": datetime.utcnow().isoformat(),

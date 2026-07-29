@@ -2,7 +2,7 @@ SET search_path = finrpa;
 
 CREATE TABLE IF NOT EXISTS sys_user (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID DEFAULT uuid_generate_v4() NOT NULL,
+    user_id BIGINT NOT NULL,
     username VARCHAR(64) NOT NULL UNIQUE,
     password VARCHAR(256) NOT NULL,
     email VARCHAR(128),
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
 
 CREATE TABLE IF NOT EXISTS sys_role (
     id BIGSERIAL PRIMARY KEY,
-    role_id UUID DEFAULT uuid_generate_v4() NOT NULL,
+    role_id BIGINT NOT NULL,
     role_name VARCHAR(64) NOT NULL UNIQUE,
     role_code VARCHAR(64) NOT NULL UNIQUE,
     description VARCHAR(256),
@@ -31,15 +31,15 @@ CREATE TABLE IF NOT EXISTS sys_role (
 
 CREATE TABLE IF NOT EXISTS sys_user_role (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID NOT NULL,
-    role_id UUID NOT NULL,
+    user_id BIGINT NOT NULL,
+    role_id BIGINT NOT NULL,
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     UNIQUE (user_id, role_id)
 );
 
 CREATE TABLE IF NOT EXISTS sys_permission (
     id BIGSERIAL PRIMARY KEY,
-    permission_id UUID DEFAULT uuid_generate_v4() NOT NULL,
+    permission_id BIGINT NOT NULL,
     permission_code VARCHAR(128) NOT NULL UNIQUE,
     permission_name VARCHAR(128) NOT NULL,
     resource_type VARCHAR(32),
@@ -55,21 +55,21 @@ CREATE TABLE IF NOT EXISTS sys_permission (
 
 CREATE TABLE IF NOT EXISTS sys_role_permission (
     id BIGSERIAL PRIMARY KEY,
-    role_id UUID NOT NULL,
-    permission_id UUID NOT NULL,
+    role_id BIGINT NOT NULL,
+    permission_id BIGINT NOT NULL,
     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     UNIQUE (role_id, permission_id)
 );
 
 CREATE TABLE IF NOT EXISTS rpa_task (
     id BIGSERIAL PRIMARY KEY,
-    task_id UUID DEFAULT uuid_generate_v4() NOT NULL,
+    task_id BIGINT NOT NULL,
     task_name VARCHAR(128) NOT NULL,
     task_code VARCHAR(64) NOT NULL UNIQUE,
     task_type VARCHAR(32) NOT NULL,
     description VARCHAR(512),
-    workflow_id UUID,
-    executor_id UUID,
+    workflow_id BIGINT,
+    executor_id BIGINT,
     cron_expression VARCHAR(128),
     priority SMALLINT DEFAULT 0 NOT NULL,
     status VARCHAR(32) DEFAULT 'PENDING' NOT NULL,
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS rpa_task (
 
 CREATE TABLE IF NOT EXISTS rpa_workflow (
     id BIGSERIAL PRIMARY KEY,
-    workflow_id UUID DEFAULT uuid_generate_v4() NOT NULL,
+    workflow_id BIGINT NOT NULL,
     workflow_name VARCHAR(128) NOT NULL,
     workflow_code VARCHAR(64) NOT NULL UNIQUE,
     workflow_definition JSONB NOT NULL,
@@ -101,10 +101,10 @@ CREATE TABLE IF NOT EXISTS rpa_workflow (
 
 CREATE TABLE IF NOT EXISTS rpa_task_execution (
     id BIGSERIAL PRIMARY KEY,
-    execution_id UUID DEFAULT uuid_generate_v4() NOT NULL,
-    task_id UUID NOT NULL,
-    workflow_id UUID,
-    executor_id UUID,
+    execution_id BIGINT NOT NULL,
+    task_id BIGINT NOT NULL,
+    workflow_id BIGINT,
+    executor_id BIGINT,
     status VARCHAR(32) DEFAULT 'RUNNING' NOT NULL,
     start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     end_time TIMESTAMP,
@@ -118,9 +118,9 @@ CREATE TABLE IF NOT EXISTS rpa_task_execution (
 
 CREATE TABLE IF NOT EXISTS rpa_task_log (
     id BIGSERIAL PRIMARY KEY,
-    log_id UUID DEFAULT uuid_generate_v4() NOT NULL,
-    execution_id UUID NOT NULL,
-    task_id UUID NOT NULL,
+    log_id BIGINT NOT NULL,
+    execution_id BIGINT NOT NULL,
+    task_id BIGINT NOT NULL,
     log_level VARCHAR(16) DEFAULT 'INFO' NOT NULL,
     log_message TEXT NOT NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -129,9 +129,9 @@ CREATE TABLE IF NOT EXISTS rpa_task_log (
 
 CREATE TABLE IF NOT EXISTS rpa_browser_session (
     id BIGSERIAL PRIMARY KEY,
-    session_id UUID DEFAULT uuid_generate_v4() NOT NULL,
-    task_id UUID,
-    execution_id UUID,
+    session_id BIGINT NOT NULL,
+    task_id BIGINT,
+    execution_id BIGINT,
     browser_type VARCHAR(32) NOT NULL,
     browser_version VARCHAR(32),
     status VARCHAR(32) DEFAULT 'ACTIVE' NOT NULL,
@@ -143,8 +143,8 @@ CREATE TABLE IF NOT EXISTS rpa_browser_session (
 
 CREATE TABLE IF NOT EXISTS sys_audit_log (
     id BIGSERIAL PRIMARY KEY,
-    log_id UUID DEFAULT uuid_generate_v4() NOT NULL,
-    user_id UUID,
+    log_id BIGINT NOT NULL,
+    user_id BIGINT,
     username VARCHAR(64),
     operation_type VARCHAR(64) NOT NULL,
     operation_module VARCHAR(64) NOT NULL,
@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS sys_config (
 
 CREATE TABLE IF NOT EXISTS sys_dictionary (
     id BIGSERIAL PRIMARY KEY,
-    dict_id UUID DEFAULT uuid_generate_v4() NOT NULL,
+    dict_id BIGINT NOT NULL,
     dict_type VARCHAR(64) NOT NULL,
     dict_code VARCHAR(64) NOT NULL,
     dict_value VARCHAR(256) NOT NULL,
@@ -192,16 +192,16 @@ CREATE TABLE IF NOT EXISTS sys_dictionary (
 
 CREATE TABLE IF NOT EXISTS rpa_approval (
     id BIGSERIAL PRIMARY KEY,
-    approval_id UUID DEFAULT uuid_generate_v4() NOT NULL,
-    task_id UUID NOT NULL,
-    execution_id UUID,
-    applicant_id UUID NOT NULL,
+    approval_id BIGINT NOT NULL,
+    task_id BIGINT NOT NULL,
+    execution_id BIGINT,
+    applicant_id BIGINT NOT NULL,
     applicant_name VARCHAR(64),
     approval_type VARCHAR(32) NOT NULL,
     approval_status VARCHAR(32) DEFAULT 'PENDING' NOT NULL,
     reason VARCHAR(512),
     approval_time TIMESTAMP,
-    approver_id UUID,
+    approver_id BIGINT,
     approver_name VARCHAR(64),
     approval_comment VARCHAR(512),
     deleted SMALLINT DEFAULT 0 NOT NULL,
@@ -227,13 +227,13 @@ CREATE INDEX idx_rpa_approval_task ON rpa_approval(task_id);
 CREATE INDEX idx_rpa_approval_status ON rpa_approval(approval_status);
 
 INSERT INTO sys_role (role_id, role_name, role_code, description)
-VALUES 
-    (uuid_generate_v4(), '超级管理员', 'admin', '系统超级管理员，拥有所有权限'),
-    (uuid_generate_v4(), '运维管理员', 'ops', '运维管理员，负责任务管理和监控'),
-    (uuid_generate_v4(), '业务用户', 'user', '业务用户，负责提交任务和查看结果');
+VALUES
+    (1, '超级管理员', 'admin', '系统超级管理员，拥有所有权限'),
+    (2, '运维管理员', 'ops', '运维管理员，负责任务管理和监控'),
+    (3, '业务用户', 'user', '业务用户，负责提交任务和查看结果');
 
 INSERT INTO sys_config (config_key, config_value, config_type, description)
-VALUES 
+VALUES
     ('system.name', 'FinanceRPA', 'STRING', '系统名称'),
     ('system.version', '0.0.1', 'STRING', '系统版本'),
     ('rpa.default_timeout', '3600', 'INTEGER', '默认任务超时时间（秒）'),

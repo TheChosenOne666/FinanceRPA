@@ -47,14 +47,20 @@ class DemoDataInitializerTest {
     private PasswordEncoder passwordEncoder;
 
     @InjectMocks
-    private DemoDataInitializer demoDataInitializer;
+    private DemoDataGenerator demoDataGenerator;
 
     /**
      * 创建测试用角色
      */
     private RoleEO createRole(String roleCode) {
         RoleEO role = new RoleEO();
-        role.setRoleId("role-" + roleCode);
+        role.setRoleId(switch (roleCode) {
+            case "org_admin" -> 1L;
+            case "operator" -> 2L;
+            case "approver" -> 3L;
+            case "viewer" -> 4L;
+            default -> 0L;
+        });
         role.setRoleCode(roleCode);
         role.setRoleName(switch (roleCode) {
             case "org_admin" -> "组织管理员";
@@ -94,7 +100,7 @@ class DemoDataInitializerTest {
         when(userRoleMapper.insert(any(UserRoleEO.class))).thenReturn(1);
 
         // 4. 执行生成
-        demoDataInitializer.generateDemoData();
+        demoDataGenerator.generateDemoData();
 
         // 5. 验证调用次数：2个组织、10个部门、6条业务线、12个用户、16个角色关联
         // 每个组织6个用户：org_admin(1) + operator(1) + approver(1) + viewer(1) + operator+viewer(2) + approver+viewer(2) = 8
@@ -122,7 +128,7 @@ class DemoDataInitializerTest {
             return 1;
         });
 
-        demoDataInitializer.generateDemoData();
+        demoDataGenerator.generateDemoData();
 
         // 验证组织插入参数
         verify(organizationMapper, times(2)).insert(any(OrganizationEO.class));
@@ -149,12 +155,12 @@ class DemoDataInitializerTest {
         UserEO admin = new UserEO();
         admin.setId(1L);
         admin.setUsername("admin");
-        admin.setOrgId("旧的org-id");
+        admin.setOrgId(999L);
         admin.setOrgName("旧的组织名称");
 
         when(userMapper.selectOne(any())).thenReturn(admin);
 
-        demoDataInitializer.generateDemoData();
+        demoDataGenerator.generateDemoData();
 
         // 验证更新调用
         verify(userMapper).updateById(any(UserEO.class));

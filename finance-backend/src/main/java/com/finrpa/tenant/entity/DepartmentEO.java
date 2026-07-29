@@ -26,17 +26,17 @@ public class DepartmentEO implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    /** 主键 ID */
-    @TableId(type = IdType.AUTO)
+    /** 主键 ID（数据库自增，插入时不设值） */
+    @TableField("id")
     private Long id;
 
-    /** 部门业务 ID（UUID） */
-    @TableField("dept_id")
-    private String deptId;
+    /** 部门业务 ID（雪花算法 ID） */
+    @TableId(value = "dept_id", type = IdType.ASSIGN_ID)
+    private Long deptId;
 
-    /** 所属组织 ID */
+    /** 所属组织 ID（雪花算法 ID） */
     @TableField("org_id")
-    private String orgId;
+    private Long orgId;
 
     /** 部门名称 */
     @TableField("dept_name")

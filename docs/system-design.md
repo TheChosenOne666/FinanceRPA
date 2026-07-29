@@ -464,6 +464,17 @@ finance-frontend/
 > - **Skyvern 源码暂未引入**：M2.1 落地为 fallback 模式（Planner 单步计划、Executor 模拟执行），不需要真实浏览器操作，因此 Skyvern 源码（`finance-ai/skyvern/`）暂未引入；待 M3 实现具体 Skill（涉及真实浏览器操作）时再引入 Skyvern 源码与 `ForgeAgent`。
 > - **任务状态**：M2.1 已完成（2026-07-29），20 个单元测试全部通过（test_planner / test_executor / test_coordinator / test_skills）。
 
+> **实现说明（M2.2 Java↔Python HTTP 客户端 + SSE 透传）**：
+> - **模块状态**：M2.2 已完成（2026-07-29），14 个单元测试全部通过（AiServicePropertiesTest 3 + AiProxyControllerTest 8 + AiSseProxyTest 3），全量回归 13 个测试类 0 失败 0 错误。
+> - **新增依赖**：`spring-boot-starter-webflux`（用于 WebClient + HTTP Interface + SSE 透传），Spring Boot 3.2.5 原生支持。
+> - **HTTP 客户端实现**：使用 Spring 6 HTTP Interface（`@HttpExchange`）声明式调用 Python，通过 `HttpServiceProxyFactory` + `WebClientAdapter` 创建 `AiServiceClient` 代理。WebClient 默认携带 `X-Internal-Token` Header。
+> - **SSE 透传实现**：`AiSseProxy.proxySse(taskId)` 使用 WebClient 订阅 Python SSE Flux（`bodyToFlux(ServerSentEvent<String>)`），通过 Spring MVC `SseEmitter` 转发给前端。Flux 层 `.timeout()` 控制长连接超时（默认 1h），前端断开时自动取消订阅。
+> - **异常处理**：`AiException` 继承 `BusinessException`，复用 `GlobalExceptionHandler` 统一返回 `BaseResponse`。新增错误码：`AI_SERVICE_ERROR(50300)` / `AI_SERVICE_UNAVAILABLE(50301)` / `AI_SERVICE_TIMEOUT(50302)`。
+> - **SSE 鉴权暂缓**：SSE 端点 `/ai/sse/**` 暂时 permitAll（EventSource 无法携带 JWT Header），TODO M2.5 改为 query token 鉴权。
+> - **重试机制暂缓**：`ai.retry.*` 配置项已保留，Spring Retry `@Retryable` 注解推迟到 M2.6 联调阶段启用（结合真实瞬态错误调优参数）。
+> - **内部 API 契约**：M2.2 仅确定 Python 回调 Java 的 6 个内部端点契约（`/api/v1/internal/*`），实际实现在 M2.3。
+> - **接口路径**：对外端点实际访问路径为 `/api/ai/*`（context-path `/api` + `@RequestMapping("/ai")`），与设计文档 9.1 节 `/api/v1/ai/*` 略有差异（少 `/v1`），与项目现有风格一致。
+
 ---
 
 ## 5. 跨语言协作设计
@@ -1432,3 +1443,4 @@ services:
 |------|------|--------|------|
 | v1.0 | 2026-07-25 | - | 初稿，覆盖整体架构、模块划分、目录结构、跨语言协作、核心模块详设、关键流程、数据模型概要、API 划分、部署架构与 ADR |
 | v1.1 | 2026-07-29 | - | 同步 M2.1 完成进度：新增"实现说明（M2.1 落地偏差）"段落，记录 Skyvern 源码暂未引入（M2.1 fallback 模式不需要，M3 实际浏览器操作时引入）；记录 20 个单元测试全部通过 |
+| v1.2 | 2026-07-29 | - | 同步 M2.2 完成进度：新增"实现说明（M2.2 Java↔Python HTTP 客户端 + SSE 透传）"段落，记录新增 webflux 依赖、HTTP Interface 客户端、SSE 透传实现、AiException 异常体系、SSE 鉴权暂缓、重试机制暂缓、内部 API 契约确定等；14 个单元测试全部通过 |

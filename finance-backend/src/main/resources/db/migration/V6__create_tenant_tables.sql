@@ -3,7 +3,7 @@ SET search_path = finrpa;
 -- 组织表（租户主表，本身不参与租户隔离过滤）
 CREATE TABLE IF NOT EXISTS enterprise_organization (
     id BIGSERIAL PRIMARY KEY,
-    org_id UUID DEFAULT uuid_generate_v4() NOT NULL,
+    org_id BIGINT NOT NULL,
     org_name VARCHAR(128) NOT NULL,
     org_code VARCHAR(64) NOT NULL,
     description VARCHAR(256),
@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS enterprise_organization (
 -- 部门表（属于某个组织，参与租户隔离过滤）
 CREATE TABLE IF NOT EXISTS enterprise_department (
     id BIGSERIAL PRIMARY KEY,
-    dept_id UUID DEFAULT uuid_generate_v4() NOT NULL,
-    org_id VARCHAR(64) NOT NULL,
+    dept_id BIGINT NOT NULL,
+    org_id BIGINT NOT NULL,
     dept_name VARCHAR(128) NOT NULL,
     dept_code VARCHAR(64) NOT NULL,
     parent_id BIGINT DEFAULT 0,
@@ -34,8 +34,8 @@ CREATE TABLE IF NOT EXISTS enterprise_department (
 -- 业务线表（属于某个组织，参与租户隔离过滤）
 CREATE TABLE IF NOT EXISTS enterprise_business_line (
     id BIGSERIAL PRIMARY KEY,
-    business_line_id UUID DEFAULT uuid_generate_v4() NOT NULL,
-    org_id VARCHAR(64) NOT NULL,
+    business_line_id BIGINT NOT NULL,
+    org_id BIGINT NOT NULL,
     business_line_name VARCHAR(128) NOT NULL,
     business_line_code VARCHAR(64) NOT NULL,
     description VARCHAR(256),

@@ -27,10 +27,9 @@ public interface UserMapper extends BaseMapper<UserEO> {
     /**
      * 根据用户业务 ID 查询未删除的用户
      *
-     * @param userId 用户业务 ID
+     * @param userId 用户业务 ID（雪花算法 ID）
      * @return 用户实体；不存在时返回 null
      */
-    // 使用 ::uuid 将传入字符串转换为 PostgreSQL 的 UUID 类型
-    @Select("SELECT * FROM finrpa.sys_user WHERE user_id = #{userId}::uuid AND deleted = 0")
-    UserEO selectByUserId(@Param("userId") String userId);
+    @Select("SELECT * FROM finrpa.sys_user WHERE user_id = #{userId} AND deleted = 0")
+    UserEO selectByUserId(@Param("userId") Long userId);
 }

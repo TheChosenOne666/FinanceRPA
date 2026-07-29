@@ -2,18 +2,27 @@
 
 定义 Java → Python 的请求/响应模型和 SSE 事件结构。
 
+命名策略：内部字段使用 Python 惯例 snake_case，JSON 收发统一驼峰（camelCase），
+通过 Pydantic alias_generator 实现，与 Java/前端全链路驼峰对齐。
+
 @author FinanceRPA
 """
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
+
+# 全局驼峰命名配置：内部 snake_case，JSON IO 驼峰
+_CAMEL_CONFIG = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class TaskTriggerRequest(BaseModel):
     """任务触发请求（Java → Python）。"""
 
-    task_id: str = Field(description="任务 ID（UUID）")
+    model_config = _CAMEL_CONFIG
+
+    task_id: str = Field(description="任务 ID（雪花算法）")
     org_id: str = Field(description="组织 ID（租户隔离）")
     user_id: str = Field(description="操作用户 ID")
     goal: str = Field(description="任务目标（如 '下载银行流水'）")
@@ -24,6 +33,8 @@ class TaskTriggerRequest(BaseModel):
 class TaskTriggerResponse(BaseModel):
     """任务触发响应。"""
 
+    model_config = _CAMEL_CONFIG
+
     task_id: str = Field(description="任务 ID")
     status: str = Field(default="running", description="初始状态")
     message: str = Field(default="Task triggered successfully")
@@ -31,6 +42,8 @@ class TaskTriggerResponse(BaseModel):
 
 class TaskStateResponse(BaseModel):
     """任务状态响应。"""
+
+    model_config = _CAMEL_CONFIG
 
     task_id: str
     state: str  # pending / executing / success / failed / needs_human
@@ -42,6 +55,8 @@ class TaskStateResponse(BaseModel):
 class TaskAbortResponse(BaseModel):
     """任务终止响应。"""
 
+    model_config = _CAMEL_CONFIG
+
     task_id: str
     aborted: bool = True
     message: str = "Task aborted"
@@ -49,6 +64,8 @@ class TaskAbortResponse(BaseModel):
 
 class SseEvent(BaseModel):
     """SSE 事件。"""
+
+    model_config = _CAMEL_CONFIG
 
     task_id: str
     event_type: str  # step_start / step_end / progress / error / complete / replan

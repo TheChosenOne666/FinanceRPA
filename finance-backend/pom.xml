@@ -48,6 +48,12 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- WebFlux（WebClient + HTTP Interface，用于调用 Python AI 服务与 SSE 透传） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
         <!-- 安全 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

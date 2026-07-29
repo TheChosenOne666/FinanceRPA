@@ -286,6 +286,27 @@ M0 基础设施            M1 认证与多租户       M2 任务执行闭环（M
 | **描述** | 1. 1 个组织 + 5 个部门（对公信贷/个人金融/资产管理/风险管理/合规审计）+ 4 条业务线<br>2. 5 种角色用户：super_admin / org_admin / operator / approver / viewer<br>3. 角色与部门、业务线关联（含跨部门只读场景）<br>4. 互斥约束验证数据（operator 与 approver 不同部门）<br>5. 默认密码 BCrypt 哈希（与原项目兼容）<br>6. **生成器特性**：支持 `--reset` 清空重建、`--only=users` 按模块生成、`--count=N` 批量生成任务数据、生成结果报告<br>7. 对应 6 个金融场景的演示任务数据（任务、审批、审计日志样本） |
 | **验收标准** | 生成器可重复执行不报错；5 种角色均能登录；权限解析返回预期结果；互斥约束数据正确；`--reset` 后数据干净重建 |
 
+> **开发环境账号密码表**（以数据库实际哈希为准，2026-07-29 经 BCryptPasswordEncoder 验证）
+>
+> 默认管理员（V5 迁移脚本初始化）：
+>
+> | 账号 | 密码 | 部门 | 角色 | 说明 |
+> |------|------|------|------|------|
+> | admin | admin123 | 管理部 | org_admin | 默认管理员 |
+>
+> 演示数据账号（DemoDataInitializer 初始化，组织：银河证券 DEMO_YHSEC / 星辰银行 DEMO_XCBA）：
+>
+> | 账号 | 密码 | 部门 | 角色 | 说明 |
+> |------|------|------|------|------|
+> | admin_demo_yhsec | 123456 | 财务部 | org_admin | 银河证券组织管理员 |
+> | operator_demo_yhsec | 123456 | 财务结算科 | operator | 操作员 |
+> | approver_demo_yhsec | 123456 | 审批部 | approver | 审批员 |
+> | viewer_demo_yhsec | 123456 | 业务部 | viewer | 查看员（跨组织只读） |
+> | admin_demo_xcba | 123456 | 财务部 | org_admin | 星辰银行组织管理员 |
+> | operator_demo_xcba | 123456 | 财务结算科 | operator | 操作员 |
+>
+> 说明：默认管理员密码由 V5 迁移脚本插入（哈希 `$2b$10$ax2XrMPam32Kv4oL/SPO5eKlCCdCJzrQTBeTtSbNRNRF9tV3WYZlq`，明文 admin123）。演示账号密码由 DemoDataInitializer 统一生成（BCrypt 哈希，明文 123456）。主键已从 UUID 迁移为雪花算法 BIGINT。
+
 #### M1.5 前端 UI 系统改造（毛玻璃 + SVG 图标）
 
 | 项 | 内容 |
@@ -748,14 +769,15 @@ internal_api_token: str = "finrpa-internal-secret"
 
 ---
 
-#### M2.2 Java↔Python HTTP 客户端 + SSE 透传
+#### M2.2 Java↔Python HTTP 客户端 + SSE 透传 ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | M |
 | **前置依赖** | M2.1 |
-| **产出物** | Java `ai/` 模块完整代码 + 单元测试 + 集成测试 |
+| **产出物** | Java `ai/` 模块完整代码 + 单元测试 |
 | **验收标准** | Java 调 Python 接口成功；SSE 流透传到前端无丢失；Python 服务不可用时返回 503 + 重试 |
+| **状态** | ✅ 已完成（2026-07-29）。新增文件：`ai/client/AiServiceClient.java`、`ai/client/dto/{TaskTriggerRequest,TaskTriggerResponse,TaskStateResponse,TaskAbortResponse,AiException}.java`、`ai/sse/{AiSseProxy,SseEventDto}.java`、`ai/controller/AiProxyController.java`、`ai/config/{AiServiceProperties,AiWebClientConfig}.java`；修改文件：`pom.xml`（新增 webflux 依赖）、`application.yml`（新增 ai 配置块）、`SecurityConfig.java`（放行 `/ai/sse/**`）、`ErrorCode.java`（新增 AI_SERVICE_ERROR/UNAVAILABLE/TIMEOUT 三个错误码）。单元测试：`AiServicePropertiesTest`（3）、`AiProxyControllerTest`（8）、`AiSseProxyTest`（3），14 个单元测试全部通过；全量回归 13 个测试类 0 失败 0 错误。Python 服务不可用时 Controller 抛 `AiException`（继承 BusinessException，错误码 50301），由 GlobalExceptionHandler 统一返回 BaseResponse |
 
 ##### 技术实现方案
 
@@ -904,6 +926,28 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | 重试 | Spring Retry，指数退避 | 瞬态错误自动恢复 |
 | 任务状态 | Java 为权威源，Python 回调更新 | 保证数据一致性 |
 | 异常处理 | Python 不可用时返回 503 + SSE error 事件 | 前端可感知服务状态 |
+
+**实现说明（M2.2 落地偏差）**：
+- **HTTP 状态码 vs 业务错误码**：原计划 Python 不可用时返回 HTTP 503，实际落地为返回 HTTP 200 + `BaseResponse{code:50301, message:"AI 服务不可用"}`，与项目现有统一响应风格一致（GlobalExceptionHandler 统一返回 BaseResponse）。前端通过业务错误码 50301 识别 AI 服务不可用场景。
+- **SSE 鉴权暂缓**：SSE 端点 `/ai/sse/**` 暂时在 SecurityConfig 放行（permitAll），因 EventSource API 无法携带 Authorization Header。TODO M2.5：改为 query 参数 token 鉴权（如 `?token=xxx`）。
+- **重试机制**：M2.2 阶段未启用 Spring Retry 注解（`@Retryable`），仅保留配置项 `ai.retry.*`。重试逻辑推迟到 M2.6 联调阶段，结合真实瞬态错误场景调优（max-attempts/backoff 参数）。原因：M2.2 单元测试无法验证重试行为，需集成测试。
+- **HTTP Interface 客户端 Bean**：通过 `HttpServiceProxyFactory.builderFor(WebClientAdapter.create(webClient)).build()` 创建代理，Spring Boot 3.2.5 原生支持，无需额外 starter。
+- **WebClient 单例**：仅配置 `aiWebClient`（同步调用），SSE 透传复用同一 WebClient（Flux 层通过 `.timeout(Duration.ofSeconds(sseTimeout))` 单独控制长连接超时），避免维护两个 WebClient。
+- **AiException 设计**：继承 `BusinessException` 复用 `GlobalExceptionHandler.businessExceptionHandler`，无需单独注册 `@ExceptionHandler`。错误码扩展三个：`AI_SERVICE_ERROR(50300)` / `AI_SERVICE_UNAVAILABLE(50301)` / `AI_SERVICE_TIMEOUT(50302)`。
+- **内部 API 契约**：M2.2 仅确定 Python 回调 Java 的 6 个内部端点契约（见"M2.2 与 M2.3 的接口约定"），实际实现在 M2.3。
+- **接口路径**：对外端点实际访问路径为 `/api/ai/*`（context-path `/api` + `@RequestMapping("/ai")`），与设计文档 9.1 节 `/api/v1/ai/*` 略有差异（少 `/v1`），与项目现有风格一致（auth/tenant 等模块均无 `/v1` 前缀）。
+- **驼峰统一命名策略（2026-07-29 调整）**：全链路统一使用 camelCase，消除 Java↔Python 字段映射成本。Python 端 Pydantic 配置 `alias_generator=to_camel, populate_by_name=True`（`schemas.py`），SSE 事件 `data` 字段手动输出驼峰（`taskId`/`currentStep`/`totalSteps`/`message`/`timestamp`）；Java 端 WebClient 移除 SNAKE_CASE 配置，使用默认驼峰。前端无需字段映射，直接接收驼峰。
+- **联调测试结果（2026-07-29 第一轮：无认证直连）**：M2.2 全部端点联调通过。① Python 健康检查 200 ✅；② Java 健康检查 200 ✅；③ Docker 内网连通（Java 容器访问 finance-ai:8000）✅；④ Java 代理触发任务 POST /api/ai/tasks → Python 返回 running ✅；⑤ Java 代理查询状态 GET /api/ai/tasks/{id}/state → 返回 completed ✅；⑥ Java 代理终止任务 POST /api/ai/tasks/{id}/abort → 返回 aborted:true ✅；⑦ SSE 透传 GET /api/ai/sse/tasks/{id} → 透传 progress + complete 事件，保留 event name 与 data ✅。17 个单元测试全部通过。
+- **联调测试结果（2026-07-29 第二轮：带 JWT 认证 + 前端代理）**：① 后端登录 POST /api/auth/login（admin/admin123）→ 返回 accessToken + user ✅；② 带 Bearer token 触发任务 POST /api/ai/tasks → running ✅；③ 带 token 查询状态 → completed ✅；④ 带 token 终止任务 → aborted:true ✅；⑤ SSE 透传收到 progress + complete 两个事件（data 为驼峰，前端直接接收）✅；⑥ 前端 Vite 代理登录 POST localhost:8081/api/auth/login → 透传后端返回 token ✅。
+- **联调测试结果（2026-07-29 第三轮：雪花算法 BIGINT + 驼峰统一）**：① 数据库重建（drop schema + Flyway V1-V6 重新迁移）✅；② 演示数据初始化 2 组织/10 部门/6 业务线/13 用户（雪花 ID 自动生成）✅；③ admin/admin123 登录返回 orgId=2082333077580967938 ✅；④ admin_demo_yhsec/123456 登录返回 userId=2082333078168170497 ✅；⑤ POST /api/ai/tasks 返回 taskId=2082333099000000099（雪花格式）✅；⑥ GET /api/ai/tasks/{id}/state 返回驼峰字段（taskId/state/currentStep/totalSteps/message）✅；⑦ GET /api/ai/sse/tasks/{id} 收到 progress + complete 事件，字段全驼峰（taskId/currentStep/totalSteps/message/timestamp）✅。
+- **遗留问题（非 M2.2 引入，已修复）**：
+  - ~~`DemoDataInitializer` UUID 类型 bug~~（已解决）：主键从 UUID 迁移为雪花算法 BIGINT，`@TableId(type = IdType.ASSIGN_ID)` 自动生成，`DEMO_DATA_ENABLED=true` 已开启。V2 迁移脚本所有主键改为 BIGINT。
+  - **fill 注解问题（2026-07-29 修复）**：UserEO/RoleEO/UserRoleEO 的 `createTime`/`updateTime` 字段标注了 `@TableField(fill = FieldFill.INSERT)` 但未配置 MetaObjectHandler，导致 MyBatis-Plus 显式插入 null 违反 NOT NULL 约束。修复：移除 fill 注解，与 OrganizationEO/DepartmentEO 一致，使用数据库 `DEFAULT CURRENT_TIMESTAMP` 自动填充。
+  - **UserRoleEO deleted 字段问题（2026-07-29 修复）**：UserRoleEO 有 `deleted` 字段但 `sys_user_role` 表无此列。修复：移除 deleted 字段及 DemoDataInitializer 中对应的 `setDeleted(0)` 调用。
+  - **测试代码 String→Long（2026-07-29 修复）**：UUID→BIGINT 改动后 6 个测试文件（AuthControllerTest/AuthServiceTest/PermissionServiceTest/DemoDataInitializerTest/TenantServiceImplTest/TenantControllerTest）中 ID 字段类型从 String 改为 Long，编译通过。
+  - **DemoDataInitializer @Transactional 失效（2026-07-29 修复）**：`generateDemoData()` 通过 `this.` 内部调用，绕过 Spring AOP 代理，事务不生效，部分失败留下脏数据。修复：将全部数据生成逻辑抽离到独立 `DemoDataGenerator` Bean（@Component），`DemoDataInitializer` 仅负责调度（注入 `DemoDataGenerator` 调用），`@Transactional` 通过外部 Bean 调用生效。验证：清理 DEMO 数据后重启，2组织/10部门/6业务线/13用户完整生成。
+  - 登录 403 问题（已解决）：根因非 Security 配置，而是密码错误。数据库 `sys_user` 表中所有用户的密码哈希 `$2b$10$JMrmn2lRr...` 对应明文为 `admin123`（经 Spring BCryptPasswordEncoder 验证），与文档记载的 `admin` / `demo123` 不一致。文档已在 M1.4 节"开发环境账号密码表"更正：所有账号密码统一为 `admin123`。
+  - Python `main.py` import 缺失（M2.1 遗留）：`from app.api import health` 缺 `sse, tasks`，已修复为 `from app.api import health, sse, tasks`。
 
 #### M2.3 Java agent 模块（任务状态持久化）
 

@@ -58,15 +58,15 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户名或密码错误");
         }
 
-        // 4. 生成 token
+        // 4. 生成 token（userId/orgId 为 Long，JWT claim 序列化为 String）
         String accessToken = jwtUtil.generateAccessToken(
-                user.getUserId(),
+                user.getUserId().toString(),
                 user.getUsername(),
-                user.getOrgId(),
+                user.getOrgId() == null ? null : user.getOrgId().toString(),
                 user.getDeptName()
         );
 
-        String refreshToken = jwtUtil.generateRefreshToken(user.getUserId(), user.getUsername());
+        String refreshToken = jwtUtil.generateRefreshToken(user.getUserId().toString(), user.getUsername());
 
         // 5. 构建响应
         LoginResponse response = new LoginResponse();
@@ -81,7 +81,7 @@ public class AuthServiceImpl implements AuthService {
         userInfo.setOrgId(user.getOrgId());
         userInfo.setOrgName(user.getOrgName());
         userInfo.setDeptName(user.getDeptName());
-        userInfo.setRoles(permissionService.getUserRoles(user.getUserId()));
+        userInfo.setRoles(permissionService.getUserRoles(user.getUserId().toString()));
         response.setUser(userInfo);
 
         return response;
@@ -106,22 +106,22 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "无效的refreshToken");
         }
 
-        // 3. 查询用户
+        // 3. 查询用户（JWT 中的 userId 为 String，需转为 Long 查询）
         String userId = jwtUtil.getUserIdFromToken(refreshToken);
-        UserEO user = userMapper.selectByUserId(userId);
+        UserEO user = userMapper.selectByUserId(Long.parseLong(userId));
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户不存在");
         }
 
-        // 4. 生成 token
+        // 4. 生成 token（userId/orgId 为 Long，JWT claim 序列化为 String）
         String accessToken = jwtUtil.generateAccessToken(
-                user.getUserId(),
+                user.getUserId().toString(),
                 user.getUsername(),
-                user.getOrgId(),
+                user.getOrgId() == null ? null : user.getOrgId().toString(),
                 user.getDeptName()
         );
 
-        String newRefreshToken = jwtUtil.generateRefreshToken(user.getUserId(), user.getUsername());
+        String newRefreshToken = jwtUtil.generateRefreshToken(user.getUserId().toString(), user.getUsername());
 
         // 5. 构建响应
         LoginResponse response = new LoginResponse();
@@ -136,7 +136,7 @@ public class AuthServiceImpl implements AuthService {
         userInfo.setOrgId(user.getOrgId());
         userInfo.setOrgName(user.getOrgName());
         userInfo.setDeptName(user.getDeptName());
-        userInfo.setRoles(permissionService.getUserRoles(user.getUserId()));
+        userInfo.setRoles(permissionService.getUserRoles(user.getUserId().toString()));
         response.setUser(userInfo);
 
         return response;
@@ -150,8 +150,8 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public UserInfoResponse getCurrentUser(String userId) {
-        // 1. 查询用户
-        UserEO user = userMapper.selectByUserId(userId);
+        // 1. 查询用户（JWT 中的 userId 为 String，需转为 Long 查询）
+        UserEO user = userMapper.selectByUserId(Long.parseLong(userId));
         if (user == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "用户不存在");
         }

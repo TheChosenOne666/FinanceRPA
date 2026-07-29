@@ -47,7 +47,7 @@ class TenantControllerTest {
     void getTenantInfo_Success() throws Exception {
         // 1. 准备响应
         TenantInfoResponse response = new TenantInfoResponse();
-        response.setOrgId("org-001");
+        response.setOrgId(1L);
         response.setOrgName("测试组织");
         response.setOrgCode("TEST");
         response.setDescription("描述");
@@ -60,7 +60,7 @@ class TenantControllerTest {
         mockMvc.perform(get("/tenant/info"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.orgId").value("org-001"))
+                .andExpect(jsonPath("$.data.orgId").value(1))
                 .andExpect(jsonPath("$.data.orgName").value("测试组织"))
                 .andExpect(jsonPath("$.data.orgCode").value("TEST"))
                 .andExpect(jsonPath("$.data.status").value(1));
@@ -73,14 +73,14 @@ class TenantControllerTest {
     void listDepartments_Success() throws Exception {
         // 1. 准备响应
         DepartmentVO dept1 = new DepartmentVO();
-        dept1.setDeptId("dept-1");
+        dept1.setDeptId(1L);
         dept1.setDeptName("对公信贷部");
         dept1.setDeptCode("CREDIT");
         dept1.setSortOrder(1);
         dept1.setStatus(1);
 
         DepartmentVO dept2 = new DepartmentVO();
-        dept2.setDeptId("dept-2");
+        dept2.setDeptId(2L);
         dept2.setDeptName("风险管理部");
         dept2.setDeptCode("RISK");
         dept2.setSortOrder(2);
@@ -92,9 +92,9 @@ class TenantControllerTest {
         mockMvc.perform(get("/tenant/departments"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data[0].deptId").value("dept-1"))
+                .andExpect(jsonPath("$.data[0].deptId").value(1))
                 .andExpect(jsonPath("$.data[0].deptName").value("对公信贷部"))
-                .andExpect(jsonPath("$.data[1].deptId").value("dept-2"));
+                .andExpect(jsonPath("$.data[1].deptId").value(2));
 
         verify(tenantService, times(1)).listDepartments();
     }
@@ -116,14 +116,14 @@ class TenantControllerTest {
     void listBusinessLines_Success() throws Exception {
         // 1. 准备响应
         BusinessLineVO bl1 = new BusinessLineVO();
-        bl1.setBusinessLineId("bl-1");
+        bl1.setBusinessLineId(1L);
         bl1.setBusinessLineName("对公信贷");
         bl1.setBusinessLineCode("CREDIT");
         bl1.setSortOrder(1);
         bl1.setStatus(1);
 
         BusinessLineVO bl2 = new BusinessLineVO();
-        bl2.setBusinessLineId("bl-2");
+        bl2.setBusinessLineId(2L);
         bl2.setBusinessLineName("个人金融");
         bl2.setBusinessLineCode("RETAIL");
         bl2.setSortOrder(2);
@@ -135,9 +135,9 @@ class TenantControllerTest {
         mockMvc.perform(get("/tenant/business-lines"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data[0].businessLineId").value("bl-1"))
+                .andExpect(jsonPath("$.data[0].businessLineId").value(1))
                 .andExpect(jsonPath("$.data[0].businessLineName").value("对公信贷"))
-                .andExpect(jsonPath("$.data[1].businessLineId").value("bl-2"));
+                .andExpect(jsonPath("$.data[1].businessLineId").value(2));
 
         verify(tenantService, times(1)).listBusinessLines();
     }

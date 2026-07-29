@@ -56,7 +56,7 @@ class TenantServiceImplTest {
         TenantContext.clear();
     }
 
-    private OrganizationEO createOrganization(String orgId, String orgName, String orgCode) {
+    private OrganizationEO createOrganization(Long orgId, String orgName, String orgCode) {
         OrganizationEO org = new OrganizationEO();
         org.setOrgId(orgId);
         org.setOrgName(orgName);
@@ -67,7 +67,7 @@ class TenantServiceImplTest {
         return org;
     }
 
-    private DepartmentEO createDepartment(String deptId, String orgId, String deptName, String deptCode, Integer sortOrder) {
+    private DepartmentEO createDepartment(Long deptId, Long orgId, String deptName, String deptCode, Integer sortOrder) {
         DepartmentEO dept = new DepartmentEO();
         dept.setDeptId(deptId);
         dept.setOrgId(orgId);
@@ -79,7 +79,7 @@ class TenantServiceImplTest {
         return dept;
     }
 
-    private BusinessLineEO createBusinessLine(String businessLineId, String orgId, String name, String code, Integer sortOrder) {
+    private BusinessLineEO createBusinessLine(Long businessLineId, Long orgId, String name, String code, Integer sortOrder) {
         BusinessLineEO bl = new BusinessLineEO();
         bl.setBusinessLineId(businessLineId);
         bl.setOrgId(orgId);
@@ -94,9 +94,9 @@ class TenantServiceImplTest {
     @Test
     @DisplayName("getTenantInfo - 组织存在时返回信息")
     void getTenantInfo_OrganizationExists_ReturnsInfo() {
-        // 1. 设置 TenantContext
-        String orgId = "org-001";
-        TenantContext.setOrgId(orgId);
+        // 1. 设置 TenantContext（TenantContext 持有 String，TenantServiceImpl 内部转为 Long）
+        Long orgId = 1L;
+        TenantContext.setOrgId(orgId.toString());
 
         // 2. mock 查询返回组织
         OrganizationEO org = createOrganization(orgId, "测试组织", "TEST_ORG");
@@ -118,10 +118,11 @@ class TenantServiceImplTest {
     @DisplayName("getTenantInfo - 组织不存在时抛异常")
     void getTenantInfo_OrganizationNotExists_ThrowsException() {
         // 1. 设置 TenantContext
-        TenantContext.setOrgId("org-unknown");
+        Long orgId = 999L;
+        TenantContext.setOrgId(orgId.toString());
 
         // 2. mock 返回 null
-        when(organizationMapper.selectByOrgId("org-unknown")).thenReturn(null);
+        when(organizationMapper.selectByOrgId(orgId)).thenReturn(null);
 
         // 3. 验证抛 NOT_FOUND_ERROR
         assertThatThrownBy(() -> tenantService.getTenantInfo())
@@ -144,13 +145,13 @@ class TenantServiceImplTest {
     @DisplayName("listDepartments - 返回部门列表（按 sortOrder 升序）")
     void listDepartments_ReturnsSortedList() {
         // 1. 设置 TenantContext
-        String orgId = "org-001";
-        TenantContext.setOrgId(orgId);
+        Long orgId = 1L;
+        TenantContext.setOrgId(orgId.toString());
 
         // 2. mock 返回（mock 按顺序返回，由 SQL 排序保证，这里仅验证转换逻辑）
         List<DepartmentEO> mockList = List.of(
-                createDepartment("dept-1", orgId, "对公信贷部", "CREDIT", 1),
-                createDepartment("dept-2", orgId, "风险管理部", "RISK", 2)
+                createDepartment(1L, orgId, "对公信贷部", "CREDIT", 1),
+                createDepartment(2L, orgId, "风险管理部", "RISK", 2)
         );
         when(departmentMapper.selectList(any())).thenReturn(mockList);
 
@@ -159,18 +160,18 @@ class TenantServiceImplTest {
 
         // 4. 验证
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).getDeptId()).isEqualTo("dept-1");
+        assertThat(result.get(0).getDeptId()).isEqualTo(1L);
         assertThat(result.get(0).getDeptName()).isEqualTo("对公信贷部");
         assertThat(result.get(0).getDeptCode()).isEqualTo("CREDIT");
         assertThat(result.get(0).getSortOrder()).isEqualTo(1);
-        assertThat(result.get(1).getDeptId()).isEqualTo("dept-2");
+        assertThat(result.get(1).getDeptId()).isEqualTo(2L);
     }
 
     @Test
     @DisplayName("listDepartments - 无部门时返回空列表")
     void listDepartments_EmptyList_ReturnsEmpty() {
         // 1. 设置 TenantContext
-        TenantContext.setOrgId("org-empty");
+        TenantContext.setOrgId("1");
 
         // 2. mock 返回空列表
         when(departmentMapper.selectList(any())).thenReturn(List.of());
@@ -195,13 +196,13 @@ class TenantServiceImplTest {
     @DisplayName("listBusinessLines - 返回业务线列表（按 sortOrder 升序）")
     void listBusinessLines_ReturnsSortedList() {
         // 1. 设置 TenantContext
-        String orgId = "org-001";
-        TenantContext.setOrgId(orgId);
+        Long orgId = 1L;
+        TenantContext.setOrgId(orgId.toString());
 
         // 2. mock 返回
         List<BusinessLineEO> mockList = List.of(
-                createBusinessLine("bl-1", orgId, "对公信贷", "CREDIT", 1),
-                createBusinessLine("bl-2", orgId, "个人金融", "RETAIL", 2)
+                createBusinessLine(1L, orgId, "对公信贷", "CREDIT", 1),
+                createBusinessLine(2L, orgId, "个人金融", "RETAIL", 2)
         );
         when(businessLineMapper.selectList(any())).thenReturn(mockList);
 
@@ -210,17 +211,17 @@ class TenantServiceImplTest {
 
         // 4. 验证
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).getBusinessLineId()).isEqualTo("bl-1");
+        assertThat(result.get(0).getBusinessLineId()).isEqualTo(1L);
         assertThat(result.get(0).getBusinessLineName()).isEqualTo("对公信贷");
         assertThat(result.get(0).getBusinessLineCode()).isEqualTo("CREDIT");
-        assertThat(result.get(1).getBusinessLineId()).isEqualTo("bl-2");
+        assertThat(result.get(1).getBusinessLineId()).isEqualTo(2L);
     }
 
     @Test
     @DisplayName("listBusinessLines - 无业务线时返回空列表")
     void listBusinessLines_EmptyList_ReturnsEmpty() {
         // 1. 设置 TenantContext
-        TenantContext.setOrgId("org-empty");
+        TenantContext.setOrgId("1");
 
         // 2. mock 返回空列表
         when(businessLineMapper.selectList(any())).thenReturn(List.of());

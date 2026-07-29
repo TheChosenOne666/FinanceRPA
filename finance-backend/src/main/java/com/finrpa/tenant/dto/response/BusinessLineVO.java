@@ -18,8 +18,8 @@ public class BusinessLineVO implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    /** 业务线业务 ID */
-    private String businessLineId;
+    /** 业务线业务 ID（雪花算法 ID） */
+    private Long businessLineId;
 
     /** 业务线名称 */
     private String businessLineName;

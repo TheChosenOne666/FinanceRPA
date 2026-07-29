@@ -26,13 +26,13 @@ public class OrganizationEO implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    /** 主键 ID */
-    @TableId(type = IdType.AUTO)
+    /** 主键 ID（数据库自增，插入时不设值） */
+    @TableField("id")
     private Long id;
 
-    /** 组织业务 ID（UUID） */
-    @TableField("org_id")
-    private String orgId;
+    /** 组织业务 ID（雪花算法 ID） */
+    @TableId(value = "org_id", type = IdType.ASSIGN_ID)
+    private Long orgId;
 
     /** 组织名称 */
     @TableField("org_name")

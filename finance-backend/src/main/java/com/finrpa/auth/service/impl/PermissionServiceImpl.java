@@ -40,21 +40,21 @@ public class PermissionServiceImpl implements PermissionService {
      */
     @Override
     public boolean hasPermission(String userId, String resourceOrgId, String action) {
-        // 1. 查询用户
-        UserEO user = userMapper.selectByUserId(userId);
+        // 1. 查询用户（JWT 中的 userId 为 String，需转为 Long 查询）
+        UserEO user = userMapper.selectByUserId(Long.parseLong(userId));
         if (user == null) {
             return false;
         }
 
         // 2. 查询角色
-        List<RoleEO> roles = roleMapper.selectByUserId(userId);
+        List<RoleEO> roles = roleMapper.selectByUserId(Long.parseLong(userId));
         if (roles.isEmpty()) {
             return false;
         }
 
-        // 3. 同组织判断
-        String userOrgId = user.getOrgId();
-        boolean isSameOrg = userOrgId != null && userOrgId.equals(resourceOrgId);
+        // 3. 同组织判断（user.orgId 为 Long，与 resourceOrgId(String) 比较需统一为字符串）
+        Long userOrgId = user.getOrgId();
+        boolean isSameOrg = userOrgId != null && userOrgId.toString().equals(resourceOrgId);
 
         // 4. 角色权限判断
         for (RoleEO role : roles) {
@@ -126,7 +126,7 @@ public class PermissionServiceImpl implements PermissionService {
      */
     @Override
     public List<String> getUserRoles(String userId) {
-        List<RoleEO> roles = roleMapper.selectByUserId(userId);
+        List<RoleEO> roles = roleMapper.selectByUserId(Long.parseLong(userId));
         return roles.stream()
                 .map(RoleEO::getRoleCode)
                 .collect(Collectors.toList());
@@ -140,7 +140,7 @@ public class PermissionServiceImpl implements PermissionService {
      */
     @Override
     public List<String> getUserPermissions(String userId) {
-        List<RoleEO> roles = roleMapper.selectByUserId(userId);
+        List<RoleEO> roles = roleMapper.selectByUserId(Long.parseLong(userId));
         return roles.stream()
                 .flatMap(role -> getPermissionsByRole(role.getRoleCode()).stream())
                 .distinct()
@@ -191,7 +191,7 @@ public class PermissionServiceImpl implements PermissionService {
      */
     @Override
     public boolean isCrossOrgReadAllowed(String userId) {
-        List<RoleEO> roles = roleMapper.selectByUserId(userId);
+        List<RoleEO> roles = roleMapper.selectByUserId(Long.parseLong(userId));
         return roles.stream()
                 .anyMatch(role -> role.getIsCrossOrgRead() != null && role.getIsCrossOrgRead() == 1);
     }
@@ -204,7 +204,7 @@ public class PermissionServiceImpl implements PermissionService {
      */
     @Override
     public boolean isCrossOrgApproveAllowed(String userId) {
-        List<RoleEO> roles = roleMapper.selectByUserId(userId);
+        List<RoleEO> roles = roleMapper.selectByUserId(Long.parseLong(userId));
         return roles.stream()
                 .anyMatch(role -> role.getIsCrossOrgApprove() != null && role.getIsCrossOrgApprove() == 1);
     }

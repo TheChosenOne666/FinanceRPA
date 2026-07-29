@@ -20,14 +20,13 @@ public interface RoleMapper extends BaseMapper<RoleEO> {
     /**
      * 根据用户业务 ID 查询其关联的未删除角色列表
      *
-     * @param userId 用户业务 ID
+     * @param userId 用户业务 ID（雪花算法 ID）
      * @return 角色实体列表；无关联角色时返回空集合
      */
-    // 使用 ::uuid 将传入字符串转换为 PostgreSQL 的 UUID 类型
     @Select("SELECT r.* FROM finrpa.sys_role r " +
             "JOIN finrpa.sys_user_role ur ON r.role_id = ur.role_id " +
-            "WHERE ur.user_id = #{userId}::uuid AND r.deleted = 0")
-    List<RoleEO> selectByUserId(@Param("userId") String userId);
+            "WHERE ur.user_id = #{userId} AND r.deleted = 0")
+    List<RoleEO> selectByUserId(@Param("userId") Long userId);
 
     /**
      * 根据角色编码查询未删除的角色

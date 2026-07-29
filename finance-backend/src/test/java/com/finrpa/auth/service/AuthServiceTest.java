@@ -39,7 +39,7 @@ class AuthServiceTest {
     @InjectMocks
     private AuthServiceImpl authService;
 
-    private UserEO createUser(String userId, String username, String password, Integer status, String orgId) {
+    private UserEO createUser(Long userId, String username, String password, Integer status, Long orgId) {
         UserEO user = new UserEO();
         user.setUserId(userId);
         user.setUsername(username);
@@ -55,21 +55,21 @@ class AuthServiceTest {
     @Test
     @DisplayName("登录 - 成功")
     void login_Success() {
-        UserEO user = createUser("user-1", "admin", "encoded-password", 1, "org-1");
-        
+        UserEO user = createUser(1L, "admin", "encoded-password", 1, 1L);
+
         when(userMapper.selectByUsername("admin")).thenReturn(user);
         when(passwordEncoder.matches("password", "encoded-password")).thenReturn(true);
-        when(jwtUtil.generateAccessToken("user-1", "admin", "org-1", "技术部")).thenReturn("access-token");
-        when(jwtUtil.generateRefreshToken("user-1", "admin")).thenReturn("refresh-token");
+        when(jwtUtil.generateAccessToken("1", "admin", "1", "技术部")).thenReturn("access-token");
+        when(jwtUtil.generateRefreshToken("1", "admin")).thenReturn("refresh-token");
         when(jwtUtil.getExpiresIn()).thenReturn(3600L);
-        when(permissionService.getUserRoles("user-1")).thenReturn(List.of("super_admin"));
+        when(permissionService.getUserRoles("1")).thenReturn(List.of("super_admin"));
 
         LoginResponse response = authService.login("admin", "password");
 
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
         assertThat(response.getExpiresIn()).isEqualTo(3600L);
-        assertThat(response.getUser().getUserId()).isEqualTo("user-1");
+        assertThat(response.getUser().getUserId()).isEqualTo(1L);
         assertThat(response.getUser().getUsername()).isEqualTo("admin");
         assertThat(response.getUser().getRealName()).isEqualTo("张三");
         assertThat(response.getUser().getRoles()).containsExactly("super_admin");
@@ -88,8 +88,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("登录 - 用户已禁用")
     void login_UserDisabled_ShouldThrowException() {
-        UserEO user = createUser("user-1", "admin", "encoded-password", 0, "org-1");
-        
+        UserEO user = createUser(1L, "admin", "encoded-password", 0, 1L);
+
         when(userMapper.selectByUsername("admin")).thenReturn(user);
 
         assertThatThrownBy(() -> authService.login("admin", "password"))
@@ -100,8 +100,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("登录 - 密码错误")
     void login_WrongPassword_ShouldThrowException() {
-        UserEO user = createUser("user-1", "admin", "encoded-password", 1, "org-1");
-        
+        UserEO user = createUser(1L, "admin", "encoded-password", 1, 1L);
+
         when(userMapper.selectByUsername("admin")).thenReturn(user);
         when(passwordEncoder.matches("wrong-password", "encoded-password")).thenReturn(false);
 
@@ -113,22 +113,22 @@ class AuthServiceTest {
     @Test
     @DisplayName("刷新令牌 - 成功")
     void refresh_Success() {
-        UserEO user = createUser("user-1", "admin", "encoded-password", 1, "org-1");
-        
+        UserEO user = createUser(1L, "admin", "encoded-password", 1, 1L);
+
         when(jwtUtil.validateToken("valid-refresh-token")).thenReturn(true);
         when(jwtUtil.getTokenTypeFromToken("valid-refresh-token")).thenReturn("refresh");
-        when(jwtUtil.getUserIdFromToken("valid-refresh-token")).thenReturn("user-1");
-        when(userMapper.selectByUserId("user-1")).thenReturn(user);
-        when(jwtUtil.generateAccessToken("user-1", "admin", "org-1", "技术部")).thenReturn("new-access-token");
-        when(jwtUtil.generateRefreshToken("user-1", "admin")).thenReturn("new-refresh-token");
+        when(jwtUtil.getUserIdFromToken("valid-refresh-token")).thenReturn("1");
+        when(userMapper.selectByUserId(1L)).thenReturn(user);
+        when(jwtUtil.generateAccessToken("1", "admin", "1", "技术部")).thenReturn("new-access-token");
+        when(jwtUtil.generateRefreshToken("1", "admin")).thenReturn("new-refresh-token");
         when(jwtUtil.getExpiresIn()).thenReturn(3600L);
-        when(permissionService.getUserRoles("user-1")).thenReturn(List.of("super_admin"));
+        when(permissionService.getUserRoles("1")).thenReturn(List.of("super_admin"));
 
         LoginResponse response = authService.refresh("valid-refresh-token");
 
         assertThat(response.getAccessToken()).isEqualTo("new-access-token");
         assertThat(response.getRefreshToken()).isEqualTo("new-refresh-token");
-        assertThat(response.getUser().getUserId()).isEqualTo("user-1");
+        assertThat(response.getUser().getUserId()).isEqualTo(1L);
     }
 
     @Test
@@ -157,8 +157,8 @@ class AuthServiceTest {
     void refresh_UserNotExist_ShouldThrowException() {
         when(jwtUtil.validateToken("valid-refresh-token")).thenReturn(true);
         when(jwtUtil.getTokenTypeFromToken("valid-refresh-token")).thenReturn("refresh");
-        when(jwtUtil.getUserIdFromToken("valid-refresh-token")).thenReturn("user-1");
-        when(userMapper.selectByUserId("user-1")).thenReturn(null);
+        when(jwtUtil.getUserIdFromToken("valid-refresh-token")).thenReturn("1");
+        when(userMapper.selectByUserId(1L)).thenReturn(null);
 
         assertThatThrownBy(() -> authService.refresh("valid-refresh-token"))
                 .isInstanceOf(BusinessException.class)
@@ -168,18 +168,18 @@ class AuthServiceTest {
     @Test
     @DisplayName("获取当前用户信息 - 成功")
     void getCurrentUser_Success() {
-        UserEO user = createUser("user-1", "admin", "encoded-password", 1, "org-1");
+        UserEO user = createUser(1L, "admin", "encoded-password", 1, 1L);
         user.setAvatar("avatar-url");
         user.setEmail("admin@test.com");
         user.setPhone("13800138000");
-        
-        when(userMapper.selectByUserId("user-1")).thenReturn(user);
-        when(permissionService.getUserRoles("user-1")).thenReturn(List.of("super_admin"));
-        when(permissionService.getUserPermissions("user-1")).thenReturn(List.of("*"));
 
-        UserInfoResponse response = authService.getCurrentUser("user-1");
+        when(userMapper.selectByUserId(1L)).thenReturn(user);
+        when(permissionService.getUserRoles("1")).thenReturn(List.of("super_admin"));
+        when(permissionService.getUserPermissions("1")).thenReturn(List.of("*"));
 
-        assertThat(response.getUserId()).isEqualTo("user-1");
+        UserInfoResponse response = authService.getCurrentUser("1");
+
+        assertThat(response.getUserId()).isEqualTo(1L);
         assertThat(response.getUsername()).isEqualTo("admin");
         assertThat(response.getRealName()).isEqualTo("张三");
         assertThat(response.getAvatar()).isEqualTo("avatar-url");
@@ -192,9 +192,9 @@ class AuthServiceTest {
     @Test
     @DisplayName("获取当前用户信息 - 用户不存在")
     void getCurrentUser_UserNotExist_ShouldThrowException() {
-        when(userMapper.selectByUserId("user-1")).thenReturn(null);
+        when(userMapper.selectByUserId(1L)).thenReturn(null);
 
-        assertThatThrownBy(() -> authService.getCurrentUser("user-1"))
+        assertThatThrownBy(() -> authService.getCurrentUser("1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户不存在");
     }
@@ -202,11 +202,11 @@ class AuthServiceTest {
     @Test
     @DisplayName("检查权限 - 委托给PermissionService")
     void checkPermission_ShouldDelegateToPermissionService() {
-        when(permissionService.checkPermission("user-1", "task", "task-1", "create")).thenReturn(true);
+        when(permissionService.checkPermission("1", "task", "1", "create")).thenReturn(true);
 
-        boolean result = authService.checkPermission("user-1", "task", "task-1", "create");
+        boolean result = authService.checkPermission("1", "task", "1", "create");
 
         assertThat(result).isTrue();
-        verify(permissionService, times(1)).checkPermission("user-1", "task", "task-1", "create");
+        verify(permissionService, times(1)).checkPermission("1", "task", "1", "create");
     }
 }

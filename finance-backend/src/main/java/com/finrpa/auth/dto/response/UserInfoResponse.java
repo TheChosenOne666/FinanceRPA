@@ -13,8 +13,8 @@ import java.util.List;
 @Data
 public class UserInfoResponse {
 
-    /** 用户业务 ID */
-    private String userId;
+    /** 用户业务 ID（雪花算法 ID） */
+    private Long userId;
 
     /** 用户名 */
     private String username;
@@ -31,8 +31,8 @@ public class UserInfoResponse {
     /** 手机号 */
     private String phone;
 
-    /** 所属组织 ID */
-    private String orgId;
+    /** 所属组织 ID（雪花算法 ID） */
+    private Long orgId;
 
     /** 所属组织名称 */
     private String orgName;

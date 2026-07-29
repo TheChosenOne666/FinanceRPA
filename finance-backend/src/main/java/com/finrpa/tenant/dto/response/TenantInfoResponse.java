@@ -19,8 +19,8 @@ public class TenantInfoResponse implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    /** 组织 ID */
-    private String orgId;
+    /** 组织 ID（雪花算法 ID） */
+    private Long orgId;
 
     /** 组织名称 */
     private String orgName;

@@ -5,7 +5,7 @@ import com.finrpa.tenant.constant.TenantConstant;
 import com.finrpa.tenant.context.TenantContext;
 import lombok.extern.slf4j.Slf4j;
 import net.sf.jsqlparser.expression.Expression;
-import net.sf.jsqlparser.expression.StringValue;
+import net.sf.jsqlparser.expression.LongValue;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,20 +22,20 @@ import org.springframework.stereotype.Component;
 public class TenantLineHandlerImpl implements TenantLineHandler {
 
     /**
-     * 获取当前租户 ID（组织 ID）
+     * 获取当前租户 ID（组织 ID，BIGINT 类型）
      *
-     * @return 组织 ID 字符串字面值；上下文未设置时返回 "0" 表示无匹配
+     * @return 组织 ID 数值字面值；上下文未设置时返回 0 表示无匹配
      */
     @Override
     public Expression getTenantId() {
-        // 1. 从上下文读取组织 ID
+        // 1. 从上下文读取组织 ID（雪花算法 ID，字符串形式）
         String orgId = TenantContext.getOrgId();
         if (orgId == null) {
             // 2. 上下文为空时返回不可能匹配的值，确保不会泄露其他租户数据
             log.warn("TenantContext 未设置 orgId，查询将不会匹配任何租户数据");
-            return new StringValue("0");
+            return new LongValue(0L);
         }
-        return new StringValue(orgId);
+        return new LongValue(Long.parseLong(orgId));
     }
 
     /**

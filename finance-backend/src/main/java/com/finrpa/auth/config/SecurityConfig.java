@@ -59,7 +59,10 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/swagger-resources/**",
                                 "/webjars/**",
-                                "/debug/**"
+                                "/debug/**",
+                                // SSE 端点：EventSource 无法携带 JWT Header，暂时放行
+                                // TODO M2.5：改为 query 参数 token 鉴权
+                                "/ai/sse/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

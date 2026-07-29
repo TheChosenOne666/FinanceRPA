@@ -69,3 +69,21 @@ jwt:
   secret: finrpa-finance-rpa-jwt-secret-key-2026-longer-than-256-bits
   access-token-expire-minutes: 60
   refresh-token-expire-days: 7
+
+# AI 服务配置（Java → Python HTTP 客户端 + SSE 透传）
+ai:
+  # Python finance-ai 服务基础地址
+  base-url: ${AI_BASE_URL:http://localhost:8000}
+  # 服务间共享密钥（X-Internal-Token Header）
+  internal-token: ${AI_INTERNAL_TOKEN:finrpa-internal-secret}
+  # 连接超时（秒）
+  connect-timeout: 5
+  # 读取超时（秒）—— 同步调用场景
+  read-timeout: 60
+  # SSE 长连接超时（秒）—— 默认 1 小时
+  sse-timeout: 3600
+  # 重试配置
+  retry:
+    max-attempts: 3
+    # 初始退避（毫秒），指数递增
+    backoff: 1000

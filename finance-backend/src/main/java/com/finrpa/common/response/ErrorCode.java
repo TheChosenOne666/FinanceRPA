@@ -15,7 +15,11 @@ public enum ErrorCode {
     NOT_FOUND_ERROR(40400, "请求数据不存在"),
     FORBIDDEN_ERROR(40300, "禁止访问"),
     SYSTEM_ERROR(50000, "系统内部异常"),
-    OPERATION_ERROR(50001, "操作失败");
+    OPERATION_ERROR(50001, "操作失败"),
+    // AI 服务相关错误码（M2.2）
+    AI_SERVICE_ERROR(50300, "AI 服务调用失败"),
+    AI_SERVICE_UNAVAILABLE(50301, "AI 服务不可用"),
+    AI_SERVICE_TIMEOUT(50302, "AI 服务调用超时");
 
     /**
      * 错误码
