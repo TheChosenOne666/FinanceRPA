@@ -7,6 +7,9 @@
 4. 子任务状态持久化以支持断点续跑
 5. 子任务粒度的审计日志
 
+M2.4 增强：集成 JavaBackendClient 回调 + 事件总线 SSE 推送。
+任务开始/进度/终态均回调 Java 更新任务状态，发布 SSE 事件。
+
 @from enterprise/agent/coordinator.py
 @author FinanceRPA
 """
@@ -14,6 +17,9 @@
 import logging
 from typing import Any
 
+from app.clients.java_backend import JavaBackendClient
+
+from .event_bus import TaskEventBus
 from .executor import ExecutorAgent
 from .planner import PlannerAgent
 from .schemas import (
@@ -27,6 +33,15 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
+# Coordinator 内部状态 → Java TaskStateEnum 大写映射
+_STATE_MAP = {
+    "running": "EXECUTING",
+    "completed": "SUCCESS",
+    "failed": "FAILED",
+    "needs_human": "NEEDS_HUMAN",
+    "aborted": "ABORTED",
+}
+
 
 class AgentCoordinator:
     """编排 Planner 和 Executor 代理。
@@ -37,6 +52,7 @@ class AgentCoordinator:
     - 失败检测和重新规划
     - 断点续跑（跳过已完成子任务）
     - 审计回调集成
+    - M2.4：Java 状态回调 + SSE 事件发布
     """
 
     def __init__(
@@ -45,17 +61,23 @@ class AgentCoordinator:
         executor: ExecutorAgent,
         audit_callback=None,
         max_replans: int = 3,
+        java_client: JavaBackendClient | None = None,
+        event_bus: TaskEventBus | None = None,
     ):
         """
         @param planner: PlannerAgent 实例
         @param executor: ExecutorAgent 实例
         @param audit_callback: 可选异步回调(subtask, result) 用于审计日志
         @param max_replans: 最大重新规划次数
+        @param java_client: Java 后端回调客户端（M2.4 状态回调）
+        @param event_bus: 事件总线（M2.4 SSE 推送）
         """
         self.planner = planner
         self.executor = executor
         self.audit_callback = audit_callback
         self.max_replans = max_replans
+        self.java_client = java_client
+        self.event_bus = event_bus
 
     async def run(
         self,
@@ -83,20 +105,26 @@ class AgentCoordinator:
 
         # 1. 创建初始计划
         try:
+            logger.info("Coordinator: 开始创建任务计划 [task=%s, goal=%s]", task_id, navigation_goal)
             plan = await self.planner.create_plan(navigation_goal, context)
         except Exception as e:
-            logger.error("Coordinator: 任务 %s 规划失败: %s", task_id, e)
+            logger.error("Coordinator: 任务 %s 规划失败: %s", task_id, e, exc_info=True)
             state.status = "failed"
             state.error_message = f"规划失败: {e}"
+            await self._on_task_terminal(state)
             return state
 
         state.current_plan = plan
         logger.info(
-            "Coordinator: 任务 %s 已规划 %d 个子任务",
+            "Coordinator: 任务 %s 已规划 %d 个子任务: %s",
             task_id, len(plan.subtasks),
+            [st.goal for st in plan.subtasks],
         )
 
-        # 2. 执行子任务
+        # 2. 回调 Java + SSE：任务开始执行
+        await self._on_task_start(state, len(plan.subtasks))
+
+        # 3. 执行子任务
         completed_subtasks: list[SubTask] = []
         return await self._execute_plan(
             state, plan, completed_subtasks, context,
@@ -115,11 +143,17 @@ class AgentCoordinator:
             # 跳过已完成的子任务（断点续跑）
             if subtask.subtask_id in state.completed_subtasks:
                 logger.info(
-                    "Coordinator: 跳过已完成的子任务 %s",
-                    subtask.subtask_id,
+                    "Coordinator: 跳过已完成的子任务 %s（断点续跑）[task=%s]",
+                    subtask.subtask_id, state.task_id,
                 )
                 completed_subtasks.append(subtask)
                 continue
+
+            logger.info(
+                "Coordinator: 开始执行子任务 %d/%d [task=%s, subtask=%s, goal=%s]",
+                subtask.index + 1, len(plan.subtasks), state.task_id,
+                subtask.subtask_id, subtask.goal,
+            )
 
             # 执行子任务
             result = await self.executor.execute_subtask(subtask, context)
@@ -137,20 +171,47 @@ class AgentCoordinator:
             if result.success:
                 state.completed_subtasks.append(subtask.subtask_id)
                 completed_subtasks.append(subtask)
+                logger.info(
+                    "Coordinator: 子任务 %s 成功，已完成 %d/%d [task=%s]",
+                    subtask.subtask_id, len(state.completed_subtasks),
+                    len(plan.subtasks), state.task_id,
+                )
+                # 回调 Java：进度更新
+                await self._on_task_progress(
+                    state,
+                    current_step=len(state.completed_subtasks),
+                    total_steps=len(plan.subtasks),
+                    message=f"子任务 {subtask.index + 1} 完成",
+                )
                 continue
 
             # 根据策略处理失败
+            logger.info(
+                "Coordinator: 子任务 %s 失败，策略=%s [task=%s]",
+                subtask.subtask_id, subtask.failure_strategy, state.task_id,
+            )
             outcome = await self._handle_failure(
                 state, plan, subtask, result, completed_subtasks, context,
             )
             if outcome == "aborted":
+                logger.info(
+                    "Coordinator: 任务因失败终止 [task=%s, outcome=aborted]", state.task_id,
+                )
+                await self._on_task_terminal(state)
                 return state
             if outcome == "replanned":
+                logger.info(
+                    "Coordinator: 任务已重新规划 [task=%s, outcome=replanned]", state.task_id,
+                )
                 return state  # _handle_failure 已递归执行新计划
 
         # 所有子任务完成
         state.status = "completed"
-        logger.info("Coordinator: 任务 %s 成功完成", state.task_id)
+        logger.info(
+            "Coordinator: 任务 %s 全部子任务完成，共 %d 个 [task=%s]",
+            state.task_id, len(state.completed_subtasks), state.task_id,
+        )
+        await self._on_task_terminal(state)
         return state
 
     async def _handle_failure(
@@ -171,8 +232,8 @@ class AgentCoordinator:
         # SKIP：跳过失败步骤
         if strategy == FailureStrategy.SKIP:
             logger.info(
-                "Coordinator: 跳过失败子任务 %s",
-                failed_subtask.subtask_id,
+                "Coordinator: 策略=SKIP，跳过失败子任务 %s [task=%s]",
+                failed_subtask.subtask_id, state.task_id,
             )
             failed_subtask.status = SubTaskStatus.SKIPPED
             return "continued"
@@ -180,8 +241,8 @@ class AgentCoordinator:
         # ABORT：终止任务
         if strategy == FailureStrategy.ABORT:
             logger.error(
-                "Coordinator: 终止任务 %s 于子任务 %s",
-                state.task_id, failed_subtask.subtask_id,
+                "Coordinator: 策略=ABORT，终止任务 %s 于子任务 %s, error=%s",
+                state.task_id, failed_subtask.subtask_id, result.error_message,
             )
             state.status = "failed"
             state.error_message = (
@@ -193,8 +254,8 @@ class AgentCoordinator:
         if strategy == FailureStrategy.REPLAN:
             if state.total_replans >= self.max_replans:
                 logger.error(
-                    "Coordinator: 任务 %s 已达最大重新规划次数(%d)",
-                    state.task_id, self.max_replans,
+                    "Coordinator: 策略=REPLAN 但已达最大重新规划次数(%d/%d) [task=%s]",
+                    state.total_replans, self.max_replans, state.task_id,
                 )
                 state.status = "needs_human"
                 state.error_message = (
@@ -204,9 +265,22 @@ class AgentCoordinator:
 
             state.total_replans += 1
             logger.info(
-                "Coordinator: 重新规划任务 %s（第 %d/%d 次）",
-                state.task_id, state.total_replans, self.max_replans,
+                "Coordinator: 策略=REPLAN，开始重新规划（第 %d/%d 次）[task=%s, 失败子任务=%s]",
+                state.total_replans, self.max_replans, state.task_id, failed_subtask.subtask_id,
             )
+
+            # SSE 事件：重新规划
+            if self.event_bus and state.task_id:
+                await self.event_bus.publish(
+                    state.task_id,
+                    "replan",
+                    {
+                        "totalReplans": state.total_replans,
+                        "maxReplans": self.max_replans,
+                        "failedSubtaskIndex": failed_subtask.index,
+                        "message": f"重新规划（第 {state.total_replans} 次）",
+                    },
+                )
 
             try:
                 new_plan = await self.planner.replan(
@@ -217,20 +291,140 @@ class AgentCoordinator:
                     context=context,
                 )
             except Exception as e:
-                logger.error("Coordinator: 重新规划失败: %s", e)
+                logger.error(
+                    "Coordinator: 重新规划失败: %s [task=%s]", e, state.task_id, exc_info=True,
+                )
                 state.status = "needs_human"
                 state.error_message = f"重新规划失败: {e}"
                 return "aborted"
 
             state.current_plan = new_plan
+            logger.info(
+                "Coordinator: 重新规划成功，新计划 %d 个子任务 [task=%s]",
+                len(new_plan.subtasks), state.task_id,
+            )
 
             # 递归执行新计划
             await self._execute_plan(state, new_plan, completed_subtasks, context)
             return "replanned"
 
         # RETRY：由 Executor 内部处理，到此处说明重试已耗尽
+        logger.error(
+            "Coordinator: 策略=RETRY 但重试已耗尽，终止任务 [task=%s, subtask=%s]",
+            state.task_id, failed_subtask.subtask_id,
+        )
         state.status = "failed"
         state.error_message = (
             f"子任务 {failed_subtask.index} 重试耗尽: {result.error_message}"
         )
         return "aborted"
+
+    async def _on_task_start(self, state: CoordinationState, total_steps: int) -> None:
+        """任务开始执行时的回调：更新 Java 状态 + 发布 SSE 事件。"""
+        logger.info(
+            "Coordinator: 任务开始 → 回调 Java EXECUTING [task=%s, total_steps=%d]",
+            state.task_id, total_steps,
+        )
+        # 回调 Java：EXECUTING
+        if self.java_client and state.task_id:
+            await self.java_client.update_task_state(
+                task_id=state.task_id,
+                state="EXECUTING",
+                current_step=0,
+                total_steps=total_steps,
+                message="任务开始执行",
+            )
+
+        # 发布 SSE 事件
+        if self.event_bus and state.task_id:
+            logger.info(
+                "Coordinator: 发布 SSE 事件 progress(任务开始) [task=%s]", state.task_id,
+            )
+            await self.event_bus.publish(
+                state.task_id,
+                "progress",
+                {
+                    "state": "EXECUTING",
+                    "currentStep": 0,
+                    "totalSteps": total_steps,
+                    "message": "任务开始执行",
+                },
+            )
+
+    async def _on_task_progress(
+        self,
+        state: CoordinationState,
+        current_step: int,
+        total_steps: int,
+        message: str,
+    ) -> None:
+        """任务进度更新时的回调：更新 Java 状态 + 发布 SSE 事件。"""
+        logger.info(
+            "Coordinator: 进度更新 → 回调 Java EXECUTING [task=%s, step=%d/%d, msg=%s]",
+            state.task_id, current_step, total_steps, message,
+        )
+        # 回调 Java：进度更新
+        if self.java_client and state.task_id:
+            await self.java_client.update_task_state(
+                task_id=state.task_id,
+                state="EXECUTING",
+                current_step=current_step,
+                total_steps=total_steps,
+                message=message,
+            )
+
+        # 发布 SSE 事件
+        if self.event_bus and state.task_id:
+            await self.event_bus.publish(
+                state.task_id,
+                "progress",
+                {
+                    "state": "EXECUTING",
+                    "currentStep": current_step,
+                    "totalSteps": total_steps,
+                    "message": message,
+                },
+            )
+
+    async def _on_task_terminal(self, state: CoordinationState) -> None:
+        """任务到达终态时的回调：更新 Java 状态 + 发布 SSE 终态事件。"""
+        java_state = _STATE_MAP.get(state.status, "FAILED")
+        message = state.error_message or ("任务完成" if state.status == "completed" else "任务结束")
+
+        logger.info(
+            "Coordinator: 任务终态 → %s [task=%s, completed=%d, total_replans=%d, error=%s]",
+            java_state, state.task_id, len(state.completed_subtasks),
+            state.total_replans, state.error_message,
+        )
+
+        # 回调 Java：终态
+        if self.java_client and state.task_id:
+            logger.info(
+                "Coordinator: 回调 Java 终态 %s [task=%s]", java_state, state.task_id,
+            )
+            await self.java_client.update_task_state(
+                task_id=state.task_id,
+                state=java_state,
+                current_step=len(state.completed_subtasks),
+                total_steps=len(state.current_plan.subtasks) if state.current_plan else 0,
+                message=message,
+                error_message=state.error_message,
+            )
+
+        # 发布 SSE 终态事件
+        if self.event_bus and state.task_id:
+            event_type = "complete" if state.status == "completed" else "error"
+            logger.info(
+                "Coordinator: 发布 SSE 终态事件 %s [task=%s, state=%s]",
+                event_type, state.task_id, java_state,
+            )
+            await self.event_bus.publish(
+                state.task_id,
+                event_type,
+                {
+                    "state": java_state,
+                    "message": message,
+                    "currentStep": len(state.completed_subtasks),
+                    "totalSteps": len(state.current_plan.subtasks) if state.current_plan else 0,
+                },
+            )

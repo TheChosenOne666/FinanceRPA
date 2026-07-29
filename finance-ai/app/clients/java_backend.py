@@ -3,9 +3,15 @@
 Python AI 服务执行任务后，通过此客户端回调 Java 后端的内部 API，
 上报任务状态、子任务状态、截图和审计日志。
 
+URL 约定：Java 后端 context-path 为 /api，内部控制器前缀 /internal，
+完整路径如 /api/internal/tasks/{taskId}/state。
+
+鉴权：所有请求携带 X-Internal-Token Header。
+
 @author FinanceRPA
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -14,16 +20,21 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 重试配置
+_MAX_RETRIES = 3
+_RETRY_DELAYS = [1.0, 2.0, 4.0]  # 指数退避（秒）
+
 
 class JavaBackendClient:
     """回调 Java 后端的 HTTP 客户端。
 
     职责：
-    - 上报任务状态变更 → POST /api/v1/internal/tasks/{id}/state
-    - 上报子任务状态 → POST /api/v1/internal/tasks/{id}/subtasks
-    - 上传截图 → POST /api/v1/internal/screenshots
-    - 上报审计日志 → POST /api/v1/internal/audit/logs
+    - 上报任务状态变更 → POST /api/internal/tasks/{taskId}/state
+    - 上报子任务状态 → POST /api/internal/tasks/{taskId}/subtasks
+    - 上传截图 → POST /api/internal/screenshots
+    - 上报审计日志 → POST /api/internal/audit/logs
     - 鉴权：X-Internal-Token Header 校验
+    - 重试：指数退避（最多 3 次，1s→2s→4s）
     """
 
     def __init__(self, base_url: str | None = None, internal_token: str | None = None):
@@ -52,6 +63,50 @@ class JavaBackendClient:
             await self._client.aclose()
             self._client = None
 
+    async def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        **kwargs,
+    ) -> httpx.Response | None:
+        """带重试的 HTTP 请求。
+
+        @param method: HTTP 方法（POST/GET）
+        @param url: 请求路径
+        @param kwargs: 传递给 httpx 的额外参数
+        @return: 响应对象，失败返回 None
+        """
+        client = await self._get_client()
+        last_exc = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                logger.info(
+                    "JavaBackendClient: HTTP %s %s（第 %d/%d 次尝试）",
+                    method, url, attempt + 1, _MAX_RETRIES,
+                )
+                resp = await client.request(method, url, **kwargs)
+                resp.raise_for_status()
+                logger.info(
+                    "JavaBackendClient: HTTP %s %s 成功（status=%d）",
+                    method, url, resp.status_code,
+                )
+                return resp
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                last_exc = e
+                if attempt < _MAX_RETRIES - 1:
+                    delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
+                    logger.warning(
+                        "JavaBackendClient: HTTP %s %s 第 %d 次失败: %s，%ds 后重试",
+                        method, url, attempt + 1, e, delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        "JavaBackendClient: HTTP %s %s 重试 %d 次后全部失败: %s",
+                        method, url, _MAX_RETRIES, e,
+                    )
+        return None
+
     async def update_task_state(
         self,
         task_id: str,
@@ -59,32 +114,86 @@ class JavaBackendClient:
         current_step: int = 0,
         total_steps: int = 0,
         message: str = "",
+        error_message: str | None = None,
     ) -> bool:
         """更新任务状态。
 
         @param task_id: 任务 ID
-        @param state: 新状态（pending/executing/success/failed/needs_human）
+        @param state: 新状态（大写枚举：PENDING/EXECUTING/SUCCESS/FAILED/NEEDS_HUMAN/ABORTED）
         @param current_step: 当前步骤
         @param total_steps: 总步骤数
         @param message: 附加消息
+        @param error_message: 错误信息（失败时填写）
         @return: 是否成功
         """
-        client = await self._get_client()
-        try:
-            resp = await client.post(
-                f"/api/v1/internal/tasks/{task_id}/state",
-                json={
-                    "state": state,
-                    "current_step": current_step,
-                    "total_steps": total_steps,
-                    "message": message,
-                },
+        payload = {
+            "state": state,
+            "currentStep": current_step,
+            "totalSteps": total_steps,
+            "message": message,
+        }
+        if error_message:
+            payload["errorMessage"] = error_message
+
+        logger.info(
+            "JavaBackendClient: 更新任务状态 [task=%s, state=%s, step=%d/%d, msg=%s]",
+            task_id, state, current_step, total_steps, message,
+        )
+        resp = await self._request_with_retry(
+            "POST", f"/api/internal/tasks/{task_id}/state", json=payload,
+        )
+        if resp is None:
+            logger.error(
+                "JavaBackendClient: 更新任务状态失败 [task=%s, state=%s]", task_id, state,
             )
-            resp.raise_for_status()
-            return True
-        except Exception as e:
-            logger.error("更新任务状态失败 [task=%s]: %s", task_id, e)
             return False
+        logger.info("JavaBackendClient: 更新任务状态成功 [task=%s, state=%s]", task_id, state)
+        return True
+
+    async def update_subtask(
+        self,
+        task_id: str,
+        subtask_index: int,
+        status: str,
+        error_message: str | None = None,
+        result_data: dict | None = None,
+    ) -> bool:
+        """更新子任务状态。
+
+        @param task_id: 任务 ID
+        @param subtask_index: 子任务序号
+        @param status: 子任务状态（大写：PENDING/RUNNING/COMPLETED/FAILED/SKIPPED/REPLANNED）
+        @param error_message: 错误信息（失败时填写）
+        @param result_data: 执行结果数据
+        @return: 是否成功
+        """
+        payload = {
+            "subtaskIndex": subtask_index,
+            "status": status,
+        }
+        if error_message:
+            payload["errorMessage"] = error_message
+        if result_data:
+            payload["resultData"] = result_data
+
+        logger.info(
+            "JavaBackendClient: 更新子任务状态 [task=%s, index=%d, status=%s]",
+            task_id, subtask_index, status,
+        )
+        resp = await self._request_with_retry(
+            "POST", f"/api/internal/tasks/{task_id}/subtasks", json=payload,
+        )
+        if resp is None:
+            logger.error(
+                "JavaBackendClient: 更新子任务状态失败 [task=%s, index=%d, status=%s]",
+                task_id, subtask_index, status,
+            )
+            return False
+        logger.info(
+            "JavaBackendClient: 更新子任务状态成功 [task=%s, index=%d, status=%s]",
+            task_id, subtask_index, status,
+        )
+        return True
 
     async def upload_screenshot(
         self,
@@ -99,21 +208,28 @@ class JavaBackendClient:
         @param image_data: 图片二进制数据
         @return: 截图 URL，失败返回 None
         """
-        client = await self._get_client()
-        try:
-            resp = await client.post(
-                "/api/v1/internal/screenshots",
-                files={
-                    "file": (f"{task_id}_step{step}.png", image_data, "image/png"),
-                },
-                data={"task_id": task_id, "step": str(step)},
+        logger.info(
+            "JavaBackendClient: 上传截图 [task=%s, step=%d, size=%d bytes]",
+            task_id, step, len(image_data),
+        )
+        resp = await self._request_with_retry(
+            "POST",
+            "/api/internal/screenshots",
+            files={"file": (f"{task_id}_step{step}.png", image_data, "image/png")},
+            data={"task_id": task_id, "step": str(step)},
+        )
+        if resp is None:
+            logger.error(
+                "JavaBackendClient: 上传截图失败 [task=%s, step=%d]", task_id, step,
             )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("url")
-        except Exception as e:
-            logger.error("上传截图失败 [task=%s, step=%d]: %s", task_id, step, e)
             return None
+        data = resp.json()
+        url = data.get("url") or data.get("data", {}).get("url")
+        logger.info(
+            "JavaBackendClient: 上传截图成功 [task=%s, step=%d, url=%s]",
+            task_id, step, url,
+        )
+        return url
 
     async def report_audit_log(
         self,
@@ -136,22 +252,30 @@ class JavaBackendClient:
         @param error_message: 错误信息
         @return: 是否成功
         """
-        client = await self._get_client()
-        try:
-            resp = await client.post(
-                "/api/v1/internal/audit/logs",
-                json={
-                    "task_id": task_id,
-                    "org_id": org_id,
-                    "action_type": action_type,
-                    "target_element": target_element,
-                    "page_url": page_url,
-                    "execution_result": execution_result,
-                    "error_message": error_message,
-                },
+        payload = {
+            "taskId": task_id,
+            "orgId": org_id,
+            "actionType": action_type,
+            "executionResult": execution_result,
+        }
+        if target_element:
+            payload["targetElement"] = target_element
+        if page_url:
+            payload["pageUrl"] = page_url
+        if error_message:
+            payload["errorMessage"] = error_message
+
+        logger.info(
+            "JavaBackendClient: 上报审计日志 [task=%s, org=%s, action=%s, result=%s]",
+            task_id, org_id, action_type, execution_result,
+        )
+        resp = await self._request_with_retry(
+            "POST", "/api/internal/audit/logs", json=payload,
+        )
+        if resp is None:
+            logger.error(
+                "JavaBackendClient: 上报审计日志失败 [task=%s]", task_id,
             )
-            resp.raise_for_status()
-            return True
-        except Exception as e:
-            logger.error("上报审计日志失败 [task=%s]: %s", task_id, e)
             return False
+        logger.info("JavaBackendClient: 上报审计日志成功 [task=%s]", task_id)
+        return True

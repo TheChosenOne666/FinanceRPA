@@ -966,9 +966,10 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 |----|------|
 | **规模** | L |
 | **前置依赖** | M2.1、M2.3（API 契约确定） |
-| **产出物** | `app/agent/executor.py` + `app/clients/java_backend.py` |
-| **描述** | 1. Executor：接收任务 → 调 Skyvern → 每步回调 Java 更新状态<br>2. `JavaBackendClient`：httpx 客户端，调用 Java 内部 API<br>3. 状态同步：每步执行后上报 Java（含截图元数据）<br>4. SSE 推送：执行进度实时推送给 Java 透传<br>5. 错误处理：执行失败上报终态 |
+| **产出物** | `app/agent/executor.py` + `app/agent/event_bus.py` + `app/agent/coordinator.py` + `app/clients/java_backend.py` + `app/api/sse.py` + `app/api/tasks.py` |
+| **描述** | 1. Executor：接收任务 → 调 Skyvern → 每步回调 Java 更新状态<br>2. `JavaBackendClient`：httpx 客户端，调用 Java 内部 API<br>3. 状态同步：每步执行后上报 Java（含截图元数据）<br>4. SSE 推送：执行进度实时推送给 Java 透传<br>5. 错误处理：执行失败上报终态<br>6. **事件总线（复刻 finrpa-enterprise 技术方案）**：基于 Redis Pub/Sub 实现发布-订阅模型，替代 asyncio.Queue 内存队列；每个任务独立 Redis 频道（`task:events:{task_id}`），支持多订阅者；终态事件缓存到 Redis（`task:terminal:{task_id}`，TTL 300s）供迟到订阅者获取 |
 | **验收标准** | 任务执行全程状态在 Java 侧可查；截图元数据上报成功；SSE 进度推送无丢失 |
+| **状态** | ✅ 已完成（2026-07-29）。事件总线从 asyncio.Queue 重构为 Redis Pub/Sub（复刻 enterprise/approval/pubsub.py 技术方案）：`TaskEventBus` 使用 `redis.asyncio` 实现，`main.py` lifespan 统一管理 Redis 客户端生命周期并注入事件总线单例。新增 `fakeredis>=2.26.0` 测试依赖，`test_event_bus.py` 用 `FakeAsyncRedis` 替代内存队列测试，新增 9 个测试用例（基本发布订阅、终态关闭流、迟到订阅者、多订阅者、is_active、cleanup、终态缓存、非终态不缓存、register 仅日志）。全量 45 个 Python 单元测试通过 |
 
 #### M2.5 前端任务列表与详情页
 

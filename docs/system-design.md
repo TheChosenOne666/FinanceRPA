@@ -678,20 +678,32 @@ Python 执行流程：
 
 ```
 Java ApprovalService:
-  1. 创建 ApprovalRequest（持久化 PostgreSQL）
-  2. 发布 Redis Pub/Sub: approval:requests
+  1. 创建 ApprovalRequest（持久化 PostgreSQL，生成 approval_id）
+  2. 发布 Redis Pub/Sub: approval:requests（通知审批中心）
   3. 调用 NotificationService 推送企业微信/钉钉
-  4. 异步等待 approval:responses（不阻塞主线程）
+  4. 异步等待 approval:{approval_id} 响应频道（不阻塞主线程）
   5. 超时检测（ScheduledExecutor，high=30min / critical=60min）
      → 超时自动拒绝 + 告警
-  6. 收到响应 → 更新 ApprovalRequest 状态 → 通知 Python Executor
+  6. 审批员决策 → 发布到 approval:{approval_id} 频道
+  7. Java 收到响应 → 更新 ApprovalRequest 状态 → 通知 Python Executor
 
-Python Executor:
+Python Executor（审批等待机制，复刻 finrpa-enterprise approval/pubsub.py）:
   - 提交审批后挂起当前子任务（state=PENDING_APPROVAL）
-  - 订阅 approval:responses:{task_id}
-  - 收到 approved → 继续执行
-  - 收到 rejected → 终止任务
+  - 订阅 approval:{approval_id} 频道（一次审批一个频道，与参考项目对齐）
+  - wait_for_decision(approval_id, timeout) 协程挂起等待：
+      * 使用 redis.asyncio pubsub.subscribe(channel)
+      * 循环 get_message(timeout=1.0) 检查消息
+      * 收到 approved → 继续执行下一子任务
+      * 收到 rejected → 终止任务（state=ABORTED）
+      * 超时 → 标记 NEEDS_HUMAN 等待人工处置
+  - 终态事件缓存到 Redis（approval:terminal:{approval_id}，TTL=300s）
+    供迟到订阅者立即获取决策结果
 ```
+
+> **频道命名约定**（与 finrpa-enterprise 对齐）：
+> - 请求频道：`approval:requests`（全局，审批中心订阅）
+> - 响应频道：`approval:{approval_id}`（按审批单隔离，一次审批一个频道）
+> - 终态缓存：`approval:terminal:{approval_id}`（TTL 300s，供迟到订阅者）
 
 #### 6.3.3 Java 实现要点
 
@@ -1058,6 +1070,54 @@ TTL: 5 分钟（实时指标） / 1 小时（历史趋势）
 | 任务失败 | 任务终态为 failed 时 |
 | NEEDS_HUMAN 接管 | LLM 三层容错失败时 |
 | 风险等级升级 | LLM 判断升级 risk_level 时 |
+
+#### 6.10.2 Fallback 机制（复刻 finrpa-enterprise notification/dispatcher.py）
+
+```
+通知调度流程（Java NotificationDispatcher 实现）:
+  1. 解析目标用户 → 查询用户 Webhook 配置（wecom_url / dingtalk_url）
+  2. 主通道：企业微信群机器人
+      ├─ 成功 → 记录 NotificationAttempt(success=true) → 结束
+      └─ 失败 → 进入 fallback
+  3. Fallback：钉钉群机器人
+      ├─ 成功 → 记录 NotificationAttempt(success=true) → 结束
+      └─ 失败 → 进入重试队列
+  4. 全部失败且无可用 webhook → 记录失败 + 进入重试队列
+
+每个用户独立调度，互不影响。所有发送尝试（成功/失败）均记录 NotificationAttempt
+用于审计追踪。
+```
+
+#### 6.10.3 Redis 重试队列
+
+```
+队列 Key: notification:retry_queue（Redis List，LPUSH/RPOP）
+
+入队条件:
+  - 主通道（企微）失败 + Fallback（钉钉）失败
+  - 或用户未配置任何 webhook
+
+入队数据（JSON）:
+  {
+    "approval_id": "apr_xxx",
+    "task_id": "task_xxx",
+    "risk_level": "high",
+    "target_user_id": "user_xxx",
+    "wecom_url": "...",
+    "dingtalk_url": "...",
+    "enqueued_at": "2026-07-29T12:00:00Z"
+  }
+
+重试消费（Java ScheduledExecutor 每 5 分钟扫描）:
+  1. RPOP 取出待重试通知
+  2. 重新尝试发送（企微 → 钉钉 fallback）
+  3. 成功 → 移出队列
+  4. 失败 → 重新 LPUSH（最多重试 3 次，超过则告警人工介入）
+
+统计:
+  - GET /api/v1/notifications/retry/queue → 队列长度
+  - GET /api/v1/notifications/retry/stats → 重试成功率统计
+```
 
 ---
 
@@ -1444,3 +1504,4 @@ services:
 | v1.0 | 2026-07-25 | - | 初稿，覆盖整体架构、模块划分、目录结构、跨语言协作、核心模块详设、关键流程、数据模型概要、API 划分、部署架构与 ADR |
 | v1.1 | 2026-07-29 | - | 同步 M2.1 完成进度：新增"实现说明（M2.1 落地偏差）"段落，记录 Skyvern 源码暂未引入（M2.1 fallback 模式不需要，M3 实际浏览器操作时引入）；记录 20 个单元测试全部通过 |
 | v1.2 | 2026-07-29 | - | 同步 M2.2 完成进度：新增"实现说明（M2.2 Java↔Python HTTP 客户端 + SSE 透传）"段落，记录新增 webflux 依赖、HTTP Interface 客户端、SSE 透传实现、AiException 异常体系、SSE 鉴权暂缓、重试机制暂缓、内部 API 契约确定等；14 个单元测试全部通过 |
+| v1.3 | 2026-07-29 | - | 对齐 finrpa-enterprise 技术方案：6.3.2 审批频道命名改为 `approval:{approval_id}`（按审批单隔离），补充 Python 侧 `wait_for_decision` 协程挂起等待机制 + 终态缓存；6.10 通知模块补充 Fallback 机制（企微→钉钉）+ Redis 重试队列（`notification:retry_queue`，最多 3 次重试）；脱敏规则维持当前文档（银行卡前 4 后 4，身份证前 6 后 4） |
