@@ -977,9 +977,10 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 |----|------|
 | **规模** | L |
 | **前置依赖** | M1.3、M2.3（API 契约确定） |
-| **产出物** | `routes/tasks/TasksPage.tsx`、`routes/tasks/TaskDetail.tsx`、`components/BrowserStream.tsx` |
-| **描述** | 1. 任务列表：分页 + 状态筛选 + 搜索<br>2. 任务详情：基本信息 + 子任务时间线 + 操作日志<br>3. 浏览器实时流：基于 @novnc/novnc + SSE 接收 Skyvern 截图流<br>4. 触发任务入口：简易表单（导航目标 URL + 参数）<br>5. 状态徽章：StatusBadge 组件 |
+| **产出物** | `routes/tasks/TasksPage.tsx`、`routes/tasks/TaskDetail.tsx`、`routes/tasks/TriggerTaskModal.tsx`、`components/BrowserStream.tsx`、`components/StatusBadge.tsx`、`components/Pagination.tsx`、`components/Icons.tsx`、`api/tasks.ts`、`api/sse.ts` |
+| **描述** | 1. 任务列表：分页 + 状态筛选 + 关键词搜索（防抖 400ms）+ 自动轮询（执行中 5s / 空闲 30s）<br>2. 任务详情：基本信息 + 子任务时间线 + 操作日志占位（M3 接入审计 API）+ 终止任务<br>3. 浏览器实时流：基于原生 EventSource 订阅 Java SSE 透传（`/api/ai/sse/tasks/{taskId}`），渲染进度条 + 事件日志 + 截图占位（M3.1 接入 MinIO 后展示真实截图）<br>4. 触发任务入口：弹窗表单（目标 / JSON 参数 / workflowId），客户端校验 + 错误提示<br>5. 状态徽章：StatusBadge 组件，6 种任务状态 + 6 种子任务状态，含脉动小点（执行中类）<br>6. React Query Provider：main.tsx 注入全局 QueryClient（staleTime 5s / retry 1）<br>7. 顶部导航：RootLayout 添加"首页 / 任务"入口<br>8. 路由：/tasks、/tasks/:taskId<br>9. 不引入 @novnc/novnc（参考项目用其接 VNC，当前 M2.x fallback 模式无 VNC 流，避免冗余依赖） |
 | **验收标准** | 任务列表正确展示；详情页时间线实时更新；浏览器流可见；触发任务后能看到执行过程 |
+| **状态** | ✅ 已完成（2026-07-29）。新增 9 个文件（4 个页面/组件路由 + 4 个通用组件 + 2 个 API 封装），修改 3 个文件（types.ts 扩展任务相关类型 / router.tsx 注册路由 / RootLayout.tsx 顶部导航 / main.tsx 注入 QueryClientProvider / glass.css 追加 M2.5 任务管理样式约 720 行）。TypeScript 严格模式编译通过（167 modules），Vite 生产构建通过（347.80 kB gzipped 113.57 kB）。未引入新依赖（复用 @tanstack/react-query + dayjs + react-router-dom + axios）。SSE 端点 `/ai/sse/**` 已在 SecurityConfig 放行，EventSource 直接连接无需 token。 |
 
 #### M2.6 端到端联调
 

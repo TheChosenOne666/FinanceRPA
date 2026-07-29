@@ -138,3 +138,220 @@ export interface PermissionCheckResponse {
   /** 是否有权限 */
   hasPermission: boolean;
 }
+
+// ============================================================
+// 任务管理（M2.5）
+// 对齐 com.finrpa.agent.dto.request / response
+// ============================================================
+
+/**
+ * 任务状态枚举（对齐 com.finrpa.agent.enums.TaskStateEnum）
+ */
+export type TaskStatus =
+  | 'PENDING' // 待执行
+  | 'EXECUTING' // 执行中
+  | 'SUCCESS' // 成功
+  | 'FAILED' // 失败
+  | 'NEEDS_HUMAN' // 需要人工介入
+  | 'ABORTED'; // 已终止
+
+/**
+ * 子任务状态枚举（对齐 com.finrpa.agent.enums.SubTaskStateEnum）
+ */
+export type SubTaskStatus =
+  | 'PENDING' // 待执行
+  | 'RUNNING' // 执行中
+  | 'COMPLETED' // 已完成
+  | 'FAILED' // 已失败
+  | 'SKIPPED' // 已跳过
+  | 'REPLANNED'; // 已重规划
+
+/**
+ * 任务视图对象（对齐 com.finrpa.agent.dto.response.TaskVO）
+ */
+export interface TaskVO {
+  /** 任务 ID（雪花算法） */
+  taskId: string;
+  /** 组织 ID */
+  orgId: string;
+  /** 触发用户 ID */
+  userId: string;
+  /** 任务目标 */
+  goal: string;
+  /** 任务状态 */
+  status: TaskStatus;
+  /** 当前步骤序号 */
+  currentStep: number;
+  /** 总步骤数 */
+  totalSteps: number;
+  /** 状态消息 */
+  message?: string;
+  /** 错误信息 */
+  errorMessage?: string;
+  /** 创建时间（ISO 字符串） */
+  createTime: string;
+  /** 更新时间（ISO 字符串） */
+  updateTime: string;
+}
+
+/**
+ * 子任务视图对象（对齐 com.finrpa.agent.dto.response.SubTaskVO）
+ */
+export interface SubTaskVO {
+  /** 子任务 ID */
+  subtaskId: string;
+  /** 所属任务 ID */
+  taskId: string;
+  /** 子任务序号（从 0 开始） */
+  subtaskIndex: number;
+  /** 子任务目标 */
+  goal: string;
+  /** 完成条件 */
+  completionCondition?: string;
+  /** 最大重试次数 */
+  maxRetries?: number;
+  /** 失败策略：RETRY / SKIP / ABORT / REPLAN */
+  failureStrategy?: string;
+  /** 子任务状态 */
+  status: SubTaskStatus;
+  /** 错误信息 */
+  errorMessage?: string;
+  /** 执行结果数据（JSON 字符串） */
+  resultData?: string;
+  /** 开始执行时间 */
+  startedAt?: string;
+  /** 完成时间 */
+  completedAt?: string;
+  /** 创建时间 */
+  createTime: string;
+  /** 更新时间 */
+  updateTime: string;
+}
+
+/**
+ * 任务详情视图对象（对齐 com.finrpa.agent.dto.response.TaskDetailVO）
+ */
+export interface TaskDetailVO extends TaskVO {
+  /** 任务参数（JSON 字符串） */
+  params?: string;
+  /** 关联工作流模板 ID */
+  workflowId?: string;
+  /** 子任务列表 */
+  subtasks: SubTaskVO[];
+}
+
+/**
+ * 任务分页查询请求（对齐 com.finrpa.agent.dto.request.TaskQueryRequest）
+ */
+export interface TaskQueryRequest {
+  /** 当前页号（从 1 开始） */
+  current: number;
+  /** 页面大小 */
+  pageSize: number;
+  /** 排序字段 */
+  sortField?: string;
+  /** 排序顺序：asc / desc */
+  sortOrder?: 'asc' | 'desc';
+  /** 任务状态筛选 */
+  status?: TaskStatus | '';
+  /** 关键词搜索（匹配 goal） */
+  searchText?: string;
+}
+
+/**
+ * MyBatis-Plus 分页响应（对齐 com.baomidou.mybatisplus.core.metadata.IPage）
+ */
+export interface IPage<T> {
+  /** 当前页数据 */
+  records: T[];
+  /** 当前页号 */
+  current: number;
+  /** 页面大小 */
+  size: number;
+  /** 总记录数 */
+  total: number;
+  /** 总页数 */
+  pages: number;
+}
+
+/**
+ * 任务触发请求（对齐 com.finrpa.ai.client.dto.TaskTriggerRequest）
+ */
+export interface TaskTriggerRequest {
+  /** 任务目标（如 "下载银行流水"） */
+  goal: string;
+  /** 任务参数（业务自定义） */
+  params?: Record<string, unknown>;
+  /** 关联工作流模板 ID（可选） */
+  workflowId?: string;
+}
+
+/**
+ * 任务触发响应（对齐 com.finrpa.ai.client.dto.TaskTriggerResponse）
+ */
+export interface TaskTriggerResponse {
+  /** 任务 ID */
+  taskId: string;
+  /** 初始状态 */
+  status: string;
+  /** 响应消息 */
+  message: string;
+}
+
+/**
+ * SSE 事件类型（对齐 Python app/schemas.py::SseEvent）
+ */
+export type SseEventType =
+  | 'step_start'
+  | 'step_end'
+  | 'progress'
+  | 'replan'
+  | 'screenshot'
+  | 'error'
+  | 'complete';
+
+/**
+ * SSE 事件数据载荷（各事件类型共用，按需取字段）
+ */
+export interface SseEventData {
+  /** 任务 ID */
+  taskId?: string;
+  /** 当前步骤序号 */
+  currentStep?: number;
+  /** 总步骤数 */
+  totalSteps?: number;
+  /** 状态消息 */
+  message?: string;
+  /** 任务状态（终态事件携带） */
+  state?: string;
+  /** 子任务序号 */
+  subtaskIndex?: number;
+  /** 子任务目标 */
+  goal?: string;
+  /** 子任务是否成功 */
+  success?: boolean;
+  /** 执行耗时（毫秒） */
+  durationMs?: number;
+  /** 错误信息 */
+  error?: string;
+  /** 截图对象 key */
+  screenshotKey?: string;
+  /** 重新规划次数 */
+  totalReplans?: number;
+  /** 最大重新规划次数 */
+  maxReplans?: number;
+  /** 失败子任务序号 */
+  failedSubtaskIndex?: number;
+  /** 时间戳（ISO 字符串） */
+  timestamp?: string;
+}
+
+/**
+ * SSE 事件（EventSource 解析后结构）
+ */
+export interface SseEvent {
+  /** 事件类型 */
+  event: SseEventType;
+  /** 事件数据 */
+  data: SseEventData;
+}

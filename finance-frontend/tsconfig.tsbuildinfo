@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/router.tsx","./src/api/axiosclient.ts","./src/api/auth.ts","./src/api/types.ts","./src/components/authguard.tsx","./src/routes/forbidden.tsx","./src/routes/rootlayout.tsx","./src/routes/auth/loginpage.tsx","./src/store/authstore.ts"],"version":"5.9.3"}

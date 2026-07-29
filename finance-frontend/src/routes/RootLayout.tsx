@@ -14,6 +14,7 @@
 
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/AuthStore'
+import { IconList, IconTarget } from '@/components/Icons'
 
 function RootLayout() {
   const user = useAuthStore((s) => s.user)
@@ -60,8 +61,30 @@ function RootLayout() {
               borderRadius: 999,
             }}
           >
-            M1.3 占位
+            M2.5
           </span>
+          {/* region 顶部导航 */}
+          <nav className="root-nav">
+            <button
+              type="button"
+              className="root-nav-btn"
+              onClick={() => navigate('/')}
+              title="首页"
+            >
+              <IconTarget size={14} />
+              首页
+            </button>
+            <button
+              type="button"
+              className="root-nav-btn"
+              onClick={() => navigate('/tasks')}
+              title="任务列表"
+            >
+              <IconList size={14} />
+              任务
+            </button>
+          </nav>
+          {/* endregion */}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
