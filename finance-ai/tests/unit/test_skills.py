@@ -4,9 +4,9 @@ import pytest
 from pydantic import BaseModel
 
 from app.skills.base import (
+    SKILL_REGISTRY,
     BaseSkill,
     ErrorStrategy,
-    SKILL_REGISTRY,
     SkillResult,
     SkillStatus,
     get_skill,
@@ -14,11 +14,9 @@ from app.skills.base import (
     register_skill,
 )
 from app.skills.executor import (
-    PipelineResult,
     SkillStep,
     execute_pipeline,
 )
-
 
 # ---------------------------------------------------------------------------
 # 测试用 Skill
@@ -191,3 +189,75 @@ async def test_pipeline_audit_callback():
     assert len(audit_calls) == 1
     assert audit_calls[0]["skill"] == "dummy_skill"
     assert audit_calls[0]["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# get_failure_strategy() 默认行为测试（M3.1 决策 1）
+# ---------------------------------------------------------------------------
+
+def test_get_failure_strategy_default_returns_classvar():
+    """BaseSkill.get_failure_strategy 默认应返回 error_strategy ClassVar。"""
+    # DummySkill.error_strategy = RETRY
+    skill = DummySkill()
+    assert skill.get_failure_strategy() == ErrorStrategy.RETRY
+    # FailSkill.error_strategy = ABORT
+    fail_skill = FailSkill()
+    assert fail_skill.get_failure_strategy() == ErrorStrategy.ABORT
+
+
+def test_get_failure_strategy_with_error_arg():
+    """传 error 参数时，默认仍返回 ClassVar（无动态逻辑）。"""
+    skill = DummySkill()
+    assert skill.get_failure_strategy("any error") == ErrorStrategy.RETRY
+    assert skill.get_failure_strategy(None) == ErrorStrategy.RETRY
+
+
+def test_get_failure_strategy_override():
+    """子类覆写 get_failure_strategy 时应使用覆写逻辑。"""
+    class CustomSkill(BaseSkill):
+        skill_name = "custom_strategy_skill"
+        description = "覆写策略测试"
+        params_model = DummyParams
+        error_strategy = ErrorStrategy.RETRY  # 默认 RETRY
+
+        async def execute(self, params, context=None):
+            return SkillResult()
+
+        def get_failure_strategy(self, error=None):
+            # 覆写：含 timeout 字样 → SKIP，否则 ABORT
+            if error and "timeout" in error.lower():
+                return ErrorStrategy.SKIP
+            return ErrorStrategy.ABORT
+
+    skill = CustomSkill()
+    # 默认（无 error）应走覆写逻辑返回 ABORT，而不是 ClassVar RETRY
+    assert skill.get_failure_strategy() == ErrorStrategy.ABORT
+    # timeout 错误 → SKIP
+    assert skill.get_failure_strategy("Connection timeout") == ErrorStrategy.SKIP
+    # 其他错误 → ABORT
+    assert skill.get_failure_strategy("Network error") == ErrorStrategy.ABORT
+
+
+# ---------------------------------------------------------------------------
+# 7 个 Skill 注册完整性测试（M3.1）
+# ---------------------------------------------------------------------------
+
+def test_seven_skills_registered():
+    """导入 app.skills 包后应自动注册 7 个 Skill。"""
+    # 触发 app.skills 包导入（如未导入）
+    import app.skills  # noqa: F401
+
+    expected_skills = {
+        "login",
+        "session_keep_alive",
+        "form_fill",
+        "search_and_select",
+        "pagination",
+        "table_extract",
+        "file_download",
+    }
+    registered = set(SKILL_REGISTRY.keys())
+    # 7 个 Skill 都应在注册表中（注册表还包含测试 DummySkill/FailSkill）
+    assert expected_skills.issubset(registered), (
+        f"缺失 Skill: {expected_skills - registered}"
+    )

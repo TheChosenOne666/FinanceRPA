@@ -21,7 +21,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 
-class ErrorStrategy(str, enum.Enum):
+class ErrorStrategy(str, enum.Enum):  # noqa: UP042
     """Skill 执行失败时的处理策略。"""
 
     RETRY = "retry"      # 重试最多 max_retries 次
@@ -29,7 +29,7 @@ class ErrorStrategy(str, enum.Enum):
     ABORT = "abort"      # 终止整个管线
 
 
-class SkillStatus(str, enum.Enum):
+class SkillStatus(str, enum.Enum):  # noqa: UP042
     """Skill 调用的执行状态。"""
 
     PENDING = "pending"
@@ -78,6 +78,19 @@ class BaseSkill(ABC):
         @param context: 可选执行上下文（浏览器页面、会话等）
         @return: 包含状态和输出数据的 SkillResult
         """
+
+    def get_failure_strategy(self, error: str | None = None) -> ErrorStrategy:
+        """根据错误信息返回失败处理策略。
+
+        默认返回 self.error_strategy（ClassVar 声明的默认策略）。
+        子类可覆写此方法，根据 error 内容动态决策，例如：
+        - LoginSkill 区分 captcha 错误 vs 网络错误
+        - FormFillSkill 区分 字段未找到 vs 提交超时
+
+        @param error: Skill 执行失败时的错误信息（可空）
+        @return: 失败处理策略（RETRY / SKIP / ABORT）
+        """
+        return self.error_strategy
 
     def validate_params(self, raw_params: dict[str, Any]) -> BaseModel:
         """校验原始参数。"""

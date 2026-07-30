@@ -1018,6 +1018,174 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `app/skills/` 完整代码 + 单元测试 |
 | **描述** | 1. `base.py`：BaseSkill 抽象基类 + SkillContext + ExecutionResult<br>2. `auth_skills.py`：LoginSkill（用户名密码 + 2FA + TOTP）、SessionKeepAliveSkill<br>3. `interaction_skills.py`：FormFillSkill、SearchAndSelectSkill、PaginationSkill<br>4. `extraction_skills.py`：TableExtractSkill、FileDownloadSkill<br>5. 每个 Skill 实现 `execute()` + `get_failure_strategy()`<br>6. 参数模型：Pydantic BaseModel 定义每个 Skill 的参数 |
 | **验收标准** | 7 个 Skill 单元测试覆盖率 ≥ 85%；每个 Skill 能独立执行；失败策略返回正确 |
+| **状态** | ✅ 已完成（2026-07-30） |
+
+**实施结果**：
+- 7 个 Skill 全部实现并通过单元测试：LoginSkill / SessionKeepAliveSkill / FormFillSkill / SearchAndSelectSkill / PaginationSkill / TableExtractSkill / FileDownloadSkill
+- 69 个测试用例全部通过（含 11 个 base/executor 回归测试 + 18 个 auth_skills + 21 个 interaction_skills + 19 个 extraction_skills）
+- ruff 静态检查全部通过
+- `get_failure_strategy()` 默认方法已添加到 BaseSkill，LoginSkill 覆写示范了 captcha 错误的动态决策
+- 决策 4 调整：LoginSkill 仅含 captcha_strategy，不实现 2FA/TOTP（与参考项目 1:1 对齐）
+- 决策 5 落地：FileDownloadSkill 默认下载到 `/tmp/finrpa/downloads/`，支持 `context["upload_callback"]` 上传 MinIO 并清理本地文件
+- M3.1 不引入 Skyvern，7 个 Skill 直接用 Playwright Page API；未来引入 Skyvern 时只换 Page 来源，不改 Skill 内部代码
+- 预先存在的 `test_coordinator_with_java_callback_success` 测试失败（M2.x 遗留问题，coordinator 不发 progress 事件），与 M3.1 无关
+
+##### 技术实现方案
+
+> 本方案经 2026-07-30 评审确认，作为 M3.1 实施依据。开发前不再更改。
+
+**核心设计原则**：
+
+1. **不引入 Skyvern**：M3.1 阶段 7 个 Skill 直接使用 Playwright Page API，与参考项目 `finrpa-enterprise/enterprise/skills/` 1:1 对齐。未来引入 Skyvern 时**只换 Page 来源**（由 Skyvern `ForgeAgent` 管理 BrowserContext，Page 注入到 `context["page"]`），**不改 Skill 内部的 `page.goto()` / `page.fill()` 等调用**。理由：参考项目本身从未把 Skills 改写为 ForgeAgent Step 抽象，Skills 目录下 0 处 `from skyvern` 引用，全部直接操作 Playwright Page。
+2. **复刻参考项目结构**：7 个 Skill 的命名、参数模型、execute() 流程、error_strategy、max_retries 均与 `enterprise/skills/{auth,interaction,extraction}_skills.py` 一致。
+3. **测试不依赖真实浏览器**：单元测试用 `unittest.mock.AsyncMock` 模拟 Playwright Page 对象，不启动 Chromium。
+
+---
+
+**决策 1：error_strategy ClassVar + 可覆写 get_failure_strategy() 方法**
+
+- 保留 M2.1 已实现的 ClassVar `error_strategy: ErrorStrategy` 作为**默认策略**
+- 在 `BaseSkill` 增加一个**可选覆写**的方法：
+
+  ```python
+  def get_failure_strategy(self, error: str | None = None) -> ErrorStrategy:
+      """根据错误信息返回失败处理策略，默认返回 self.error_strategy。"""
+      return self.error_strategy
+  ```
+
+- 7 个 Skill 在简单场景下只声明 ClassVar；如需根据错误类型动态决策（如 LoginSkill 区分 captcha 错误 vs 网络错误），覆写 `get_failure_strategy()`
+- `execute_pipeline()` 在 M3.2 中调用 `skill.get_failure_strategy(error)` 替代直接读 ClassVar（M3.1 仅在 BaseSkill 添加方法，executor.py 改造留到 M3.2）
+
+---
+
+**决策 2：LLM handler 双模式**
+
+- **LLM 模式**（后续实现）：通过 `context["llm_handler"]` 调用 LLM 视觉决策，handler 签名为 `async def llm_handler(page, navigation_goal: str) -> None`
+- **Fallback 模式**（M3.1 本阶段使用）：直接用 Playwright 选择器操作（`page.fill()` / `page.click()` / `page.query_selector()` 等）
+- 每个 Skill 在 execute() 内部优先检查 `context.get("llm_handler")`，存在则用 LLM 模式，否则用 Fallback 模式
+- M3.1 单元测试全部走 Fallback 模式，不依赖 LLM
+
+---
+
+**决策 3：浏览器上下文来源**
+
+- 7 个 Skill 一律从 `context["page"]` 取 Playwright Page 对象
+- Page 缺失时立即返回 `SkillResult(status=SkillStatus.FAILED, error_message="No browser page in context")`
+- Skill 需要更细粒度的原语（fill/click/query_selector/evaluate/expect_download/wait_for_url/wait_for_timeout 等），直接操作 Page，不通过中间抽象层
+- `context` 预留字段（M3.2 Pipeline 执行器注入）：
+  - `page`：Playwright Page 对象（必需）
+  - `llm_handler`：LLM 视觉决策回调（可选，M5 注入）
+  - `upload_callback`：MinIO 上传回调（可选，FileDownloadSkill 用）
+  - `audit_context`：审计上下文（org_id / task_id / subtask_index，M3.2 注入）
+  - `screenshot_callback`：截图回调（可选，M7 注入）
+
+---
+
+**决策 4：LoginSkill 实现范围（与参考项目 1:1 对齐）**
+
+- LoginParams 字段**仅含 captcha_strategy**，不实现 2FA / TOTP / pyotp
+- 与 `enterprise/skills/auth_skills.py` 的 LoginParams 完全一致：
+
+  ```python
+  class LoginParams(BaseModel):
+      url: str
+      username: str
+      password: str
+      captcha_strategy: str = "skip"          # skip | manual | ocr
+      submit_selector: str | None = None
+      success_indicator: str = ""
+  ```
+
+- task-breakdown.md M3.1 描述中的「LoginSkill（用户名密码 + 2FA + TOTP）」作废，以本决策为准
+- 如未来需要 2FA/TOTP，作为 LoginSkill 的增强功能单独引入（届时再评估是否引入 pyotp）
+
+---
+
+**决策 5：FileDownloadSkill 下载文件去向**
+
+- `FileDownloadParams.download_path` 默认值改为 `/tmp/finrpa/downloads/`（容器内临时目录）
+- 执行流程：
+  1. `page.expect_download()` 触发并等待下载
+  2. `download.save_as(save_path)` 保存到本地临时目录
+  3. 若 `context["upload_callback"]` 存在：调用 `await upload_callback(save_path, filename)` 上传 MinIO，返回 `minio_key`；上传后删除本地文件
+  4. 若 `upload_callback` 不存在：仅返回 `save_path`（M3.1 单元测试场景）
+- SkillResult.data 返回字段：
+  - 有 upload_callback：`{"filename", "minio_key", "suggested_filename"}`
+  - 无 upload_callback：`{"filename", "save_path", "suggested_filename"}`
+
+---
+
+##### 7 个 Skill 实现规格
+
+| # | Skill | 文件 | skill_name | error_strategy | max_retries | 关键参数 |
+|---|---|---|---|---|---|---|
+| 1 | LoginSkill | auth_skills.py | `login` | ABORT | 3 | url / username / password / captcha_strategy / submit_selector / success_indicator |
+| 2 | SessionKeepAliveSkill | auth_skills.py | `session_keep_alive` | RETRY | 2 | heartbeat_url / session_timeout_indicator / relogin_on_expire / login_params |
+| 3 | FormFillSkill | interaction_skills.py | `form_fill` | RETRY | 2 | field_mapping / submit_after_fill / submit_selector / date_format |
+| 4 | SearchAndSelectSkill | interaction_skills.py | `search_and_select` | RETRY | 2 | search_text / target_text / search_selector / result_container_selector / wait_for_results_ms |
+| 5 | PaginationSkill | interaction_skills.py | `pagination` | SKIP | 1 | max_pages / next_button_selector / next_button_text / page_data_selector / wait_between_pages_ms / stop_on_empty |
+| 6 | TableExtractSkill | extraction_skills.py | `table_extract` | RETRY | 2 | table_selector / headers / output_format(json\|csv) / max_rows / include_pagination / skip_empty_rows |
+| 7 | FileDownloadSkill | extraction_skills.py | `file_download` | RETRY | 2 | trigger_selector / trigger_text / download_path / expected_extension / wait_timeout_ms |
+
+每个 Skill 的 `execute()` 流程严格按参考项目 `enterprise/skills/{auth,interaction,extraction}_skills.py` 1:1 复刻，包括：
+- 双模式（LLM handler / Fallback 选择器）分支
+- 错误捕获与 SkillResult 返回
+- `duration_ms` 字段计算
+- `to_audit_dict()` 脱敏沿用 BaseSkill 默认实现
+
+---
+
+##### 文件清单
+
+| 文件 | 操作 | 内容 |
+|---|---|---|
+| `finance-ai/app/skills/base.py` | 修改 | 新增 `get_failure_strategy()` 默认方法 |
+| `finance-ai/app/skills/auth_skills.py` | 新增 | LoginSkill + SessionKeepAliveSkill |
+| `finance-ai/app/skills/interaction_skills.py` | 新增 | FormFillSkill + SearchAndSelectSkill + PaginationSkill |
+| `finance-ai/app/skills/extraction_skills.py` | 新增 | TableExtractSkill + FileDownloadSkill |
+| `finance-ai/app/skills/__init__.py` | 修改 | 补全导出 + import 三个 skills 模块触发自动注册 |
+| `finance-ai/tests/unit/test_auth_skills.py` | 新增 | LoginSkill + SessionKeepAliveSkill 单元测试 |
+| `finance-ai/tests/unit/test_interaction_skills.py` | 新增 | FormFill + SearchAndSelect + Pagination 单元测试 |
+| `finance-ai/tests/unit/test_extraction_skills.py` | 新增 | TableExtract + FileDownload 单元测试 |
+| `finance-ai/tests/unit/test_skills.py` | 修改 | 新增 `get_failure_strategy()` 默认行为测试 |
+
+---
+
+##### 测试策略
+
+- **覆盖率目标**：≥ 85%
+- **Mock 策略**：用 `unittest.mock.AsyncMock` 模拟 Playwright Page，包括：
+  - `page.goto` / `page.fill` / `page.click` / `page.query_selector` / `page.query_selector_all`
+  - `page.evaluate` / `page.content` / `page.wait_for_url` / `page.wait_for_timeout`
+  - `page.keyboard.press`
+  - `page.expect_download`（用 `__aenter__` / `__aexit__` 模拟 async context manager）
+  - 元素对象：`element.click` / `element.inner_text` / `element.evaluate`
+- **不引入真实 Playwright/Chromium 依赖**：M3.1 测试纯 mock，无浏览器启动
+- **测试用例覆盖**：
+  - 成功路径（每个 Skill 至少 1 个）
+  - 失败路径（Page 缺失 / 元素未找到 / 超时）
+  - 边界条件（max_pages=1 / 空表 / 部分字段填充失败）
+  - LLM handler 存在/不存在分支
+  - `get_failure_strategy()` 默认返回与覆写返回
+
+---
+
+##### 依赖变更
+
+- **无新增依赖**：决策 4 不引入 pyotp；7 个 Skill 仅用 Pydantic + 标准库（csv / io / logging / time）
+- Playwright 仍由 Skyvern base image（`mcr.microsoft.com/playwright:v1.49.0-jammy-full`）预装，本阶段不显式声明依赖
+
+---
+
+##### 与 M2.1 已实现代码的关系
+
+| M2.1 已有 | M3.1 操作 |
+|---|---|
+| `app/skills/base.py`（BaseSkill / SkillResult / ErrorStrategy / SkillStatus / SKILL_REGISTRY / register_skill / get_skill / list_skills / to_audit_dict） | **保留**，仅新增 `get_failure_strategy()` 默认方法 |
+| `app/skills/executor.py`（SkillStep / PipelineResult / execute_pipeline） | **保留不动**，M3.1 不改 Pipeline 执行器（M3.2 才改造调用 `get_failure_strategy()`） |
+| `tests/unit/test_skills.py`（注册表 / 参数校验 / 脱敏 / Pipeline 行为） | **保留**，仅追加 `get_failure_strategy()` 默认行为测试 |
+
+---
 
 #### M3.2 Python Skill Pipeline 执行器
 
