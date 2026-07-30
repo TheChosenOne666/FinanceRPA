@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+import fakeredis.aioredis
 import pytest
 
 from app.agent.coordinator import AgentCoordinator
@@ -175,18 +176,20 @@ async def test_coordinator_with_java_callback_success():
     mock_java.update_subtask = AsyncMock(return_value=True)
     mock_java.report_audit_log = AsyncMock(return_value=True)
 
-    bus = TaskEventBus()
+    bus = TaskEventBus(redis_client=fakeredis.aioredis.FakeRedis(decode_responses=True))
     bus.register("task-java-1")
 
     # 收集 SSE 事件
     events = []
+    ready = asyncio.Event()
 
     async def collect():
-        async for event in bus.subscribe("task-java-1"):
+        async for event in bus.subscribe("task-java-1", on_ready=ready.set):
             events.append(event)
 
     asyncio.create_task(collect())
-    await asyncio.sleep(0.05)
+    # 等待订阅就绪，避免 coordinator 在订阅完成前发布 progress 事件导致丢失
+    await ready.wait()
 
     planner = PlannerAgent()
     executor = ExecutorAgent(
@@ -238,7 +241,7 @@ async def test_coordinator_with_java_callback_failure():
     mock_java.update_subtask = AsyncMock(return_value=True)
     mock_java.report_audit_log = AsyncMock(return_value=True)
 
-    bus = TaskEventBus()
+    bus = TaskEventBus(redis_client=fakeredis.aioredis.FakeRedis(decode_responses=True))
     bus.register("task-java-2")
 
     planner = PlannerAgent()

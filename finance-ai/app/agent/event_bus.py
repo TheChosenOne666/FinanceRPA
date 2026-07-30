@@ -26,6 +26,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
+from typing import Callable
 
 import redis.asyncio as aioredis
 
@@ -134,13 +135,18 @@ class TaskEventBus:
             task_id, event_type, count,
         )
 
-    async def subscribe(self, task_id: str) -> AsyncIterator[dict]:
+    async def subscribe(
+        self,
+        task_id: str,
+        on_ready: Callable[[], None] | None = None,
+    ) -> AsyncIterator[dict]:
         """订阅任务事件流。
 
         如果任务已结束，从 Redis 终态缓存获取并立即返回。
         如果任务不存在且无缓存，返回 error 事件。
 
         @param task_id: 任务 ID
+        @param on_ready: 订阅完成后的回调（供测试同步，避免发布者抢跑导致事件丢失）
         @return: 事件异步迭代器
         """
         redis = await self._get_redis()
@@ -153,6 +159,8 @@ class TaskEventBus:
                 "事件总线: 迟到订阅者获取终态缓存 [task=%s, event=%s]",
                 task_id, event["event"],
             )
+            if on_ready is not None:
+                on_ready()
             yield event
             return
 
@@ -163,6 +171,10 @@ class TaskEventBus:
         logger.info(
             "事件总线: 新订阅者连接 [task=%s, channel=%s]", task_id, channel,
         )
+
+        # 通知订阅就绪（供测试同步，防止发布者在订阅完成前发布事件）
+        if on_ready is not None:
+            on_ready()
 
         try:
             # 双重检查：订阅后再次检查终态缓存（防止订阅前刚发布的终态事件丢失）
