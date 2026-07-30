@@ -1,8 +1,10 @@
 package com.finrpa.agent.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finrpa.agent.dto.request.AuditLogCreateRequest;
 import com.finrpa.agent.dto.request.SubTaskUpdateRequest;
 import com.finrpa.agent.dto.request.TaskStateUpdateRequest;
+import com.finrpa.agent.service.AuditLogService;
 import com.finrpa.agent.service.TaskService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,15 +37,18 @@ class InternalTaskControllerTest {
 
     private MockMvc mockMvc;
     private TaskService taskService;
+    private AuditLogService auditLogService;
 
     @BeforeEach
     void setUp() {
         // 1. mock 依赖
         taskService = mock(TaskService.class);
+        auditLogService = mock(AuditLogService.class);
 
         // 2. 构建 MockMvc（standalone，不走拦截器）
         InternalTaskController controller = new InternalTaskController();
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "taskService", taskService);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "auditLogService", auditLogService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -87,5 +92,31 @@ class InternalTaskControllerTest {
 
         // 3. 验证 service 被调用
         verify(taskService, times(1)).updateSubTask(eq(TEST_TASK_ID), any(SubTaskUpdateRequest.class));
+    }
+
+    @Test
+    @DisplayName("上报审计日志 - 成功")
+    void createAuditLog_Success() throws Exception {
+        // 1. 构建请求
+        AuditLogCreateRequest request = new AuditLogCreateRequest();
+        request.setTaskId(TEST_TASK_ID);
+        request.setOrgId(2082342545947660289L);
+        request.setActionType("LOGIN");
+        request.setExecutionResult("success");
+        request.setPageUrl("https://bank.example.com/login");
+
+        // 2. mock
+        when(auditLogService.createAuditLog(any(AuditLogCreateRequest.class))).thenReturn(true);
+
+        // 3. 执行请求并验证
+        mockMvc.perform(post("/internal/audit/logs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value(true));
+
+        // 4. 验证 service 被调用
+        verify(auditLogService, times(1)).createAuditLog(any(AuditLogCreateRequest.class));
     }
 }

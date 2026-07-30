@@ -915,6 +915,17 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 
 这些端点统一通过 `X-Internal-Token` Header 鉴权，仅 Docker 内网可达，不对外暴露。
 
+**端点实现状态**（M3.6 联调时修复）：
+
+| 端点 | 实现状态 | 说明 |
+|------|----------|------|
+| `POST /internal/tasks/{id}/state` | ✅ M2.3 已实现 | 更新任务状态 |
+| `POST /internal/tasks/{id}/subtasks` | ✅ M2.3 已实现 | 更新子任务状态 |
+| `POST /internal/audit/logs` | ✅ M3.6 联调修复 | 修复 403 bug：新增 V10 迁移 + AuditLogEO/Service/Controller + TenantConstant 忽略列表 |
+| `POST /internal/screenshots` | ⏳ 延后 | Python 端 upload_screenshot 方法已定义但未实际调用，待 M6.4.2 截图存储模块实现 |
+| `POST /internal/llm/calls` | ⏳ 延后 | 待 M6.3 LLM 调用统计模块实现 |
+| `POST /internal/llm/needs-human` | ⏳ 延后 | 待 M6.5 人工接管模块实现 |
+
 **关键设计决策**：
 
 | 决策 | 方案 | 理由 |

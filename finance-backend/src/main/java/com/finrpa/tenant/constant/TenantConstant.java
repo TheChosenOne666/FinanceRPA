@@ -44,6 +44,9 @@ public interface TenantConstant {
             "rpa_agent_task",
             "rpa_agent_subtask",
             "rpa_agent_coordination_state",
+            // 审计日志表：有 org_id 字段，但由 Python 回调写入（无 JWT 上下文），
+            // org_id 由 Python 端显式传入，需绕过自动租户过滤
+            "rpa_audit_log",
             // Skill 元数据表：全局共享（无 org_id 字段），所有租户用同一套 Skill 定义
             "rpa_skill_meta",
             // 工作流模板表：全局共享（无 org_id 字段），所有租户用同一套模板

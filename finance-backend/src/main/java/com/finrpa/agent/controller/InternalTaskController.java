@@ -1,7 +1,9 @@
 package com.finrpa.agent.controller;
 
+import com.finrpa.agent.dto.request.AuditLogCreateRequest;
 import com.finrpa.agent.dto.request.SubTaskUpdateRequest;
 import com.finrpa.agent.dto.request.TaskStateUpdateRequest;
+import com.finrpa.agent.service.AuditLogService;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.common.response.BaseResponse;
 import com.finrpa.common.response.ResultUtils;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>POST /internal/tasks/{taskId}/state —— 更新任务状态</li>
  *   <li>POST /internal/tasks/{taskId}/subtasks —— 更新子任务状态</li>
+ *   <li>POST /internal/audit/logs —— 上报审计日志</li>
  * </ul>
  * </p>
  *
@@ -40,6 +43,10 @@ public class InternalTaskController {
     /** 任务服务 */
     @Resource
     private TaskService taskService;
+
+    /** 审计日志服务 */
+    @Resource
+    private AuditLogService auditLogService;
 
     // region 任务状态回调
 
@@ -76,6 +83,26 @@ public class InternalTaskController {
         // 1. 更新子任务状态
         taskService.updateSubTask(taskId, request);
         return ResultUtils.success(true);
+    }
+
+    // endregion
+
+    // region 审计日志回调
+
+    /**
+     * 上报审计日志（Python 回调）
+     *
+     * @param request 审计日志创建请求
+     * @return 操作结果
+     */
+    @PostMapping("/audit/logs")
+    @Operation(summary = "上报审计日志", description = "Python Executor 回调记录任务执行的操作行为")
+    public BaseResponse<Boolean> createAuditLog(@RequestBody AuditLogCreateRequest request) {
+        log.info("收到审计日志回调: taskId={}, actionType={}, result={}",
+                request.getTaskId(), request.getActionType(), request.getExecutionResult());
+        // 1. 保存审计日志
+        boolean success = auditLogService.createAuditLog(request);
+        return ResultUtils.success(success);
     }
 
     // endregion
