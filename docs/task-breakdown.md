@@ -1279,6 +1279,9 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `workflows/` 模块完整代码 |
 | **描述** | 1. 实体：`WorkflowTemplateEO`（name / industry / risk_level / params[] / steps[]）<br>2. `WorkflowService`：CRUD + 校验<br>3. `FernetCryptoService`：与 Python cryptography 字节级兼容<br>4. `WorkflowValidator`：校验 Skill 引用合法性、参数完整性<br>5. `WorkflowTriggerService`：触发执行 → 解密参数 → 创建任务 → 调 Python<br>6. API：`GET /api/v1/workflows` / `POST /api/v1/workflows` / `POST /api/v1/workflows/{id}/run` / `GET /api/v1/workflows/{id}/runs` |
 | **验收标准** | 模板 CRUD 正常；敏感参数加密存储；触发执行创建任务成功；Java 解密结果与 Python 加密一致 |
+| **状态** | ✅ 已完成（2026-07-30） |
+| **测试覆盖** | Java 36 个测试通过（ServiceImpl 18 + TriggerServiceImpl 10 + Controller 8）；Python Fernet 跨语言兼容测试通过 |
+| **修复 Bug** | `WorkflowTriggerServiceImpl.resolveParams` 中 `Matcher.appendReplacement` 二次解释 `\` 与 `$` 元字符破坏 JSON 转义；改用 `Matcher.quoteReplacement` 包裹 replacement |
 
 #### M3.5 6 个金融工作流模板配置
 

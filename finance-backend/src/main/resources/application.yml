@@ -70,6 +70,11 @@ jwt:
   access-token-expire-minutes: 60
   refresh-token-expire-days: 7
 
+# Fernet 加密配置（M3.4 工作流敏感参数加密，与 Python cryptography 字节级兼容）
+fernet:
+  # 32 字节密钥的 Base64url 编码，生产环境必须通过环境变量 FERNET_KEY 注入
+  key: ${FERNET_KEY:Mfm6N6AzRZDx8U1zIlbYj64Sfh69sNQnr2eK6mGGjC4=}
+
 # AI 服务配置（Java → Python HTTP 客户端 + SSE 透传）
 ai:
   # Python finance-ai 服务基础地址

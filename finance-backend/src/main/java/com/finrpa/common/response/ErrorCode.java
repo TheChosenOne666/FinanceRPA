@@ -23,7 +23,17 @@ public enum ErrorCode {
     // Skill 元数据相关错误码（M3.3）
     SKILL_NOT_FOUND(40401, "Skill 不存在"),
     SKILL_ALREADY_EXISTS(40402, "Skill 已存在"),
-    SKILL_NOT_ENABLED(40403, "Skill 已禁用");
+    SKILL_NOT_ENABLED(40403, "Skill 已禁用"),
+    // 工作流模板相关错误码（M3.4）
+    WORKFLOW_NOT_FOUND(40410, "工作流模板不存在"),
+    WORKFLOW_ALREADY_EXISTS(40411, "工作流模板已存在"),
+    WORKFLOW_DISABLED(40412, "工作流模板已禁用"),
+    SKILL_REF_INVALID(40413, "工作流步骤引用的 Skill 不合法"),
+    PARAM_VALIDATE_FAILED(40414, "工作流参数校验失败"),
+    // Fernet 加密相关错误码（M3.4）
+    FERNET_KEY_INVALID(50010, "Fernet 密钥不合法"),
+    FERNET_ENCRYPT_FAILED(50011, "Fernet 加密失败"),
+    FERNET_DECRYPT_FAILED(50012, "Fernet 解密失败");
 
     /**
      * 错误码
