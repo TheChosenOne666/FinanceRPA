@@ -1193,9 +1193,38 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 |----|------|
 | **规模** | M |
 | **前置依赖** | M3.1 |
-| **产出物** | `app/skills/executor.py` |
+| **产出物** | `app/skills/executor.py`、`app/skills/param_resolver.py` |
 | **描述** | 1. Pipeline 执行器：按顺序执行 Skill 列表<br>2. 参数映射：引用模式 `{{workflow.params.xxx}}` + 字面量模式<br>3. 上下文传递：前一个 Skill 输出可作为后一个 Skill 输入<br>4. 失败处理：按 Skill 的 `get_failure_strategy()` 处理<br>5. 审计回调：每步执行上报 Java |
 | **验收标准** | Pipeline 能串联多个 Skill；参数映射正确；失败策略生效 |
+| **状态** | ✅ 已完成（2026-07-30） |
+
+##### M3.2 实施结果
+
+**新增文件**：
+- `app/skills/param_resolver.py`：参数映射解析器，复刻参考项目 `enterprise/workflows/schemas.py` 的 `SkillStepDefinition.param_mapping` 语法
+- `tests/unit/test_param_resolver.py`：25 个参数映射解析器单元测试
+- `tests/unit/test_pipeline.py`：16 个 Pipeline 集成测试
+
+**修改文件**：
+- `app/skills/executor.py`：Pipeline 执行器改造（5 个功能点）
+- `app/skills/__init__.py`：导出 `resolve_param_mapping` / `resolve_param_value`
+
+**参数映射语法**（复刻参考项目 `param_mapping`）：
+1. **字面量模式**：`=csv` → `"csv"`，`=500` → `500`（自动 JSON 解析）
+2. **引用模式**：`bank_url` → `workflow_params["bank_url"]`
+3. **嵌入引用**：`={"key": "${param_name}"}` → 解析 `${}` 内工作流参数引用
+4. **上下文引用**：`{{steps.0.data.filename}}` → 从前序步骤输出取值
+5. **上下文嵌入**：`=prefix_{{steps.0.data.filename}}_suffix` → 字符串替换
+
+**Pipeline 改造要点**：
+- `SkillStep` 新增 `param_mapping: dict[str, str] | None` 字段
+- `execute_pipeline()` 新增 `workflow_params` 参数，执行前解析 `param_mapping`
+- 上下文传递：每步完成后将 step_record 存入 `context["step_results"]`，后续步骤可通过 `{{steps.N.data.key}}` 引用
+- 失败处理：调用 `skill.get_failure_strategy(error)` 替代直接读 ClassVar，`error_strategy_override` 优先级最高
+- 审计回调：保持原有签名，增强日志输出
+- 向后兼容：不使用 `param_mapping` 时，直接 `params` 方式仍正常工作
+
+**测试覆盖**：148 个单元测试全部通过，ruff 静态检查通过
 
 #### M3.3 Java skills 元数据管理
 

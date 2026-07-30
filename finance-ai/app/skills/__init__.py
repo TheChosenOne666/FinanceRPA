@@ -52,6 +52,7 @@ from .interaction_skills import (
     SearchAndSelectParams,
     SearchAndSelectSkill,
 )
+from .param_resolver import resolve_param_mapping, resolve_param_value
 
 __all__ = [
     # base
@@ -84,4 +85,7 @@ __all__ = [
     "TableExtractSkill",
     "FileDownloadParams",
     "FileDownloadSkill",
+    # param resolver
+    "resolve_param_mapping",
+    "resolve_param_value",
 ]
