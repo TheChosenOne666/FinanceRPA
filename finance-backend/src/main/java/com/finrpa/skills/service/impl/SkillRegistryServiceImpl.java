@@ -160,7 +160,7 @@ public class SkillRegistryServiceImpl implements SkillRegistryService {
 
         // 3. 按非空字段更新
         SkillMetaEO update = new SkillMetaEO();
-        update.setId(skill.getId());
+        update.setSkillId(skill.getSkillId());
         if (request.getDescription() != null) {
             update.setDescription(request.getDescription());
         }
@@ -210,7 +210,7 @@ public class SkillRegistryServiceImpl implements SkillRegistryService {
             } else {
                 // 已存在：仅更新元数据字段，不动 enabled（避免启动时把用户禁用的 Skill 重新启用）
                 SkillMetaEO update = new SkillMetaEO();
-                update.setId(existing.getId());
+                update.setSkillId(existing.getSkillId());
                 update.setDescription(builtin.getDescription());
                 update.setCategory(builtin.getCategory());
                 update.setParamSchema(builtin.getParamSchema());
