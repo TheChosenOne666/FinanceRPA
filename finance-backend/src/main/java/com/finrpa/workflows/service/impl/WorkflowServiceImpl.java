@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
+import com.finrpa.workflows.constant.WorkflowConstant;
 import com.finrpa.workflows.dto.request.WorkflowAddRequest;
 import com.finrpa.workflows.dto.request.WorkflowQueryRequest;
 import com.finrpa.workflows.dto.request.WorkflowUpdateRequest;
@@ -174,6 +175,64 @@ public class WorkflowServiceImpl implements WorkflowService {
         return workflowTemplateMapper.selectOne(
                 new LambdaQueryWrapper<WorkflowTemplateEO>()
                         .eq(WorkflowTemplateEO::getWorkflowId, workflowId)
+        );
+    }
+
+    /**
+     * 启动时注册 6 个内置金融场景工作流模板（upsert，不动 enabled 状态）
+     *
+     * <p>upsert 语义：
+     * <ul>
+     *   <li>不存在：校验 Skill 引用合法性后插入</li>
+     *   <li>已存在：仅更新元数据字段（description / params / steps / version），不动 enabled</li>
+     * </ul>
+     * </p>
+     */
+    @Override
+    public void registerBuiltinWorkflows() {
+        // 1. 遍历 6 个内置模板常量
+        int inserted = 0;
+        int updated = 0;
+        for (WorkflowTemplateEO builtin : WorkflowConstant.BUILTIN_TEMPLATES) {
+            // 2. 按 name 查询是否已存在
+            WorkflowTemplateEO existing = queryByName(builtin.getName());
+            if (existing == null) {
+                // 3. 不存在：校验 Skill 引用合法性后插入
+                WorkflowAddRequest addRequest = new WorkflowAddRequest();
+                addRequest.setName(builtin.getName());
+                addRequest.setDescription(builtin.getDescription());
+                addRequest.setIndustry(builtin.getIndustry());
+                addRequest.setRiskLevel(builtin.getRiskLevel());
+                addRequest.setParams(builtin.getParams());
+                addRequest.setSteps(builtin.getSteps());
+                // 3.1 复用 createWorkflow 的校验逻辑（包含 Skill 引用合法性）
+                createWorkflow(addRequest);
+                inserted++;
+            } else {
+                // 4. 已存在：仅更新元数据字段，不动 enabled（避免启动时把用户禁用的模板重新启用）
+                WorkflowTemplateEO update = new WorkflowTemplateEO();
+                update.setWorkflowId(existing.getWorkflowId());
+                update.setDescription(builtin.getDescription());
+                update.setParams(builtin.getParams());
+                update.setSteps(builtin.getSteps());
+                update.setVersion(builtin.getVersion());
+                workflowTemplateMapper.updateById(update);
+                updated++;
+            }
+        }
+        log.info("内置工作流模板注册完成: 新增 {} 个，更新 {} 个", inserted, updated);
+    }
+
+    /**
+     * 按 name 查询未删除的工作流模板
+     *
+     * @param name 模板名称
+     * @return 模板实体；不存在返回 null
+     */
+    private WorkflowTemplateEO queryByName(String name) {
+        return workflowTemplateMapper.selectOne(
+                new LambdaQueryWrapper<WorkflowTemplateEO>()
+                        .eq(WorkflowTemplateEO::getName, name)
         );
     }
 

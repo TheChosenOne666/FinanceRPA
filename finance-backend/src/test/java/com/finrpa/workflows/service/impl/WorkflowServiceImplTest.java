@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.finrpa.common.exception.BusinessException;
+import com.finrpa.workflows.constant.WorkflowConstant;
 import com.finrpa.workflows.dto.request.WorkflowAddRequest;
 import com.finrpa.workflows.dto.request.WorkflowQueryRequest;
 import com.finrpa.workflows.dto.request.WorkflowUpdateRequest;
@@ -325,6 +326,83 @@ class WorkflowServiceImplTest {
         WorkflowTemplateEO result = workflowService.queryByWorkflowId(TEST_WORKFLOW_ID);
 
         assertThat(result).isNull();
+    }
+
+    // endregion
+
+    // region registerBuiltinWorkflows
+
+    @Test
+    @DisplayName("内置模板注册 - 全新插入 6 个")
+    void registerBuiltinWorkflows_AllNew() {
+        // 1. 所有模板名称都不存在
+        when(workflowTemplateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+        // 2. 名称唯一性检查通过（count=0）
+        when(workflowTemplateMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        // 3. 插入成功
+        when(workflowTemplateMapper.insert(any(WorkflowTemplateEO.class))).thenReturn(1);
+
+        // 4. 执行注册
+        workflowService.registerBuiltinWorkflows();
+
+        // 5. 验证插入 6 次，更新 0 次
+        verify(workflowTemplateMapper, times(6)).insert(any(WorkflowTemplateEO.class));
+        verify(workflowTemplateMapper, never())
+                .updateById(org.mockito.ArgumentMatchers.<WorkflowTemplateEO>any());
+    }
+
+    @Test
+    @DisplayName("内置模板注册 - 已存在则更新（不动 enabled）")
+    void registerBuiltinWorkflows_ExistingUpdate() {
+        // 1. 第一个模板（银行流水下载）已存在，其他 5 个不存在
+        WorkflowTemplateEO existing = buildEntity("银行流水下载", "banking", "medium");
+        existing.setEnabled(0);  // 用户已禁用
+        when(workflowTemplateMapper.selectOne(any(LambdaQueryWrapper.class)))
+                .thenReturn(existing)   // 第一次 queryByName 返回已存在
+                .thenReturn(null)       // 后续 5 个返回 null
+                .thenReturn(null)
+                .thenReturn(null)
+                .thenReturn(null)
+                .thenReturn(null);
+        // 2. 名称唯一性检查（仅对不存在的 5 个模板调用）
+        when(workflowTemplateMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        // 3. 更新与插入都成功
+        doReturn(1).when(workflowTemplateMapper)
+                .updateById(org.mockito.ArgumentMatchers.<WorkflowTemplateEO>any());
+        when(workflowTemplateMapper.insert(any(WorkflowTemplateEO.class))).thenReturn(1);
+
+        // 4. 执行注册
+        workflowService.registerBuiltinWorkflows();
+
+        // 5. 验证：1 次 update + 5 次 insert
+        verify(workflowTemplateMapper, times(1))
+                .updateById(org.mockito.ArgumentMatchers.<WorkflowTemplateEO>any());
+        verify(workflowTemplateMapper, times(5)).insert(any(WorkflowTemplateEO.class));
+    }
+
+    @Test
+    @DisplayName("内置模板注册 - 共 6 个模板且名称/行业/风险等级齐全")
+    void registerBuiltinWorkflows_TemplateCount() {
+        // 1. 验证 WorkflowConstant 中定义了 6 个模板
+        assertThat(WorkflowConstant.BUILTIN_TEMPLATES).hasSize(6);
+
+        // 2. 验证名称、行业、风险等级齐全
+        assertThat(WorkflowConstant.BUILTIN_TEMPLATES)
+                .extracting(WorkflowTemplateEO::getName)
+                .containsExactly(
+                        WorkflowConstant.TEMPLATE_BANK_STATEMENT,
+                        WorkflowConstant.TEMPLATE_CROSS_BANK_RECONCILE,
+                        WorkflowConstant.TEMPLATE_CORPORATE_LOAN,
+                        WorkflowConstant.TEMPLATE_POLICY_APPLICATION,
+                        WorkflowConstant.TEMPLATE_CLAIM_REVIEW,
+                        WorkflowConstant.TEMPLATE_SECURITIES_ORDER
+                );
+        assertThat(WorkflowConstant.BUILTIN_TEMPLATES)
+                .extracting(WorkflowTemplateEO::getIndustry)
+                .contains("banking", "insurance", "securities");
+        assertThat(WorkflowConstant.BUILTIN_TEMPLATES)
+                .extracting(WorkflowTemplateEO::getRiskLevel)
+                .contains("medium", "high", "critical");
     }
 
     // endregion

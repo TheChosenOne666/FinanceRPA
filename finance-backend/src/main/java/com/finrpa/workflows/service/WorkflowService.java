@@ -67,4 +67,12 @@ public interface WorkflowService {
      * @return 模板实体；不存在返回 null
      */
     WorkflowTemplateEO queryByWorkflowId(Long workflowId);
+
+    /**
+     * 启动时注册 6 个内置金融场景工作流模板（upsert，不动 enabled 状态）
+     *
+     * <p>与 SkillMetaInitializer 配合：Skill 元数据先注册（@Order(20)），工作流模板后注册（@Order(30)），
+     * 确保 WorkflowValidator 校验 Skill 引用合法性时 Skill 已存在。</p>
+     */
+    void registerBuiltinWorkflows();
 }

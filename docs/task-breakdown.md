@@ -1292,6 +1292,9 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | 6 个工作流模板数据（seed 脚本） |
 | **描述** | 按系统设计 6.8.2 节配置 6 个模板：银行流水下载 / 跨行转账核对 / 对公贷款放款 / 保单申请填写 / 理赔审核提交 / 委托下单 |
 | **验收标准** | 6 个模板可通过 API 查询；参数 schema 完整；Skill 引用合法 |
+| **状态** | ✅ 已完成（2026-07-30） |
+| **实现方式** | 参考 M3.3 Skill 注册模式：WorkflowConstant 硬编码 6 个模板 + WorkflowTemplateInitializer 启动 upsert（@Order(30)，晚于 SkillMetaInitializer @Order(20)） |
+| **测试覆盖** | 48 个测试通过（WorkflowConstantTest 9 + WorkflowServiceImplTest 21 + WorkflowTriggerServiceImplTest 10 + WorkflowControllerTest 8） |
 
 #### M3.6 前端工作流管理页面
 
