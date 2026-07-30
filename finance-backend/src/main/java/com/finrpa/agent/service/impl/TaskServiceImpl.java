@@ -127,10 +127,15 @@ public class TaskServiceImpl implements TaskService {
             wrapper.like(AgentTaskEO::getGoal, queryRequest.getSearchText());
         }
 
-        // 5. 排序（默认按创建时间倒序）
+        // 5. 工作流模板 ID 筛选（用于查询某个工作流的执行历史）
+        if (queryRequest.getWorkflowId() != null) {
+            wrapper.eq(AgentTaskEO::getWorkflowId, queryRequest.getWorkflowId());
+        }
+
+        // 6. 排序（默认按创建时间倒序）
         wrapper.orderByDesc(AgentTaskEO::getCreateTime);
 
-        // 6. 分页查询
+        // 7. 分页查询
         long current = queryRequest.getCurrent();
         long size = queryRequest.getPageSize();
         // 限制 pageSize 防止爬虫
@@ -138,7 +143,7 @@ public class TaskServiceImpl implements TaskService {
         Page<AgentTaskEO> page = new Page<>(current, size);
         IPage<AgentTaskEO> taskPage = agentTaskMapper.selectPage(page, wrapper);
 
-        // 7. 转换为 VO
+        // 8. 转换为 VO
         IPage<TaskVO> voPage = taskPage.convert(task -> {
             TaskVO vo = new TaskVO();
             BeanUtils.copyProperties(task, vo);

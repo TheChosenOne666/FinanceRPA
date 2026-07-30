@@ -20,7 +20,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 8081,
+    port: 5175,
     host: '0.0.0.0',
     // 代理后端 API（避免开发环境 CORS）
     // 通过环境变量 VITE_API_PROXY_TARGET 配置，默认 Docker 网络服务名

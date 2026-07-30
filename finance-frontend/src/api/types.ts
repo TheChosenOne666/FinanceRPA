@@ -256,6 +256,8 @@ export interface TaskQueryRequest {
   status?: TaskStatus | '';
   /** 关键词搜索（匹配 goal） */
   searchText?: string;
+  /** 工作流模板 ID 筛选（用于查询某个工作流的执行历史） */
+  workflowId?: string;
 }
 
 /**
@@ -354,4 +356,113 @@ export interface SseEvent {
   event: SseEventType;
   /** 事件数据 */
   data: SseEventData;
+}
+
+// ============================================================
+// 工作流模板管理（M3.6）
+// 对齐 com.finrpa.workflows.dto.request / response
+// ============================================================
+
+/**
+ * 行业枚举（对齐 com.finrpa.workflows.enums.IndustryEnum）
+ */
+export type WorkflowIndustry = 'banking' | 'insurance' | 'securities';
+
+/**
+ * 风险等级枚举（对齐 com.finrpa.workflows.enums.RiskLevelEnum）
+ */
+export type WorkflowRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+/**
+ * 工作流模板视图（对齐 com.finrpa.workflows.dto.response.WorkflowVO）
+ *
+ * 说明：params / steps 后端返回为 JSON 字符串，前端使用时按需 JSON.parse
+ */
+export interface WorkflowVO {
+  /** 工作流业务 ID */
+  workflowId: string;
+  /** 模板名称 */
+  name: string;
+  /** 模板描述 */
+  description?: string;
+  /** 行业：banking / insurance / securities */
+  industry: WorkflowIndustry;
+  /** 风险等级：low / medium / high / critical */
+  riskLevel: WorkflowRiskLevel;
+  /** 参数定义 JSON 数组字符串（[{name,type,required,encrypted,description}]） */
+  params: string;
+  /** 步骤 JSON 数组字符串（[{skill,params_mapping}]） */
+  steps: string;
+  /** 版本号 */
+  version?: string;
+  /** 启用状态：0-禁用 1-启用 */
+  enabled: number;
+  /** 创建时间（ISO 字符串） */
+  createTime: string;
+  /** 更新时间（ISO 字符串） */
+  updateTime: string;
+}
+
+/**
+ * 工作流参数定义（解析自 WorkflowVO.params 数组项）
+ */
+export interface WorkflowParam {
+  /** 参数名（用于 params_mapping 中的 {{name}} 引用） */
+  name: string;
+  /** 参数类型：string / number / boolean 等 */
+  type: string;
+  /** 是否必填 */
+  required: boolean;
+  /** 是否加密存储（敏感参数如密码） */
+  encrypted: boolean;
+  /** 参数描述 */
+  description?: string;
+}
+
+/**
+ * 工作流步骤定义（解析自 WorkflowVO.steps 数组项）
+ */
+export interface WorkflowStep {
+  /** 引用的 Skill 名称（如 login / form_fill / file_download） */
+  skill: string;
+  /** 参数映射（key 为 Skill 入参字段，value 为 {{param_name}} 模板字符串或字面量） */
+  params_mapping: Record<string, unknown>;
+}
+
+/**
+ * 工作流模板分页查询请求（对齐 com.finrpa.workflows.dto.request.WorkflowQueryRequest）
+ */
+export interface WorkflowQueryRequest {
+  /** 当前页号 */
+  current: number;
+  /** 页面大小 */
+  pageSize: number;
+  /** 模板名称（模糊搜索） */
+  name?: string;
+  /** 行业筛选 */
+  industry?: WorkflowIndustry | '';
+  /** 风险等级筛选 */
+  riskLevel?: WorkflowRiskLevel | '';
+  /** 启用状态筛选：null-全部 0-禁用 1-启用 */
+  enabled?: number | '';
+}
+
+/**
+ * 工作流触发执行请求（对齐 com.finrpa.workflows.dto.request.WorkflowRunRequest）
+ */
+export interface WorkflowRunRequest {
+  /** 运行参数键值对（key 对应 params 中的 name） */
+  params: Record<string, unknown>;
+}
+
+/**
+ * 工作流触发执行结果（对齐 com.finrpa.workflows.dto.response.WorkflowRunVO）
+ */
+export interface WorkflowRunVO {
+  /** 任务 ID（agent_task 表主键） */
+  taskId: string;
+  /** 工作流模板 ID */
+  workflowId: string;
+  /** 任务初始状态 */
+  state: string;
 }

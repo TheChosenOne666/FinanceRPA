@@ -14,7 +14,7 @@
 
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/AuthStore'
-import { IconList, IconTarget } from '@/components/Icons'
+import { IconList, IconTarget, IconWorkflow } from '@/components/Icons'
 
 function RootLayout() {
   const user = useAuthStore((s) => s.user)
@@ -61,7 +61,7 @@ function RootLayout() {
               borderRadius: 999,
             }}
           >
-            M2.5
+            M3.6
           </span>
           {/* region 顶部导航 */}
           <nav className="root-nav">
@@ -82,6 +82,15 @@ function RootLayout() {
             >
               <IconList size={14} />
               任务
+            </button>
+            <button
+              type="button"
+              className="root-nav-btn"
+              onClick={() => navigate('/workflows')}
+              title="工作流模板"
+            >
+              <IconWorkflow size={14} />
+              工作流
             </button>
           </nav>
           {/* endregion */}

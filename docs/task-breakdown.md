@@ -1302,9 +1302,12 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 |----|------|
 | **规模** | M |
 | **前置依赖** | M3.4（API 契约确定） |
-| **产出物** | `routes/workflows/Workflows.tsx`、`routes/workflows/WorkflowRuns.tsx` |
-| **描述** | 1. 工作流列表：按行业筛选 + 搜索<br>2. 详情页：参数表单 + Skill 步骤可视化<br>3. 触发执行：表单填写参数 → 调 `/run` → 跳转任务详情<br>4. 执行历史：分页 + 状态筛选 |
+| **产出物** | `routes/workflows/Workflows.tsx`、`routes/workflows/WorkflowDetail.tsx`、`routes/workflows/WorkflowRuns.tsx`、`api/workflows.ts` |
+| **描述** | 1. 工作流列表：按行业筛选 + 风险等级筛选 + 名称搜索（卡片网格）<br>2. 详情页：基本信息 + 参数表单（按 params schema 动态生成） + Skill 步骤可视化（横向流程图，加密参数脱敏） + 触发执行 + 执行历史入口<br>3. 触发执行：表单填写参数 → POST `/workflows/{id}/run` → 跳转任务详情<br>4. 执行历史：按 workflowId 筛选任务列表，分页 + 状态筛选 + 自动轮询 |
 | **验收标准** | 列表展示 6 个模板；参数表单按 schema 动态生成；触发后跳转任务详情 |
+| **状态** | ✅ 已完成（2026-07-31） |
+| **后端配套改动** | `TaskQueryRequest` 添加 `workflowId` 字段 + `TaskServiceImpl.listTasks` 支持按 workflowId 筛选（用于工作流执行历史查询） |
+| **测试覆盖** | 后端 TaskServiceImplTest 29 个测试通过（含新增 listTasks_WithWorkflowId_Success）；前端 `tsc -b && vite build` 通过（171 modules transformed） |
 
 ---
 

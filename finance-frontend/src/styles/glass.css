@@ -1424,3 +1424,590 @@ a:hover {
   word-break: break-all;
   min-width: 0;
 }
+
+/* ============================================================
+   M3.6 工作流管理页面样式
+   ============================================================ */
+
+/* ---------- 21. 工作流列表页 ---------- */
+.workflows-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workflows-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workflows-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.workflows-toolbar {
+  display: flex;
+  gap: 16px;
+  padding: 14px 18px;
+  align-items: center;
+}
+
+.workflows-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.workflows-empty {
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.workflows-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+.workflows-empty-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.workflows-stats {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+  padding: 0 4px;
+}
+
+.workflows-stats strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ---------- 22. 工作流卡片 ---------- */
+.workflow-card {
+  padding: 20px 22px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.workflow-card:hover:not(.workflow-card-disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--glass-shadow-hover);
+}
+
+.workflow-card-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.workflow-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workflow-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workflow-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-card-badge-disabled {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--text-muted);
+  border: 1px solid rgba(107, 114, 128, 0.24);
+  flex-shrink: 0;
+}
+
+.workflow-card-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.workflow-card-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 39px;
+}
+
+.workflow-card-meta {
+  display: flex;
+  gap: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.workflow-card-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workflow-card-meta-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workflow-card-meta-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.workflow-card-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.workflow-card-step-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--finrpa-blue);
+  background: rgba(26, 58, 92, 0.06);
+  border: 1px solid rgba(26, 58, 92, 0.12);
+  border-radius: var(--radius-sm);
+}
+
+.workflow-card-step-more {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 3px 6px;
+}
+
+/* ---------- 23. 通用标签 ---------- */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* 行业标签 */
+.tag-industry-banking {
+  background: rgba(26, 58, 92, 0.08);
+  color: var(--finrpa-blue);
+  border: 1px solid rgba(26, 58, 92, 0.18);
+}
+
+.tag-industry-insurance {
+  background: rgba(201, 168, 76, 0.10);
+  color: var(--finrpa-gold-dark);
+  border: 1px solid rgba(201, 168, 76, 0.28);
+}
+
+.tag-industry-securities {
+  background: rgba(139, 92, 246, 0.08);
+  color: #6d28d9;
+  border: 1px solid rgba(139, 92, 246, 0.22);
+}
+
+/* 风险标签 */
+.tag-risk-low {
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--status-completed);
+  border: 1px solid rgba(16, 185, 129, 0.24);
+}
+
+.tag-risk-medium {
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--status-running);
+  border: 1px solid rgba(59, 130, 246, 0.24);
+}
+
+.tag-risk-high {
+  background: rgba(249, 115, 22, 0.08);
+  color: var(--status-needs-human);
+  border: 1px solid rgba(249, 115, 22, 0.26);
+}
+
+.tag-risk-critical {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--status-failed);
+  border: 1px solid rgba(239, 68, 68, 0.26);
+}
+
+/* 状态标签 */
+.tag-enabled {
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--status-completed);
+  border: 1px solid rgba(16, 185, 129, 0.24);
+}
+
+.tag-disabled {
+  background: rgba(107, 114, 128, 0.10);
+  color: var(--text-muted);
+  border: 1px solid rgba(107, 114, 128, 0.22);
+}
+
+.tag-required {
+  background: rgba(239, 68, 68, 0.06);
+  color: var(--accent-danger);
+  border: 1px solid rgba(239, 68, 68, 0.20);
+}
+
+.tag-optional {
+  background: rgba(107, 114, 128, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(107, 114, 128, 0.18);
+}
+
+.tag-encrypted {
+  background: rgba(201, 168, 76, 0.10);
+  color: var(--finrpa-gold-dark);
+  border: 1px solid rgba(201, 168, 76, 0.28);
+}
+
+/* ---------- 24. 工作流详情页 ---------- */
+.workflow-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workflow-detail-loading {
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.workflow-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.workflow-detail-back {
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+
+.workflow-detail-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.workflow-detail-title .page-title {
+  font-size: 20px;
+  gap: 8px;
+}
+
+.workflow-detail-title .page-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-detail-desc {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.workflow-detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.workflow-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .workflow-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.workflow-detail-left,
+.workflow-detail-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ---------- 25. 参数表单 ---------- */
+.workflow-run-form .form-group {
+  margin-bottom: 18px;
+}
+
+.param-encrypted-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  background: rgba(201, 168, 76, 0.10);
+  color: var(--finrpa-gold-dark);
+  border: 1px solid rgba(201, 168, 76, 0.28);
+}
+
+.param-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.param-hint code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  background: rgba(26, 58, 92, 0.04);
+  border-radius: 3px;
+  color: var(--finrpa-blue);
+}
+
+.param-type {
+  color: var(--text-muted);
+}
+
+/* ---------- 26. Skill 步骤流程图 ---------- */
+.skill-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skill-flow-node-wrapper {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.skill-flow-node {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(26, 58, 92, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.skill-flow-node-index {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--finrpa-blue);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.skill-flow-node-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-flow-node-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+
+.skill-flow-node-params {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.skill-flow-param {
+  display: flex;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  align-items: baseline;
+}
+
+.skill-flow-param-key {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.skill-flow-param-value {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.skill-flow-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  color: var(--text-muted);
+}
+
+.skill-flow-arrow svg {
+  transform: rotate(90deg);
+}
+
+/* ---------- 27. 参数定义表 ---------- */
+.params-definition {
+  overflow-x: auto;
+}
+
+.params-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.params-table thead {
+  background: rgba(26, 58, 92, 0.04);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.params-table th {
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.params-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.params-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---------- 28. 工作流执行历史页 ---------- */
+.workflow-runs-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workflow-runs-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.workflow-runs-back {
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+
+.workflow-runs-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.workflow-runs-title .page-title {
+  font-size: 20px;
+  gap: 8px;
+}
+
+.workflow-runs-name {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.workflow-runs-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.workflow-runs-toolbar {
+  display: flex;
+  gap: 16px;
+  padding: 14px 18px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workflow-runs-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  background: rgba(26, 58, 92, 0.04);
+  border-radius: var(--radius-sm);
+}
+
+.workflow-runs-meta svg {
+  color: var(--text-muted);
+}

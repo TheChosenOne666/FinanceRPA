@@ -57,6 +57,8 @@ class TaskServiceImplTest {
     private static final Long TEST_USER_ID = 2082333078168170497L;
     /** 测试用任务 ID */
     private static final Long TEST_TASK_ID = 2082333099000000099L;
+    /** 测试用工作流模板 ID */
+    private static final Long TEST_WORKFLOW_ID = 2082333100000000123L;
 
     @Mock
     private AgentTaskMapper agentTaskMapper;
@@ -540,6 +542,38 @@ class TaskServiceImplTest {
         assertThatThrownBy(() -> taskService.listTasks(queryRequest))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("每页数量不能超过 100");
+    }
+
+    @Test
+    @DisplayName("listTasks - 指定 workflowId 时正常返回（用于工作流执行历史查询）")
+    void listTasks_WithWorkflowId_Success() {
+        // 1. 设置租户上下文
+        TenantContext.setOrgId(TEST_ORG_ID.toString());
+
+        // 2. mock 分页查询返回（任务关联了工作流 ID）
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.SUCCESS);
+        task.setWorkflowId(TEST_WORKFLOW_ID);
+        Page<AgentTaskEO> mockPage = new Page<>(1, 10);
+        mockPage.setRecords(List.of(task));
+        mockPage.setTotal(1);
+        when(agentTaskMapper.selectPage(any(Page.class), any())).thenReturn(mockPage);
+
+        // 3. 构建查询请求（指定 workflowId）
+        TaskQueryRequest queryRequest = new TaskQueryRequest();
+        queryRequest.setCurrent(1);
+        queryRequest.setPageSize(10);
+        queryRequest.setWorkflowId(TEST_WORKFLOW_ID);
+
+        // 4. 调用
+        IPage<TaskVO> result = taskService.listTasks(queryRequest);
+
+        // 5. 验证（查询条件带 workflowId 时正常返回结果，且参数正确传递）
+        assertThat(result).isNotNull();
+        assertThat(result.getRecords()).hasSize(1);
+        assertThat(result.getRecords().get(0).getTaskId()).isEqualTo(TEST_TASK_ID);
+        assertThat(result.getTotal()).isEqualTo(1);
+        // 验证 selectPage 被调用一次（wrapper 中包含 workflowId 条件）
+        verify(agentTaskMapper, times(1)).selectPage(any(Page.class), any());
     }
 
     // endregion

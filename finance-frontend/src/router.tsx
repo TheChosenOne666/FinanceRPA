@@ -7,10 +7,11 @@
  *   - index            占位首页（展示当前用户角色与权限）
  *   - /tasks           任务列表（M2.5）
  *   - /tasks/:taskId   任务详情（M2.5）
+ *   - /workflows       工作流模板列表（M3.6）
+ *   - /workflows/:workflowId           工作流详情（M3.6）
+ *   - /workflows/:workflowId/runs      工作流执行历史（M3.6）
  *   - /403             403 无权限页
  *   - *                404 兜底
- *
- * 后续 M3 阶段会在 / 下扩展 /workflows、/approvals 等业务路由
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
@@ -23,6 +24,9 @@ import Forbidden from '@/routes/Forbidden'
 import RootLayout, { HomePlaceholder } from '@/routes/RootLayout'
 import TasksPage from '@/routes/tasks/TasksPage'
 import TaskDetail from '@/routes/tasks/TaskDetail'
+import WorkflowsPage from '@/routes/workflows/Workflows'
+import WorkflowDetail from '@/routes/workflows/WorkflowDetail'
+import WorkflowRunsPage from '@/routes/workflows/WorkflowRuns'
 
 /** 路由配置 */
 export const router = createBrowserRouter([
@@ -49,6 +53,18 @@ export const router = createBrowserRouter([
       {
         path: 'tasks/:taskId',
         element: <TaskDetail />,
+      },
+      {
+        path: 'workflows',
+        element: <WorkflowsPage />,
+      },
+      {
+        path: 'workflows/:workflowId',
+        element: <WorkflowDetail />,
+      },
+      {
+        path: 'workflows/:workflowId/runs',
+        element: <WorkflowRunsPage />,
       },
       {
         path: '403',

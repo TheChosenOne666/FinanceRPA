@@ -25,4 +25,7 @@ public class TaskQueryRequest extends PageRequest {
 
     /** 关键词搜索（匹配 goal 字段，可选） */
     private String searchText;
+
+    /** 工作流模板 ID 筛选（可选，用于查询某个工作流的执行历史） */
+    private Long workflowId;
 }

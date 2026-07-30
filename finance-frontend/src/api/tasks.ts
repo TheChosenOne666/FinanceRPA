@@ -39,6 +39,7 @@ export async function listTasks(query: TaskQueryRequest): Promise<IPage<TaskVO>>
       sortOrder: query.sortOrder,
       status: query.status || undefined,
       searchText: query.searchText || undefined,
+      workflowId: query.workflowId || undefined,
     },
   })
   return res.data.data
