@@ -1,5 +1,6 @@
 package com.finrpa.ai.client;
 
+import com.finrpa.ai.client.dto.SkillInfoResponse;
 import com.finrpa.ai.client.dto.TaskAbortResponse;
 import com.finrpa.ai.client.dto.TaskStateResponse;
 import com.finrpa.ai.client.dto.TaskTriggerRequest;
@@ -10,6 +11,8 @@ import org.springframework.web.service.annotation.GetExchange;
 import org.springframework.web.service.annotation.HttpExchange;
 import org.springframework.web.service.annotation.PostExchange;
 
+import java.util.List;
+
 /**
  * Python AI 服务声明式 HTTP 客户端
  *
@@ -17,11 +20,12 @@ import org.springframework.web.service.annotation.PostExchange;
  * 客户端代理由 {@link com.finrpa.ai.config.AiWebClientConfig} 注入，BaseURL 与 X-Internal-Token Header
  * 由 WebClient 默认配置提供。</p>
  *
- * <p>接口契约对齐 Python {@code app/api/tasks.py}：
+ * <p>接口契约对齐 Python {@code app/api/tasks.py} 与 {@code app/api/skills.py}：
  * <ul>
  *   <li>POST /api/v1/ai/tasks —— 触发任务执行</li>
  *   <li>GET /api/v1/ai/tasks/{taskId}/state —— 查询任务状态</li>
  *   <li>POST /api/v1/ai/tasks/{taskId}/abort —— 终止任务</li>
+ *   <li>GET /api/v1/ai/skills —— 查询所有 Skill 元数据（M3.3 用于校验 Skill 存在性）</li>
  * </ul>
  * </p>
  *
@@ -57,4 +61,14 @@ public interface AiServiceClient {
      */
     @PostExchange("/tasks/{taskId}/abort")
     TaskAbortResponse abortTask(@PathVariable("taskId") String taskId);
+
+    /**
+     * 查询所有 Skill 元数据
+     *
+     * <p>M3.3：Java 注册自定义 Skill 时调用此接口校验 name 在 Python 侧真实存在。</p>
+     *
+     * @return Skill 元数据列表
+     */
+    @GetExchange("/skills")
+    List<SkillInfoResponse> getSkills();
 }

@@ -57,6 +57,7 @@ class FormFillSkill(BaseSkill):
 
     skill_name: ClassVar[str] = "form_fill"
     description: ClassVar[str] = "智能表单填充，支持下拉框与日期选择器"
+    category: ClassVar[str] = "interaction"
     params_model: ClassVar[type[BaseModel]] = FormFillParams
     error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.RETRY
     max_retries: ClassVar[int] = 2
@@ -195,6 +196,7 @@ class SearchAndSelectSkill(BaseSkill):
 
     skill_name: ClassVar[str] = "search_and_select"
     description: ClassVar[str] = "搜索并从结果列表中选择项"
+    category: ClassVar[str] = "interaction"
     params_model: ClassVar[type[BaseModel]] = SearchAndSelectParams
     error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.RETRY
     max_retries: ClassVar[int] = 2
@@ -318,6 +320,7 @@ class PaginationSkill(BaseSkill):
 
     skill_name: ClassVar[str] = "pagination"
     description: ClassVar[str] = "多页遍历并收集数据"
+    category: ClassVar[str] = "interaction"
     params_model: ClassVar[type[BaseModel]] = PaginationParams
     error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.SKIP
     max_retries: ClassVar[int] = 1

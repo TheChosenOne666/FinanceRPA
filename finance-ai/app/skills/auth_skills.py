@@ -57,6 +57,7 @@ class LoginSkill(BaseSkill):
 
     skill_name: ClassVar[str] = "login"
     description: ClassVar[str] = "通用登录流程，含验证码处理"
+    category: ClassVar[str] = "auth"
     params_model: ClassVar[type[BaseModel]] = LoginParams
     error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.ABORT
     max_retries: ClassVar[int] = 3
@@ -195,6 +196,7 @@ class SessionKeepAliveSkill(BaseSkill):
 
     skill_name: ClassVar[str] = "session_keep_alive"
     description: ClassVar[str] = "会话监控，超时自动重登"
+    category: ClassVar[str] = "auth"
     params_model: ClassVar[type[BaseModel]] = SessionKeepAliveParams
     error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.RETRY
     max_retries: ClassVar[int] = 2

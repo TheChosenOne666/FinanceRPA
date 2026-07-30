@@ -67,6 +67,7 @@ class TableExtractSkill(BaseSkill):
 
     skill_name: ClassVar[str] = "table_extract"
     description: ClassVar[str] = "从页面表格提取结构化数据"
+    category: ClassVar[str] = "extraction"
     params_model: ClassVar[type[BaseModel]] = TableExtractParams
     error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.RETRY
     max_retries: ClassVar[int] = 2
@@ -230,6 +231,7 @@ class FileDownloadSkill(BaseSkill):
 
     skill_name: ClassVar[str] = "file_download"
     description: ClassVar[str] = "触发下载并等待文件保存"
+    category: ClassVar[str] = "extraction"
     params_model: ClassVar[type[BaseModel]] = FileDownloadParams
     error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.RETRY
     max_retries: ClassVar[int] = 2

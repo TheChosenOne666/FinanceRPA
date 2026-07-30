@@ -55,6 +55,7 @@ class BaseSkill(ABC):
     子类必须定义：
     - skill_name: 唯一标识符
     - description: 人类可读的用途描述
+    - category: 分类（auth / interaction / extraction）
     - params_model: 输入参数的 Pydantic 模型类
     - error_strategy: 失败处理策略
     - execute(): 执行 Skill 的异步方法
@@ -62,6 +63,7 @@ class BaseSkill(ABC):
 
     skill_name: ClassVar[str]
     description: ClassVar[str]
+    category: ClassVar[str] = "misc"
     params_model: ClassVar[type[BaseModel]]
     error_strategy: ClassVar[ErrorStrategy] = ErrorStrategy.RETRY
     max_retries: ClassVar[int] = 2
@@ -129,13 +131,25 @@ def get_skill(name: str) -> type[BaseSkill] | None:
     return SKILL_REGISTRY.get(name)
 
 
-def list_skills() -> list[dict[str, str]]:
-    """返回所有已注册 Skill 的元数据。"""
+def list_skills() -> list[dict[str, Any]]:
+    """返回所有已注册 Skill 的完整元数据。
+
+    每条记录包含：
+    - name: Skill 唯一标识
+    - description: 用途描述
+    - category: 分类（auth / interaction / extraction）
+    - error_strategy: 失败处理策略（retry / skip / abort）
+    - max_retries: 最大重试次数
+    - params_schema: Pydantic params_model 的 JSON Schema（供前端动态生成参数表单）
+    """
     return [
         {
             "name": cls.skill_name,
             "description": cls.description,
+            "category": cls.category,
             "error_strategy": cls.error_strategy.value,
+            "max_retries": cls.max_retries,
+            "params_schema": cls.params_model.model_json_schema(),
         }
         for cls in SKILL_REGISTRY.values()
     ]

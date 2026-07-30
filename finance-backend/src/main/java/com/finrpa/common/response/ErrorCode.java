@@ -19,7 +19,11 @@ public enum ErrorCode {
     // AI 服务相关错误码（M2.2）
     AI_SERVICE_ERROR(50300, "AI 服务调用失败"),
     AI_SERVICE_UNAVAILABLE(50301, "AI 服务不可用"),
-    AI_SERVICE_TIMEOUT(50302, "AI 服务调用超时");
+    AI_SERVICE_TIMEOUT(50302, "AI 服务调用超时"),
+    // Skill 元数据相关错误码（M3.3）
+    SKILL_NOT_FOUND(40401, "Skill 不存在"),
+    SKILL_ALREADY_EXISTS(40402, "Skill 已存在"),
+    SKILL_NOT_ENABLED(40403, "Skill 已禁用");
 
     /**
      * 错误码

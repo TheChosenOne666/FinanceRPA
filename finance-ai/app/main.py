@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.agent.event_bus import get_event_bus
-from app.api import health, sse, tasks
+from app.api import health, skills, sse, tasks
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(tasks.router)
     app.include_router(sse.router)
+    app.include_router(skills.router)
     return app
 
 

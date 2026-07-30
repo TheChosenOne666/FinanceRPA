@@ -44,6 +44,8 @@ public interface TenantConstant {
             "rpa_agent_task",
             "rpa_agent_subtask",
             "rpa_agent_coordination_state",
+            // Skill 元数据表：全局共享（无 org_id 字段），所有租户用同一套 Skill 定义
+            "rpa_skill_meta",
             // Skyvern 核心表（Python 侧 Alembic 管理，Java 侧不感知字段）
             "skyvern_*"
     );

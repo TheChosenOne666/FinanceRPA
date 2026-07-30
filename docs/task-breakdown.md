@@ -1233,8 +1233,42 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **规模** | M |
 | **前置依赖** | M0.3、M3.1（Skill 定义确定） |
 | **产出物** | `skills/` 模块完整代码 |
-| **描述** | 1. 实体：`SkillMetaEO`（name / description / category / param_schema / version / enabled）<br>2. `SkillRegistryService`：CRUD + 版本管理<br>3. 注册时同步 Python 校验 Skill 存在性<br>4. API：`GET /api/v1/skills` / `GET /api/v1/skills/{name}` / `POST /api/v1/skills` / `PUT /api/v1/skills/{name}`<br>5. 初始化：启动时自动注册 7 个内置 Skill 元数据 |
+| **描述** | 1. 实体：`SkillMetaEO`（name / description / category / param_schema / version / enabled）<br>2. `SkillRegistryService`：CRUD + 版本管理<br>3. 注册时同步 Python 校验 Skill 存在性<br>4. API：`GET /api/skills` / `GET /api/skills/{name}` / `POST /api/skills` / `PUT /api/skills/{name}`<br>5. 初始化：启动时自动注册 7 个内置 Skill 元数据 |
 | **验收标准** | 7 个 Skill 元数据自动注册；CRUD 接口正常；Python 校验存在性生效 |
+| **状态** | ✅ 已完成（2026-07-30） |
+
+##### M3.3 实施结果
+
+**新增文件**：
+- Python：`finance-ai/app/api/skills.py`（`GET /api/v1/ai/skills` 端点，返回 7 个 Skill 完整元数据）
+- Python：`finance-ai/tests/unit/test_skills_api.py`（7 个元数据字段完整性测试）
+- 数据库：`V8__create_skill_meta_table.sql`（`rpa_skill_meta` 表，全局共享无 org_id）
+- Java 实体：`SkillMetaEO` / `SkillMetaMapper` / `SkillCategoryEnum`
+- Java 常量：`SkillConstant`（7 个内置 Skill 的 name、分类、param_schema JSON 硬编码）
+- Java DTO：`SkillAddRequest` / `SkillUpdateRequest` / `SkillQueryRequest` / `SkillVO`
+- Java 客户端 DTO：`SkillInfoResponse`（Python skills 端点响应）
+- Java Service：`SkillRegistryService` 接口 + `SkillRegistryServiceImpl` 实现
+- Java Controller：`SkillController`（4 个 API）
+- Java 初始化器：`SkillMetaInitializer`（启动 upsert 7 个内置 Skill）
+- Java 测试：`SkillRegistryServiceImplTest`（16 个用例）+ `SkillControllerTest`（4 个用例）
+
+**修改文件**：
+- `finance-ai/app/skills/base.py`：`BaseSkill` 新增 `category` ClassVar；`list_skills()` 扩展返回 category/max_retries/params_schema
+- `finance-ai/app/skills/auth_skills.py` / `interaction_skills.py` / `extraction_skills.py`：7 个 Skill 声明 category
+- `finance-ai/app/main.py`：注册 skills router
+- `AiServiceClient.java`：新增 `@GetExchange("/skills") getSkills()`
+- `ErrorCode.java`：新增 `SKILL_NOT_FOUND(40401)` / `SKILL_ALREADY_EXISTS(40402)` / `SKILL_NOT_ENABLED(40403)`
+- `TenantConstant.java`：`rpa_skill_meta` 加入租户过滤忽略清单
+
+**关键设计决策**：
+1. **内置 Skill 元数据硬编码**（决策 1 方案 A）：7 个内置 Skill 的 param_schema JSON 由 Python `model_json_schema()` 导出后硬编码在 `SkillConstant`，启动 upsert 时不依赖 Python 在线
+2. **全局共享**（决策 3）：`rpa_skill_meta` 表无 org_id，加入 TenantLineHandler 忽略清单，所有租户共用同一套 Skill 定义
+3. **API 路径**（决策 5）：context-path 为 `/api`，Controller 用 `@RequestMapping("/skills")`，实际路径 `/api/skills`
+4. **upsert 语义**：启动注册时按 name 查询，已存在则更新元数据字段（不动 enabled，避免重置用户禁用状态），不存在则插入
+5. **Python 校验**：仅 `POST /api/skills`（自定义 Skill）调 Python `getSkills()` 校验 name 存在性；Python 不可用直接抛 `AI_SERVICE_UNAVAILABLE`，不降级
+6. **camelCase 统一**：Python `SkillMetaItem` 配 `alias_generator=to_camel`，JSON 输出 camelCase 与 Java WebClient 对齐
+
+**测试覆盖**：Python 7 个测试通过；Java 20 个测试通过（Service 16 + Controller 4）
 
 #### M3.4 Java workflows 模板管理 + Fernet 加密
 
