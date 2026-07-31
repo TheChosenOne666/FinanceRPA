@@ -1366,6 +1366,9 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `app/agent/planner.py` + 单元测试 |
 | **描述** | 1. Planner：接收导航目标 → LLM 拆解为子任务列表<br>2. 数据结构：`TaskPlan` / `SubTask`（goal / completion_condition / max_retries / failure_strategy）<br>3. replan：接收失败上下文 → 重新规划剩余子任务<br>4. replan 上限：3 次，超限转 NEEDS_HUMAN |
 | **验收标准** | Planner 能拆解复杂目标为合理子任务；replan 能根据失败原因调整；上限拦截生效 |
+| **状态** | ✅ 已完成（2026-08-01）。M2.1 已落地骨架（fallback 单步计划 + `NotImplementedError` 占位），本任务移植 `finrpa-enterprise/agent/planner.py` 实现 LLM 拆解。最终落地：(1) 新增 `PLANNER_SYSTEM_PROMPT` / `REPLAN_SYSTEM_PROMPT` 常量（约束 LLM 输出 `{"steps":[...]}` JSON）；(2) 新增 `PlannerOutput` Pydantic 模型描述 LLM 输出 schema；(3) 实现 `_plan_with_llm`：构造 prompt（system + goal + context）→ 调 `llm_callable` → 清理 ``` 代码块 → JSON 解析 → 构建 SubTask 列表；(4) 实现 `_replan_with_llm`：同流程，但 index 从 `len(completed_subtasks)` 起递增保持全局有序，且不重复已完成步骤；(5) 抽取 `_parse_llm_steps` 公共方法处理代码块清理 + JSON 解析 + 字段映射（缺失字段用默认值）；(6) 异常兜底：LLM 异常 / JSON 解析失败 / 空 steps / 非法 failure_strategy 值 → 自动回退到 fallback 单步计划，不抛异常给调用方；(7) replan 上限 3 次拦截已在 M2.4 `coordinator.py` 的 `_handle_failure` 实现（`max_replans=3`，超限 `state.status = "needs_human"`），本任务不重复实现 |
+| **测试覆盖** | `test_planner.py` 15 个测试通过（3 fallback + 8 LLM 拆解 + 4 LLM replan）：fallback 单步计划 / fallback replan / 带上下文 fallback / LLM 拆解成功 / ```json 代码块清理 / 带上下文 LLM 拆解 / 缺失字段默认值 / 非法 JSON fallback / 空 steps fallback / LLM 异常 fallback / 非法 failure_strategy fallback / LLM replan 成功（含 index 递增 + version 校验）/ replan 异常 fallback / replan 非法 JSON fallback / replan 空 steps fallback。回归 `test_coordinator.py` 8 个 + `test_executor.py` 8 个测试全部通过，未破坏现有功能 |
+| **未做范围** | `llm_callable` 的实际注入（从 `config.py` 读取 LLM 配置构造客户端、`tasks.py` 的 `PlannerAgent()` 改为传入真实 llm_callable）留到后续任务，本任务只实现 planner.py 内部逻辑 + 单元测试 |
 
 #### M4.2 Python Coordinator 编排 + 失败策略
 
