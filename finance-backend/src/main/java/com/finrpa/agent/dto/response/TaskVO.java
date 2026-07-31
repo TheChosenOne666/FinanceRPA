@@ -46,6 +46,9 @@ public class TaskVO implements Serializable {
     /** 错误信息 */
     private String errorMessage;
 
+    /** Skyvern 任务 ID（M3.8 引入，关联 Skyvern 原生任务） */
+    private String skyvernTaskId;
+
     /** 创建时间 */
     private Timestamp createTime;
 

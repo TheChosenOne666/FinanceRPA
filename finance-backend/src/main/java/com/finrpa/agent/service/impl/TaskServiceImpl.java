@@ -355,5 +355,28 @@ public class TaskServiceImpl implements TaskService {
                 taskId, request.getSubtaskIndex(), request.getStatus());
     }
 
+    /**
+     * 更新 Skyvern 任务 ID（M3.8 引入，Python 调 Skyvern API 后回传）
+     *
+     * @param taskId         Java 侧任务 ID
+     * @param skyvernTaskId  Skyvern 返回的任务 ID
+     */
+    @Override
+    public void updateSkyvernTaskId(Long taskId, String skyvernTaskId) {
+        // 1. 校验参数
+        ThrowUtils.throwIf(taskId == null, ErrorCode.PARAMS_ERROR, "任务 ID 不能为空");
+        ThrowUtils.throwIf(skyvernTaskId == null || skyvernTaskId.isBlank(),
+                ErrorCode.PARAMS_ERROR, "Skyvern 任务 ID 不能为空");
+
+        // 2. 更新 skyvern_task_id
+        LambdaUpdateWrapper<AgentTaskEO> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(AgentTaskEO::getTaskId, taskId)
+                .set(AgentTaskEO::getSkyvernTaskId, skyvernTaskId);
+        int rows = agentTaskMapper.update(null, wrapper);
+        ThrowUtils.throwIf(rows <= 0, ErrorCode.OPERATION_ERROR, "Skyvern 任务 ID 更新失败");
+
+        log.info("Skyvern 任务 ID 更新成功: taskId={}, skyvernTaskId={}", taskId, skyvernTaskId);
+    }
+
     // endregion
 }

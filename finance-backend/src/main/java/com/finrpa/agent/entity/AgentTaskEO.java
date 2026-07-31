@@ -75,6 +75,10 @@ public class AgentTaskEO implements Serializable {
     @TableField("error_message")
     private String errorMessage;
 
+    /** Skyvern 任务 ID（M3.8 引入，关联 Skyvern 原生任务，用于状态查询映射） */
+    @TableField("skyvern_task_id")
+    private String skyvernTaskId;
+
     /** 逻辑删除标识（0-未删除 1-已删除） */
     @TableLogic
     @TableField("deleted")

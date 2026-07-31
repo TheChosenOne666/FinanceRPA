@@ -2,6 +2,7 @@ package com.finrpa.ai.controller;
 
 import com.finrpa.agent.constant.AgentConstant;
 import com.finrpa.agent.dto.request.TaskCreateRequest;
+import com.finrpa.agent.dto.response.TaskDetailVO;
 import com.finrpa.agent.entity.AgentTaskEO;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.ai.client.AiServiceClient;
@@ -109,6 +110,12 @@ public class AiProxyController {
         try {
             // 5. 调用 Python AI 服务触发任务
             TaskTriggerResponse response = aiServiceClient.triggerTask(request);
+            // 6. 保存 Skyvern 任务 ID（M3.8 引入，Python 调 Skyvern API 后回传）
+            if (response.getSkyvernTaskId() != null && !response.getSkyvernTaskId().isBlank()) {
+                taskService.updateSkyvernTaskId(task.getTaskId(), response.getSkyvernTaskId());
+                log.info("Skyvern 任务已关联: taskId={}, skyvernTaskId={}",
+                        task.getTaskId(), response.getSkyvernTaskId());
+            }
             return ResultUtils.success(response);
         } catch (Exception e) {
             log.error("触发任务失败: taskId={}", task.getTaskId(), e);
@@ -119,16 +126,32 @@ public class AiProxyController {
     /**
      * 查询任务状态
      *
-     * @param taskId 任务 ID
+     * <p>M3.8 改造：先查数据库获取 skyvern_task_id，再调 Python 查询 Skyvern 实时状态。
+     * 若任务尚未关联 Skyvern（skyvernTaskId 为空），返回数据库中的状态。</p>
+     *
+     * @param taskId 任务 ID（Java 侧雪花 ID）
      * @return 任务状态响应
      */
     @GetMapping("/tasks/{taskId}/state")
-    @Operation(summary = "查询任务状态", description = "代理查询 Python AI 服务的任务状态")
+    @Operation(summary = "查询任务状态", description = "查询任务状态（M3.8：代理查询 Skyvern 任务状态）")
     public BaseResponse<TaskStateResponse> getTaskState(@PathVariable String taskId) {
         log.info("查询任务状态: taskId={}", taskId);
         try {
-            // 1. 调用 Python AI 服务查询状态
-            TaskStateResponse response = aiServiceClient.getTaskState(taskId);
+            // 1. 查数据库获取任务详情（含 skyvernTaskId）
+            Long parsedTaskId = Long.parseLong(taskId);
+            TaskDetailVO taskDetail = taskService.getTaskDetail(parsedTaskId);
+
+            // 2. 若有 skyvernTaskId，调 Python 查询 Skyvern 实时状态
+            if (taskDetail.getSkyvernTaskId() != null && !taskDetail.getSkyvernTaskId().isBlank()) {
+                TaskStateResponse response = aiServiceClient.getTaskState(taskDetail.getSkyvernTaskId());
+                return ResultUtils.success(response);
+            }
+
+            // 3. 无 skyvernTaskId（任务尚未关联 Skyvern），返回数据库中的状态
+            TaskStateResponse response = new TaskStateResponse();
+            response.setTaskId(taskId);
+            response.setState(taskDetail.getStatus() != null ? taskDetail.getStatus().toLowerCase() : "pending");
+            response.setMessage(taskDetail.getMessage() != null ? taskDetail.getMessage() : "");
             return ResultUtils.success(response);
         } catch (Exception e) {
             log.error("查询任务状态失败: taskId={}", taskId, e);

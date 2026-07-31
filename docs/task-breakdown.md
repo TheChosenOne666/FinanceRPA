@@ -1322,6 +1322,39 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 
 ---
 
+#### M3.7 Skyvern 集成 + 浏览器执行链路打通
+
+> **补录说明**：项目定位"基于 Skyvern 二次开发"（见本文档第 3 行），M2.1 声称"Skyvern 集成 ✅"但实际只落地了骨架占位，M3.1 又明确"不引入 Skyvern"，导致 Skill 层有 Playwright API 调用代码但**无浏览器启动入口**（`context["page"]` 无来源），端到端链路断裂。本任务补齐这个缺口，是 M4 Coordinator 编排真实浏览器操作的前置条件。
+>
+> **方案决策（A1：复刻 finrpa-enterprise 模式）**：调研发现 finrpa-enterprise 通过 `python -m skyvern.forge` 启动 Skyvern 原生 FastAPI 服务，浏览器自动化和 LLM 视觉决策通过 Skyvern 原生 API（`POST /api/v1/tasks` 等）触发，ForgeAgent + BROWSER_MANAGER + LLM 全部可用。本任务采用同款方案：在 finance-ai 的 `app/main.py` lifespan 中调用 `start_forge_app()` 初始化 ForgeApp，挂载 Skyvern 原生路由（`/v1`、`/api/v1`、`/api/v2`），与 finance-ai 自有的 `/api/v1/ai/*` 路由共存不冲突。
+>
+> **数据库策略**：共用 finrpa 库（Skyvern alembic 建 skyvern 自己的表，与 finrpa 的 rpa_* 表物理共存但逻辑分离）。
+>
+> **范围限定**：M3.7 只做 finance-ai 侧（启动 Skyvern 服务 + 配置 + DB 迁移 + 验证）。Java backend 改造（TaskController 改调 Skyvern API、rpa_task 表加 skyvern_task_id 字段）移到 M3.8。
+
+| 项 | 内容 |
+|----|------|
+| **规模** | L |
+| **前置依赖** | M3.1（Skill 层已就绪）、M3.2（Skill Pipeline 执行器） |
+| **产出物** | 1. `finance-ai/Dockerfile`（python:3.11-slim-bookworm + playwright install）<br>2. `finance-ai/.env.example`（Skyvern 必需配置：DATABASE_STRING/BROWSER_TYPE/LLM/数据目录等）<br>3. `finance-ai/alembic.ini` + `finance-ai/alembic/`（从 finrpa-enterprise 复制，env.py 改用 `skyvern.config.settings`）<br>4. `finance-ai/app/main.py`（lifespan 调用 `start_forge_app()` + 挂载 Skyvern 路由 `base_router`/`legacy_base_router`/`legacy_v2_router`）<br>5. `docker-compose.yml`（finance-ai command 加 `alembic upgrade head` + Skyvern 环境变量）<br>6. `finance-ai/skyvern/`（Skyvern 源码，696 个文件，已复制） |
+| **描述** | 1. **Dockerfile 修复**：从 `mcr.microsoft.com/playwright`（tag 不存在）改为 `python:3.11-slim-bookworm` + `playwright install-deps && playwright install chromium`，参考 finrpa-enterprise Dockerfile<br>2. **alembic 配置**：从 finrpa-enterprise 复制 `alembic.ini` + `alembic/`（含 200+ 迁移脚本），修改 `env.py` 去掉 `enterprise.auth.models` 导入，改用 `from skyvern.config import settings` 读取 DATABASE_STRING<br>3. **app/main.py 改造**：lifespan 启动时调 `start_forge_app()` 初始化 ForgeApp（Database/Storage/LLM_API_HANDLER/BROWSER_MANAGER/ForgeAgent），挂载 Skyvern 原生路由；初始化失败不阻断 finance-ai 自有路由（health/sse/skills）<br>4. **docker-compose.yml**：finance-ai command 加 `uv run alembic upgrade head`（启动前建 Skyvern 表），environment 加 DATABASE_STRING/ENABLE_OPENAI/LLM_KEY/OPENAI_API_KEY/SKYVERN_STORAGE_TYPE 等<br>5. **端到端验证**：直接调 Skyvern `POST /api/v1/tasks` 触发任务，确认 Chromium 真实启动执行<br>6. **保留 app/agent + app/skills**：当前架构作为未来扩展层保留不动，M3.7 不依赖也不破坏 |
+| **验收标准** | 1. `docker-compose build finance-ai` 成功（python:3.11-slim-bookworm + playwright install 通过）；2. `alembic upgrade head` 成功（finrpa 库出现 skyvern 的 task/workflow/artifact 等表）；3. `start_forge_app()` 初始化成功（日志可见 "Skyvern ForgeApp 已初始化"）；4. Skyvern 原生 API 可访问（`GET /api/v1/tasks` 返回 200）；5. `POST /api/v1/tasks` 触发任务后 Docker 内启动 Chromium（`docker logs finrpa-ai` 可见 Playwright 启动日志）；6. finance-ai 自有路由不受影响（`/api/v1/ai/health` 仍返回 200）；7. 现有单元测试仍通过 |
+| **参考实现** | `finrpa-enterprise/skyvern/forge/api_app.py:create_api_app` + `finrpa-enterprise/skyvern/forge/forge_app_initializer.py:start_forge_app` + `finrpa-enterprise/Dockerfile` + `finrpa-enterprise/alembic/env.py` |
+| **状态** | ✅ 已完成（2026-07-31）。Skyvern 集成 + 浏览器执行链路打通。最终落地：(1) Docker 镜像 python:3.11-slim-bookworm + playwright install chromium；(2) Skyvern 源码 696 文件复制到 `finance-ai/skyvern/`；(3) `app/main.py` lifespan 调用 `start_forge_app()` 初始化 ForgeApp，挂载 Skyvern 原生路由 `/v1` `/api/v1` `/api/v2`；(4) `alembic upgrade head` 成功，finrpa 库共存 15+ skyvern 表（artifacts/persistent_browser_sessions/task_runs/workflows 等）与 rpa_* 表；(5) 验证：`GET /api/v1/tasks` 返回 403（路由已挂载，需 Skyvern API Key 鉴权而非 404），`/api/v1/ai/health` 返回 200；(6) 隐式依赖补齐：filetype/json_repair/pandas/lark/lxml/pyyaml/beautifulsoup4/requests/pyotp/google-auth/email-validator/jsonschema/tiktoken/rich/starlette-context/tldextract/cachetools/pdfplumber/pypdf/zstandard/yarl/multidict/charset-normalizer/asyncache/libcst/fastmcp/lmnr/azure-storage-blob/azure-core/azure-identity/azure-keyvault-secrets/psutil/boto3/botocore 共 35+ 包；(7) `onepassword` stub 包：1Password Python SDK 不在 PyPI（仅 GitHub Packages 分发），本项目使用本地存储不依赖 1Password，创建 `finance-ai/onepassword/` stub 让 Skyvern 导入通过，调用相关方法抛 RuntimeError；(8) LLM 配置用占位符 `sk-placeholder-for-m37-verification` 让 ForgeApp 初始化通过，实际触发浏览器任务需在根目录 `.env` 设置真实 `OPENAI_API_KEY` |
+
+#### M3.8 Java backend 改调 Skyvern API（M3.7 后续）
+
+| 项 | 内容 |
+|----|------|
+| **规模** | M |
+| **前置依赖** | M3.7（Skyvern 服务可用） |
+| **产出物** | `TaskController` 触发任务改调 Skyvern `/api/v1/tasks` + `rpa_task` 表加 `skyvern_task_id` 字段 + 状态查询映射 |
+| **描述** | **方案决策（B：Python 中转）**：Java 不直接调 Skyvern，通过 Python finance-ai 中转。Python 内部调 Skyvern API，封装 token 管理。<br>1. `rpa_agent_task` 表加 `skyvern_task_id` 字段（V11 迁移）<br>2. Java `AiProxyController.triggerTask` 调 Python `/api/v1/ai/tasks`，Python 内部调 Skyvern `POST /api/v1/tasks` 创建 Skyvern 任务，返回 `skyvern_task_id` 给 Java<br>3. Java `AiProxyController.getTaskState` 先查数据库获取 `skyvern_task_id`，再调 Python 查询 Skyvern 状态并映射（created→PENDING / running→EXECUTING / completed→SUCCESS / failed→FAILED / canceled→ABORTED）<br>4. Python `SkyvernClient` 生成 `X-Request-ID` header 传给 Skyvern，日志可串联<br>5. Python lifespan 启动时自动创建 Skyvern organization + auth token（JWT），全局缓存 |
+| **验收标准** | 前端触发任务 → Java backend 调 Python → Python 调 Skyvern API → Skyvern 启动浏览器执行 → 状态回传 Java → 前端展示 |
+| **状态** | ✅ 已完成（2026-07-31）。新增文件：`V11__add_skyvern_task_id_to_agent_task.sql`、`app/clients/skyvern_client.py`。改动文件：`AgentTaskEO`、`TaskVO`、`TaskTriggerResponse`(Java+Python)、`TaskService`+`TaskServiceImpl`(updateSkyvernTaskId)、`AiProxyController`(triggerTask 保存 skyvernTaskId + getTaskState 查数据库)、`app/api/tasks.py`(trigger_task 调 SkyvernClient + get_task_state 调 SkyvernClient + 状态映射)、`app/main.py`(lifespan 初始化 token)、`app/schemas.py`(TaskTriggerResponse 加 skyvern_task_id)、`config_registry.py`(加 doubao-seed-evolving 模型)。Java 278 个测试全部通过（含新增 4 个 updateSkyvernTaskId 测试 + 更新 triggerTask/getTaskState 测试） |
+
+---
+
 ### M4 双 Agent 协作
 
 #### M4.1 Python Planner 任务拆解

@@ -67,4 +67,12 @@ public interface TaskService {
      * @param request 子任务更新请求
      */
     void updateSubTask(Long taskId, SubTaskUpdateRequest request);
+
+    /**
+     * 更新 Skyvern 任务 ID（M3.8 引入，Python 调 Skyvern API 后回传）
+     *
+     * @param taskId         Java 侧任务 ID
+     * @param skyvernTaskId  Skyvern 返回的任务 ID
+     */
+    void updateSkyvernTaskId(Long taskId, String skyvernTaskId);
 }

@@ -596,4 +596,50 @@ class TaskServiceImplTest {
     }
 
     // endregion
+
+    // region updateSkyvernTaskId（M3.8）
+
+    @Test
+    @DisplayName("updateSkyvernTaskId - 正常更新成功")
+    void updateSkyvernTaskId_Success() {
+        // 1. 准备
+        Long taskId = TEST_TASK_ID;
+        String skyvernTaskId = "tsk_557478467325455186";
+
+        when(agentTaskMapper.update(any(), any())).thenReturn(1);
+
+        // 2. 执行
+        taskService.updateSkyvernTaskId(taskId, skyvernTaskId);
+
+        // 3. 验证
+        verify(agentTaskMapper, times(1)).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("updateSkyvernTaskId - taskId 为 null 抛参数异常")
+    void updateSkyvernTaskId_NullTaskId_ThrowsException() {
+        assertThatThrownBy(() -> taskService.updateSkyvernTaskId(null, "tsk_123"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("任务 ID 不能为空");
+    }
+
+    @Test
+    @DisplayName("updateSkyvernTaskId - skyvernTaskId 为空白抛参数异常")
+    void updateSkyvernTaskId_BlankSkyvernTaskId_ThrowsException() {
+        assertThatThrownBy(() -> taskService.updateSkyvernTaskId(TEST_TASK_ID, "  "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Skyvern 任务 ID 不能为空");
+    }
+
+    @Test
+    @DisplayName("updateSkyvernTaskId - update 返回 0 抛操作异常")
+    void updateSkyvernTaskId_UpdateFailed_ThrowsException() {
+        when(agentTaskMapper.update(any(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> taskService.updateSkyvernTaskId(TEST_TASK_ID, "tsk_123"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Skyvern 任务 ID 更新失败");
+    }
+
+    // endregion
 }

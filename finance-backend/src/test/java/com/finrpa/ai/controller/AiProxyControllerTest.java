@@ -3,6 +3,7 @@ package com.finrpa.ai.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finrpa.agent.constant.AgentConstant;
 import com.finrpa.agent.dto.request.TaskCreateRequest;
+import com.finrpa.agent.dto.response.TaskDetailVO;
 import com.finrpa.agent.entity.AgentTaskEO;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.ai.client.AiServiceClient;
@@ -26,6 +27,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -92,13 +94,14 @@ class AiProxyControllerTest {
     // region 任务触发
 
     @Test
-    @DisplayName("触发任务 - 成功")
+    @DisplayName("触发任务 - 成功（含 Skyvern 任务 ID 回传，M3.8）")
     void triggerTask_Success() throws Exception {
-        // 1. 准备 mock 响应
+        // 1. 准备 mock 响应（含 skyvernTaskId）
         TaskTriggerResponse response = new TaskTriggerResponse();
         response.setTaskId("2082333099000000099");
+        response.setSkyvernTaskId("tsk_557478467325455186");
         response.setStatus("running");
-        response.setMessage("Task triggered successfully");
+        response.setMessage("Skyvern 任务已触发");
         when(aiServiceClient.triggerTask(any(TaskTriggerRequest.class))).thenReturn(response);
 
         // 2. 构建请求
@@ -112,12 +115,15 @@ class AiProxyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.taskId").value("2082333099000000099"))
+                .andExpect(jsonPath("$.data.skyvernTaskId").value("tsk_557478467325455186"))
                 .andExpect(jsonPath("$.data.status").value("running"));
 
         // 4. 验证 TaskService.createTask 被调用
         verify(taskService, times(1)).createTask(any(Long.class), any(Long.class), any(TaskCreateRequest.class));
         // 5. 验证 AiServiceClient.triggerTask 被调用
         verify(aiServiceClient, times(1)).triggerTask(any(TaskTriggerRequest.class));
+        // 6. 验证 TaskService.updateSkyvernTaskId 被调用（M3.8）
+        verify(taskService, times(1)).updateSkyvernTaskId(any(Long.class), eq("tsk_557478467325455186"));
     }
 
     @Test
@@ -175,46 +181,58 @@ class AiProxyControllerTest {
     // region 任务状态查询
 
     @Test
-    @DisplayName("查询任务状态 - 成功")
+    @DisplayName("查询任务状态 - 成功（M3.8：查数据库获取 skyvernTaskId 后调 Python）")
     void getTaskState_Success() throws Exception {
-        // 1. 准备 mock 响应
-        TaskStateResponse response = new TaskStateResponse();
-        response.setTaskId("task-1");
-        response.setState("executing");
-        response.setCurrentStep(2);
-        response.setTotalSteps(5);
-        response.setMessage("Step 2 in progress");
-        when(aiServiceClient.getTaskState("task-1")).thenReturn(response);
+        // 1. mock TaskService.getTaskDetail 返回含 skyvernTaskId 的任务详情
+        TaskDetailVO taskDetail = new TaskDetailVO();
+        taskDetail.setTaskId(123L);
+        taskDetail.setSkyvernTaskId("tsk_557478467325455186");
+        taskDetail.setStatus("EXECUTING");
+        taskDetail.setMessage("任务执行中");
+        when(taskService.getTaskDetail(123L)).thenReturn(taskDetail);
 
-        // 2. 执行请求并验证
-        mockMvc.perform(get("/ai/tasks/task-1/state"))
+        // 2. mock AiServiceClient.getTaskState 返回 Skyvern 状态
+        TaskStateResponse response = new TaskStateResponse();
+        response.setTaskId("tsk_557478467325455186");
+        response.setState("executing");
+        response.setMessage("任务执行中");
+        when(aiServiceClient.getTaskState("tsk_557478467325455186")).thenReturn(response);
+
+        // 3. 执行请求并验证（URL 中的 123 是 Java 侧 taskId）
+        mockMvc.perform(get("/ai/tasks/123/state"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.taskId").value("task-1"))
-                .andExpect(jsonPath("$.data.state").value("executing"))
-                .andExpect(jsonPath("$.data.currentStep").value(2))
-                .andExpect(jsonPath("$.data.totalSteps").value(5))
-                .andExpect(jsonPath("$.data.message").value("Step 2 in progress"));
+                .andExpect(jsonPath("$.data.taskId").value("tsk_557478467325455186"))
+                .andExpect(jsonPath("$.data.state").value("executing"));
 
-        verify(aiServiceClient, times(1)).getTaskState("task-1");
+        // 4. 验证先查数据库，再调 Python（传 skyvernTaskId 而非 taskId）
+        verify(taskService, times(1)).getTaskDetail(123L);
+        verify(aiServiceClient, times(1)).getTaskState("tsk_557478467325455186");
     }
 
     @Test
-    @DisplayName("查询任务状态 - Python 不可用应抛 AiException")
+    @DisplayName("查询任务状态 - Python 不可用应抛 AiException（M3.8：先查数据库再调 Python）")
     void getTaskState_ServiceUnavailable_ShouldThrowAiException() {
-        // 1. mock Python 调用抛异常
-        when(aiServiceClient.getTaskState("task-1"))
+        // 1. mock TaskService.getTaskDetail 返回含 skyvernTaskId 的任务详情
+        TaskDetailVO taskDetail = new TaskDetailVO();
+        taskDetail.setTaskId(123L);
+        taskDetail.setSkyvernTaskId("tsk_557478467325455186");
+        taskDetail.setStatus("EXECUTING");
+        when(taskService.getTaskDetail(123L)).thenReturn(taskDetail);
+
+        // 2. mock Python 调用抛异常
+        when(aiServiceClient.getTaskState("tsk_557478467325455186"))
                 .thenThrow(new RuntimeException("Connection refused"));
 
-        // 2. 构建 Controller
+        // 3. 构建 Controller
         AiProxyController controller = new AiProxyController();
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiServiceClient", aiServiceClient);
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "aiSseProxy", aiSseProxy);
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "taskService", taskService);
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "httpServletRequest", httpServletRequest);
 
-        // 3. 验证异常类型
-        assertThatThrownBy(() -> controller.getTaskState("task-1"))
+        // 4. 验证异常类型
+        assertThatThrownBy(() -> controller.getTaskState("123"))
                 .isInstanceOf(AiException.class)
                 .hasFieldOrPropertyWithValue("code", ErrorCode.AI_SERVICE_UNAVAILABLE.getCode());
     }

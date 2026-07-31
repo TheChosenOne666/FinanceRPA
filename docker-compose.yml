@@ -116,12 +116,16 @@ services:
       - finrpa-net
 
   finance-ai:
-    image: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+    build:
+      context: ./finance-ai
+      dockerfile: Dockerfile
     container_name: finrpa-ai
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "uv sync && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    # 启动顺序：uv sync 安装依赖 → alembic upgrade head 建 Skyvern 表 → uvicorn 启动服务
+    command: sh -c "uv sync && uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
+      # finance-ai 自有数据库（业务表，与 Skyvern 表共存于 finrpa 库）
       DATABASE_URL: postgresql+asyncpg://finrpa:${POSTGRES_PASSWORD:-finrpa}@postgres:5432/${POSTGRES_DB:-finrpa}
       REDIS_URL: redis://redis:6379/1
       BACKEND_BASE_URL: http://finance-backend:8080
@@ -130,12 +134,41 @@ services:
       UV_HTTP_TIMEOUT: "300"
       UV_DEFAULT_INDEX_RETRIES: "5"
       UV_LINK_MODE: "copy"
+      # === Skyvern 配置（M3.7：A1 方案，启动 ForgeApp 服务） ===
+      # 数据库：共用 finrpa 库（Skyvern alembic 建 skyvern 自己的表与 finrpa 表共存）
+      DATABASE_STRING: postgresql+asyncpg://finrpa:${POSTGRES_PASSWORD:-finrpa}@postgres:5432/${POSTGRES_DB:-finrpa}
+      # 浏览器：headless 模式（容器内无显示）
+      BROWSER_TYPE: chromium-headless
+      # Skyvern 数据目录
+      VIDEO_PATH: /data/videos
+      HAR_PATH: /data/har
+      LOG_PATH: /data/log
+      ARTIFACT_STORAGE_PATH: /data/artifacts
+      # 存储类型：local（不使用 S3/Azure）
+      SKYVERN_STORAGE_TYPE: local
+      # 通知注册类型：local（不使用 Redis 通知）
+      NOTIFICATION_REGISTRY_TYPE: local
+      # Skyvern 环境标识
+      ENV: local
+      EXECUTE_ALL_STEPS: "true"
+      ALLOWED_ORIGINS: '["*"]'
+      # JWT 与加密密钥（生产环境务必替换）
+      SECRET_KEY: ${SKYVERN_SECRET_KEY:-finrpa-skyvern-dev-secret-change-in-prod}
+      ENCRYPTOR_AES_SECRET_KEY: ${SKYVERN_AES_KEY:-finrpa-aes-dev-secret-change-in-prod}
+      # === Skyvern LLM 配置（视觉决策用） ===
+      # 启用火山方舟（豆包）提供商（需在根目录 .env 设置 VOLCENGINE_API_KEY）
+      ENABLE_VOLCENGINE: "true"
+      # 模型选择从 .env 读取（可选值见 .env 注释）
+      LLM_KEY: ${SKYVERN_LLM_KEY:-VOLCENGINE_DOUBAO_SEED_1_6}
+      # 火山方舟 API Key（豆包视觉模型，Skyvern 原生支持）
+      VOLCENGINE_API_KEY: ${VOLCENGINE_API_KEY:-placeholder-for-m37-verification}
     ports:
       - "8000:8000"
     volumes:
       - ./finance-ai:/app
       - uv-cache:/root/.cache/uv
       - ai-venv:/app/.venv
+      - ai-data:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -206,6 +239,7 @@ volumes:
   uv-cache:
   frontend-node-modules:
   ai-venv:
+  ai-data:
 
 # ========== 网络 ==========
 networks:

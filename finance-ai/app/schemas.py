@@ -36,6 +36,7 @@ class TaskTriggerResponse(BaseModel):
     model_config = _CAMEL_CONFIG
 
     task_id: str = Field(description="任务 ID")
+    skyvern_task_id: str | None = Field(default=None, description="Skyvern 任务 ID（M3.8 引入）")
     status: str = Field(default="running", description="初始状态")
     message: str = Field(default="Task triggered successfully")
 

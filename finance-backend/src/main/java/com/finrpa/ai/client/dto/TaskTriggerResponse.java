@@ -21,6 +21,9 @@ public class TaskTriggerResponse implements Serializable {
     /** 任务 ID */
     private String taskId;
 
+    /** Skyvern 任务 ID（M3.8 引入，Python 调 Skyvern API 后返回） */
+    private String skyvernTaskId;
+
     /** 初始状态（默认 running） */
     private String status;
 
