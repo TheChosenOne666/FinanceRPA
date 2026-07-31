@@ -195,6 +195,66 @@ class JavaBackendClient:
         )
         return True
 
+    async def update_coordination_state(
+        self,
+        task_id: str,
+        navigation_goal: str | None = None,
+        current_plan: str | None = None,
+        completed_subtasks: list[str] | None = None,
+        total_replans: int | None = None,
+        max_replans: int | None = None,
+        status: str | None = None,
+        error_message: str | None = None,
+    ) -> bool:
+        """更新协调状态（M4.2 引入，持久化 CoordinationState 到 Java）。
+
+        Python Coordinator 每步执行后回调此接口，将 CoordinationState 持久化到
+        Java 侧 rpa_agent_coordination_state 表，用于断点续跑和 replan 追踪。
+
+        @param task_id: 任务 ID
+        @param navigation_goal: 导航目标
+        @param current_plan: 当前计划 JSON 字符串
+        @param completed_subtasks: 已完成子任务 ID 列表
+        @param total_replans: 总重规划次数
+        @param max_replans: 最大重规划次数
+        @param status: 协调状态（RUNNING/COMPLETED/FAILED/NEEDS_HUMAN）
+        @param error_message: 错误信息
+        @return: 是否成功
+        """
+        payload: dict = {}
+        if navigation_goal is not None:
+            payload["navigationGoal"] = navigation_goal
+        if current_plan is not None:
+            payload["currentPlan"] = current_plan
+        if completed_subtasks is not None:
+            payload["completedSubtasks"] = completed_subtasks
+        if total_replans is not None:
+            payload["totalReplans"] = total_replans
+        if max_replans is not None:
+            payload["maxReplans"] = max_replans
+        if status is not None:
+            payload["status"] = status
+        if error_message is not None:
+            payload["errorMessage"] = error_message
+
+        logger.info(
+            "JavaBackendClient: 更新协调状态 [task=%s, status=%s, replans=%s, completed=%d]",
+            task_id, status, total_replans,
+            len(completed_subtasks) if completed_subtasks else 0,
+        )
+        resp = await self._request_with_retry(
+            "POST", f"/api/internal/tasks/{task_id}/coordination-state", json=payload,
+        )
+        if resp is None:
+            logger.error(
+                "JavaBackendClient: 更新协调状态失败 [task=%s, status=%s]", task_id, status,
+            )
+            return False
+        logger.info(
+            "JavaBackendClient: 更新协调状态成功 [task=%s, status=%s]", task_id, status,
+        )
+        return True
+
     async def upload_screenshot(
         self,
         task_id: str,

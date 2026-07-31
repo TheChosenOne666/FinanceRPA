@@ -1,6 +1,7 @@
 package com.finrpa.agent.controller;
 
 import com.finrpa.agent.dto.request.AuditLogCreateRequest;
+import com.finrpa.agent.dto.request.CoordinationStateUpdateRequest;
 import com.finrpa.agent.dto.request.SubTaskUpdateRequest;
 import com.finrpa.agent.dto.request.TaskStateUpdateRequest;
 import com.finrpa.agent.service.AuditLogService;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>POST /internal/tasks/{taskId}/state —— 更新任务状态</li>
  *   <li>POST /internal/tasks/{taskId}/subtasks —— 更新子任务状态</li>
+ *   <li>POST /internal/tasks/{taskId}/coordination-state —— 更新协调状态（M4.2）</li>
  *   <li>POST /internal/audit/logs —— 上报审计日志</li>
  * </ul>
  * </p>
@@ -82,6 +84,29 @@ public class InternalTaskController {
                 taskId, request.getSubtaskIndex(), request.getStatus());
         // 1. 更新子任务状态
         taskService.updateSubTask(taskId, request);
+        return ResultUtils.success(true);
+    }
+
+    // endregion
+
+    // region 协调状态回调
+
+    /**
+     * 更新协调状态（Python 回调，M4.2 引入）
+     *
+     * @param taskId  任务 ID
+     * @param request 协调状态更新请求
+     * @return 操作结果
+     */
+    @PostMapping("/tasks/{taskId}/coordination-state")
+    @Operation(summary = "更新协调状态", description = "Python Coordinator 每步执行后回调持久化 CoordinationState，用于断点续跑和 replan 追踪")
+    public BaseResponse<Boolean> updateCoordinationState(@PathVariable Long taskId,
+                                                          @RequestBody CoordinationStateUpdateRequest request) {
+        log.info("收到协调状态回调: taskId={}, status={}, totalReplans={}, completed={}",
+                taskId, request.getStatus(), request.getTotalReplans(),
+                request.getCompletedSubtasks() != null ? request.getCompletedSubtasks().size() : 0);
+        // 1. 更新协调状态
+        taskService.updateCoordinationState(taskId, request);
         return ResultUtils.success(true);
     }
 

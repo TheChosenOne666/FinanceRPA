@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finrpa.agent.dto.request.CoordinationStateUpdateRequest;
 import com.finrpa.agent.dto.request.SubTaskUpdateRequest;
 import com.finrpa.agent.dto.request.TaskCreateRequest;
 import com.finrpa.agent.dto.request.TaskQueryRequest;
@@ -15,9 +16,11 @@ import com.finrpa.agent.dto.response.TaskDetailVO;
 import com.finrpa.agent.dto.response.TaskVO;
 import com.finrpa.agent.entity.AgentSubTaskEO;
 import com.finrpa.agent.entity.AgentTaskEO;
+import com.finrpa.agent.entity.CoordinationStateEO;
 import com.finrpa.agent.enums.TaskStateEnum;
 import com.finrpa.agent.mapper.AgentSubTaskMapper;
 import com.finrpa.agent.mapper.AgentTaskMapper;
+import com.finrpa.agent.mapper.CoordinationStateMapper;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.agent.service.TaskStateMachine;
 import com.finrpa.common.exception.BusinessException;
@@ -49,6 +52,10 @@ public class TaskServiceImpl implements TaskService {
     /** 子任务 Mapper */
     @Resource
     private AgentSubTaskMapper agentSubTaskMapper;
+
+    /** 协调状态 Mapper */
+    @Resource
+    private CoordinationStateMapper coordinationStateMapper;
 
     /** JSON 序列化工具 */
     @Resource
@@ -376,6 +383,88 @@ public class TaskServiceImpl implements TaskService {
         ThrowUtils.throwIf(rows <= 0, ErrorCode.OPERATION_ERROR, "Skyvern 任务 ID 更新失败");
 
         log.info("Skyvern 任务 ID 更新成功: taskId={}, skyvernTaskId={}", taskId, skyvernTaskId);
+    }
+
+    /**
+     * 更新协调状态（Python 回调内部接口，M4.2 引入）
+     *
+     * <p>按 taskId upsert 到 rpa_agent_coordination_state 表。
+     * 首次回调时 insert，后续回调时 update 已有记录。</p>
+     *
+     * @param taskId  任务 ID
+     * @param request 协调状态更新请求
+     */
+    @Override
+    public void updateCoordinationState(Long taskId, CoordinationStateUpdateRequest request) {
+        // 1. 校验参数
+        ThrowUtils.throwIf(taskId == null, ErrorCode.PARAMS_ERROR, "任务 ID 不能为空");
+        ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR, "协调状态更新请求不能为空");
+
+        // 2. 查询任务获取 orgId（内部回调无租户上下文）
+        AgentTaskEO task = agentTaskMapper.selectById(taskId);
+        ThrowUtils.throwIf(task == null, ErrorCode.NOT_FOUND_ERROR, "任务不存在");
+        Long orgId = task.getOrgId();
+
+        // 3. 查询现有协调状态（按 taskId）
+        LambdaQueryWrapper<CoordinationStateEO> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(CoordinationStateEO::getTaskId, taskId);
+        CoordinationStateEO existing = coordinationStateMapper.selectOne(queryWrapper);
+
+        // 4. 序列化 completedSubtasks 列表为 JSON
+        String completedSubtasksJson = null;
+        if (request.getCompletedSubtasks() != null) {
+            try {
+                completedSubtasksJson = objectMapper.writeValueAsString(request.getCompletedSubtasks());
+            } catch (JsonProcessingException e) {
+                log.error("协调状态 completedSubtasks 序列化失败: taskId={}", taskId, e);
+            }
+        }
+
+        // 5. upsert
+        if (existing == null) {
+            // insert
+            CoordinationStateEO stateEO = new CoordinationStateEO();
+            stateEO.setTaskId(taskId);
+            stateEO.setOrgId(orgId);
+            stateEO.setNavigationGoal(request.getNavigationGoal());
+            stateEO.setCurrentPlan(request.getCurrentPlan());
+            stateEO.setCompletedSubtasks(completedSubtasksJson);
+            stateEO.setTotalReplans(request.getTotalReplans() != null ? request.getTotalReplans() : 0);
+            stateEO.setMaxReplans(request.getMaxReplans() != null ? request.getMaxReplans() : 3);
+            stateEO.setStatus(request.getStatus() != null ? request.getStatus() : "RUNNING");
+            stateEO.setErrorMessage(request.getErrorMessage());
+            int rows = coordinationStateMapper.insert(stateEO);
+            ThrowUtils.throwIf(rows <= 0, ErrorCode.OPERATION_ERROR, "协调状态创建失败");
+            log.info("协调状态创建成功: taskId={}, status={}", taskId, stateEO.getStatus());
+        } else {
+            // update
+            LambdaUpdateWrapper<CoordinationStateEO> updateWrapper = new LambdaUpdateWrapper<>();
+            updateWrapper.eq(CoordinationStateEO::getTaskId, taskId);
+            if (request.getNavigationGoal() != null) {
+                updateWrapper.set(CoordinationStateEO::getNavigationGoal, request.getNavigationGoal());
+            }
+            if (request.getCurrentPlan() != null) {
+                updateWrapper.set(CoordinationStateEO::getCurrentPlan, request.getCurrentPlan());
+            }
+            if (completedSubtasksJson != null) {
+                updateWrapper.set(CoordinationStateEO::getCompletedSubtasks, completedSubtasksJson);
+            }
+            if (request.getTotalReplans() != null) {
+                updateWrapper.set(CoordinationStateEO::getTotalReplans, request.getTotalReplans());
+            }
+            if (request.getMaxReplans() != null) {
+                updateWrapper.set(CoordinationStateEO::getMaxReplans, request.getMaxReplans());
+            }
+            if (request.getStatus() != null) {
+                updateWrapper.set(CoordinationStateEO::getStatus, request.getStatus());
+            }
+            if (request.getErrorMessage() != null) {
+                updateWrapper.set(CoordinationStateEO::getErrorMessage, request.getErrorMessage());
+            }
+            int rows = coordinationStateMapper.update(null, updateWrapper);
+            ThrowUtils.throwIf(rows <= 0, ErrorCode.OPERATION_ERROR, "协调状态更新失败");
+            log.info("协调状态更新成功: taskId={}, status={}", taskId, request.getStatus());
+        }
     }
 
     // endregion

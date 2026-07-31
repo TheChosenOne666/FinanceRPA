@@ -42,6 +42,14 @@ _STATE_MAP = {
     "aborted": "ABORTED",
 }
 
+# CoordinationState.status → Java rpa_agent_coordination_state.status 大写映射（M4.2）
+_COORD_STATUS_MAP = {
+    "running": "RUNNING",
+    "completed": "COMPLETED",
+    "failed": "FAILED",
+    "needs_human": "NEEDS_HUMAN",
+}
+
 
 class AgentCoordinator:
     """编排 Planner 和 Executor 代理。
@@ -236,6 +244,18 @@ class AgentCoordinator:
                 failed_subtask.subtask_id, state.task_id,
             )
             failed_subtask.status = SubTaskStatus.SKIPPED
+            # 发布 SSE 事件：子任务跳过
+            if self.event_bus and state.task_id:
+                await self.event_bus.publish(
+                    state.task_id,
+                    "step_skipped",
+                    {
+                        "subtaskIndex": failed_subtask.index,
+                        "message": f"子任务 {failed_subtask.index + 1} 已跳过（策略=SKIP）",
+                    },
+                )
+            # 持久化协调状态（M4.2）
+            await self._persist_coordination_state(state)
             return "continued"
 
         # ABORT：终止任务
@@ -304,6 +324,9 @@ class AgentCoordinator:
                 len(new_plan.subtasks), state.task_id,
             )
 
+            # 持久化协调状态（M4.2：replan 后更新 total_replans + new_plan）
+            await self._persist_coordination_state(state)
+
             # 递归执行新计划
             await self._execute_plan(state, new_plan, completed_subtasks, context)
             return "replanned"
@@ -320,7 +343,7 @@ class AgentCoordinator:
         return "aborted"
 
     async def _on_task_start(self, state: CoordinationState, total_steps: int) -> None:
-        """任务开始执行时的回调：更新 Java 状态 + 发布 SSE 事件。"""
+        """任务开始执行时的回调：更新 Java 状态 + 发布 SSE 事件 + 持久化协调状态。"""
         logger.info(
             "Coordinator: 任务开始 → 回调 Java EXECUTING [task=%s, total_steps=%d]",
             state.task_id, total_steps,
@@ -351,6 +374,9 @@ class AgentCoordinator:
                 },
             )
 
+        # 持久化协调状态（M4.2：初始计划创建后）
+        await self._persist_coordination_state(state)
+
     async def _on_task_progress(
         self,
         state: CoordinationState,
@@ -358,7 +384,7 @@ class AgentCoordinator:
         total_steps: int,
         message: str,
     ) -> None:
-        """任务进度更新时的回调：更新 Java 状态 + 发布 SSE 事件。"""
+        """任务进度更新时的回调：更新 Java 状态 + 发布 SSE 事件 + 持久化协调状态。"""
         logger.info(
             "Coordinator: 进度更新 → 回调 Java EXECUTING [task=%s, step=%d/%d, msg=%s]",
             state.task_id, current_step, total_steps, message,
@@ -386,8 +412,11 @@ class AgentCoordinator:
                 },
             )
 
+        # 持久化协调状态（M4.2：每步完成后更新 completed_subtasks）
+        await self._persist_coordination_state(state)
+
     async def _on_task_terminal(self, state: CoordinationState) -> None:
-        """任务到达终态时的回调：更新 Java 状态 + 发布 SSE 终态事件。"""
+        """任务到达终态时的回调：更新 Java 状态 + 发布 SSE 终态事件 + 持久化协调状态。"""
         java_state = _STATE_MAP.get(state.status, "FAILED")
         message = state.error_message or ("任务完成" if state.status == "completed" else "任务结束")
 
@@ -427,4 +456,46 @@ class AgentCoordinator:
                     "currentStep": len(state.completed_subtasks),
                     "totalSteps": len(state.current_plan.subtasks) if state.current_plan else 0,
                 },
+            )
+
+        # 持久化协调状态（M4.2：终态时更新 status + error_message）
+        await self._persist_coordination_state(state)
+
+    async def _persist_coordination_state(self, state: CoordinationState) -> None:
+        """持久化 CoordinationState 到 Java（M4.2 引入）。
+
+        将当前协调状态（导航目标、当前计划、已完成子任务列表、replan 次数、状态）
+        回调 Java 持久化到 rpa_agent_coordination_state 表，用于断点续跑和 replan 追踪。
+        失败不阻断主流程（仅 warning 日志）。
+        """
+        if not self.java_client or not state.task_id:
+            return
+
+        # 序列化 current_plan 为 JSON 字符串
+        current_plan_json = None
+        if state.current_plan:
+            try:
+                current_plan_json = state.current_plan.model_dump_json()
+            except Exception as e:
+                logger.warning(
+                    "Coordinator: 序列化 current_plan 失败: %s [task=%s]", e, state.task_id,
+                )
+
+        # 状态映射（小写 → 大写）
+        status_upper = _COORD_STATUS_MAP.get(state.status, state.status.upper())
+
+        try:
+            await self.java_client.update_coordination_state(
+                task_id=state.task_id,
+                navigation_goal=state.navigation_goal,
+                current_plan=current_plan_json,
+                completed_subtasks=state.completed_subtasks,
+                total_replans=state.total_replans,
+                max_replans=self.max_replans,
+                status=status_upper,
+                error_message=state.error_message,
+            )
+        except Exception as e:
+            logger.warning(
+                "Coordinator: 持久化协调状态失败: %s [task=%s]", e, state.task_id,
             )

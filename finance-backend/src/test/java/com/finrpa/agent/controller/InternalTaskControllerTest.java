@@ -2,6 +2,7 @@ package com.finrpa.agent.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finrpa.agent.dto.request.AuditLogCreateRequest;
+import com.finrpa.agent.dto.request.CoordinationStateUpdateRequest;
 import com.finrpa.agent.dto.request.SubTaskUpdateRequest;
 import com.finrpa.agent.dto.request.TaskStateUpdateRequest;
 import com.finrpa.agent.service.AuditLogService;
@@ -17,6 +18,8 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.List;
 
 /**
  * 内部任务回调控制器单元测试
@@ -92,6 +95,30 @@ class InternalTaskControllerTest {
 
         // 3. 验证 service 被调用
         verify(taskService, times(1)).updateSubTask(eq(TEST_TASK_ID), any(SubTaskUpdateRequest.class));
+    }
+
+    @Test
+    @DisplayName("更新协调状态 - 成功（M4.2）")
+    void updateCoordinationState_Success() throws Exception {
+        // 1. 构建请求
+        CoordinationStateUpdateRequest request = new CoordinationStateUpdateRequest();
+        request.setNavigationGoal("下载银行流水");
+        request.setCurrentPlan("{\"subtasks\":[]}");
+        request.setCompletedSubtasks(List.of("sub_001", "sub_002"));
+        request.setTotalReplans(0);
+        request.setMaxReplans(3);
+        request.setStatus("RUNNING");
+
+        // 2. 执行请求并验证
+        mockMvc.perform(post("/internal/tasks/{taskId}/coordination-state", TEST_TASK_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value(true));
+
+        // 3. 验证 service 被调用
+        verify(taskService, times(1)).updateCoordinationState(eq(TEST_TASK_ID), any(CoordinationStateUpdateRequest.class));
     }
 
     @Test

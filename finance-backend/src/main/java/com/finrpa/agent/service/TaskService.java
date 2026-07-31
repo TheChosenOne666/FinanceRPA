@@ -1,6 +1,7 @@
 package com.finrpa.agent.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.finrpa.agent.dto.request.CoordinationStateUpdateRequest;
 import com.finrpa.agent.dto.request.TaskCreateRequest;
 import com.finrpa.agent.dto.request.TaskQueryRequest;
 import com.finrpa.agent.dto.request.TaskStateUpdateRequest;
@@ -75,4 +76,15 @@ public interface TaskService {
      * @param skyvernTaskId  Skyvern 返回的任务 ID
      */
     void updateSkyvernTaskId(Long taskId, String skyvernTaskId);
+
+    /**
+     * 更新协调状态（Python 回调内部接口，M4.2 引入）
+     *
+     * <p>Python Coordinator 每步执行后回调持久化 CoordinationState，
+     * 用于断点续跑和 replan 追踪。按 taskId upsert 到 rpa_agent_coordination_state 表。</p>
+     *
+     * @param taskId  任务 ID
+     * @param request 协调状态更新请求
+     */
+    void updateCoordinationState(Long taskId, CoordinationStateUpdateRequest request);
 }

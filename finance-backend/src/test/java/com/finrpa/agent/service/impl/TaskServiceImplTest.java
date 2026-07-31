@@ -9,13 +9,17 @@ import com.finrpa.agent.dto.request.SubTaskUpdateRequest;
 import com.finrpa.agent.dto.request.TaskCreateRequest;
 import com.finrpa.agent.dto.request.TaskQueryRequest;
 import com.finrpa.agent.dto.request.TaskStateUpdateRequest;
+import com.finrpa.agent.dto.request.CoordinationStateUpdateRequest;
+import com.finrpa.agent.dto.response.SubTaskVO;
 import com.finrpa.agent.dto.response.TaskDetailVO;
 import com.finrpa.agent.dto.response.TaskVO;
 import com.finrpa.agent.entity.AgentSubTaskEO;
 import com.finrpa.agent.entity.AgentTaskEO;
+import com.finrpa.agent.entity.CoordinationStateEO;
 import com.finrpa.agent.enums.TaskStateEnum;
 import com.finrpa.agent.mapper.AgentSubTaskMapper;
 import com.finrpa.agent.mapper.AgentTaskMapper;
+import com.finrpa.agent.mapper.CoordinationStateMapper;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.tenant.context.TenantContext;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -66,6 +70,9 @@ class TaskServiceImplTest {
     @Mock
     private AgentSubTaskMapper agentSubTaskMapper;
 
+    @Mock
+    private CoordinationStateMapper coordinationStateMapper;
+
     @InjectMocks
     private TaskServiceImpl taskService;
 
@@ -80,6 +87,7 @@ class TaskServiceImplTest {
         MybatisConfiguration configuration = new MybatisConfiguration();
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), AgentTaskEO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), AgentSubTaskEO.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, ""), CoordinationStateEO.class);
     }
 
     @BeforeEach
@@ -639,6 +647,118 @@ class TaskServiceImplTest {
         assertThatThrownBy(() -> taskService.updateSkyvernTaskId(TEST_TASK_ID, "tsk_123"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Skyvern 任务 ID 更新失败");
+    }
+
+    // endregion
+
+    // region updateCoordinationState（M4.2）
+
+    @Test
+    @DisplayName("updateCoordinationState - 首次回调时 insert 成功")
+    void updateCoordinationState_Insert_Success() {
+        // 1. mock 任务存在
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.EXECUTING);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+        // 2. mock 无现有协调状态（首次回调）
+        when(coordinationStateMapper.selectOne(any())).thenReturn(null);
+        when(coordinationStateMapper.insert(any(CoordinationStateEO.class))).thenReturn(1);
+
+        // 3. 构建请求
+        CoordinationStateUpdateRequest request = new CoordinationStateUpdateRequest();
+        request.setNavigationGoal("下载银行流水");
+        request.setCurrentPlan("{\"subtasks\":[]}");
+        request.setCompletedSubtasks(List.of("sub_001", "sub_002"));
+        request.setTotalReplans(0);
+        request.setMaxReplans(3);
+        request.setStatus("RUNNING");
+
+        // 4. 调用
+        taskService.updateCoordinationState(TEST_TASK_ID, request);
+
+        // 5. 验证 insert 被调用
+        verify(coordinationStateMapper, times(1)).insert(any(CoordinationStateEO.class));
+        verify(coordinationStateMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("updateCoordinationState - 已有记录时 update 成功")
+    void updateCoordinationState_Update_Success() {
+        // 1. mock 任务存在
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.EXECUTING);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+        // 2. mock 已有协调状态
+        CoordinationStateEO existing = new CoordinationStateEO();
+        existing.setTaskId(TEST_TASK_ID);
+        existing.setStatus("RUNNING");
+        when(coordinationStateMapper.selectOne(any())).thenReturn(existing);
+        when(coordinationStateMapper.update(any(), any())).thenReturn(1);
+
+        // 3. 构建请求（更新状态）
+        CoordinationStateUpdateRequest request = new CoordinationStateUpdateRequest();
+        request.setCompletedSubtasks(List.of("sub_001", "sub_002", "sub_003"));
+        request.setTotalReplans(1);
+        request.setStatus("RUNNING");
+
+        // 4. 调用
+        taskService.updateCoordinationState(TEST_TASK_ID, request);
+
+        // 5. 验证 update 被调用（非 insert）
+        verify(coordinationStateMapper, times(1)).update(any(), any());
+        verify(coordinationStateMapper, never()).insert(any(CoordinationStateEO.class));
+    }
+
+    @Test
+    @DisplayName("updateCoordinationState - taskId 为 null 抛参数异常")
+    void updateCoordinationState_NullTaskId_ThrowsException() {
+        CoordinationStateUpdateRequest request = new CoordinationStateUpdateRequest();
+        request.setStatus("RUNNING");
+
+        assertThatThrownBy(() -> taskService.updateCoordinationState(null, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("任务 ID 不能为空");
+    }
+
+    @Test
+    @DisplayName("updateCoordinationState - request 为 null 抛参数异常")
+    void updateCoordinationState_NullRequest_ThrowsException() {
+        assertThatThrownBy(() -> taskService.updateCoordinationState(TEST_TASK_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("协调状态更新请求不能为空");
+    }
+
+    @Test
+    @DisplayName("updateCoordinationState - 任务不存在抛异常")
+    void updateCoordinationState_TaskNotFound_ThrowsException() {
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(null);
+
+        CoordinationStateUpdateRequest request = new CoordinationStateUpdateRequest();
+        request.setStatus("RUNNING");
+
+        assertThatThrownBy(() -> taskService.updateCoordinationState(TEST_TASK_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("任务不存在");
+    }
+
+    @Test
+    @DisplayName("updateCoordinationState - completedSubtasks 为 null 时不报错")
+    void updateCoordinationState_NullCompletedSubtasks_Success() {
+        // 1. mock 任务存在
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.EXECUTING);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+        when(coordinationStateMapper.selectOne(any())).thenReturn(null);
+        when(coordinationStateMapper.insert(any(CoordinationStateEO.class))).thenReturn(1);
+
+        // 2. 构建请求（completedSubtasks 为 null）
+        CoordinationStateUpdateRequest request = new CoordinationStateUpdateRequest();
+        request.setNavigationGoal("测试目标");
+        request.setStatus("RUNNING");
+        // completedSubtasks 未设置（null）
+
+        // 3. 调用（不应抛异常）
+        taskService.updateCoordinationState(TEST_TASK_ID, request);
+
+        // 4. 验证 insert 被调用
+        verify(coordinationStateMapper, times(1)).insert(any(CoordinationStateEO.class));
     }
 
     // endregion
