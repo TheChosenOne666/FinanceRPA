@@ -1,0 +1,409 @@
+package com.finrpa.approval.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.finrpa.ai.client.AiServiceClient;
+import com.finrpa.ai.client.dto.TaskTriggerRequest;
+import com.finrpa.ai.client.dto.TaskTriggerResponse;
+import com.finrpa.approval.constant.ApprovalConstant;
+import com.finrpa.approval.dto.request.ApprovalQueryRequest;
+import com.finrpa.approval.dto.response.ApprovalRequestVO;
+import com.finrpa.approval.dto.response.ApprovalResultResponse;
+import com.finrpa.approval.entity.ApprovalRequestEO;
+import com.finrpa.approval.enums.ApprovalStatusEnum;
+import com.finrpa.approval.mapper.ApprovalRequestMapper;
+import com.finrpa.approval.service.ApprovalPubSubService;
+import com.finrpa.approval.service.ApprovalRouteService;
+import com.finrpa.approval.service.ApprovalService;
+import com.finrpa.common.exception.BusinessException;
+import com.finrpa.common.exception.ThrowUtils;
+import com.finrpa.common.response.ErrorCode;
+import com.finrpa.approval.enums.ApprovalRouteEnum;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * 审批服务实现（M6.3）
+ *
+ * @author <a href="https://github.com/TheChosenOne666">小楼</a>
+ * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
+ */
+@Slf4j
+@Service
+public class ApprovalServiceImpl implements ApprovalService {
+
+    /** 审批请求 Mapper */
+    @Resource
+    private ApprovalRequestMapper approvalRequestMapper;
+
+    /** 审批路由服务 */
+    @Resource
+    private ApprovalRouteService approvalRouteService;
+
+    /** 审批 Pub/Sub 服务 */
+    @Resource
+    private ApprovalPubSubService approvalPubSubService;
+
+    /** Python AI 服务客户端（审批通过后触发 Python 执行） */
+    @Resource
+    private AiServiceClient aiServiceClient;
+
+    /** JSON 序列化工具（反序列化审批单中的触发请求） */
+    @Resource
+    private ObjectMapper objectMapper;
+
+    // region 创建审批
+
+    /**
+     * 创建审批请求
+     *
+     * @param taskId        任务 ID
+     * @param orgId         组织 ID
+     * @param workflowId    工作流模板 ID
+     * @param userId        触发用户 ID
+     * @param riskLevel     风险等级（high / critical）
+     * @param riskReasoning 风险判断理由
+     * @param requestPayload 请求负载 JSON
+     * @return 审批请求实体
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ApprovalRequestEO createApproval(Long taskId, Long orgId, Long workflowId, Long userId,
+                                             String riskLevel, String riskReasoning, String requestPayload) {
+        // 1. 路由判定
+        ApprovalRouteEnum route = approvalRouteService.routeByRiskLevel(riskLevel);
+        ThrowUtils.throwIf(!ApprovalRouteEnum.needsHumanApproval(route.getValue()),
+                ErrorCode.PARAMS_ERROR, "低风险任务无需审批: riskLevel=" + riskLevel);
+
+        // 2. 构建审批单
+        ApprovalRequestEO approval = new ApprovalRequestEO();
+        approval.setTaskId(taskId);
+        approval.setOrgId(orgId);
+        approval.setWorkflowId(workflowId);
+        approval.setUserId(userId);
+        approval.setRiskLevel(riskLevel);
+        approval.setApprovalRoute(route.getValue());
+        approval.setStatus(ApprovalConstant.APPROVAL_STATUS_PENDING);
+        approval.setRiskReasoning(riskReasoning);
+        approval.setRequestPayload(requestPayload);
+        approval.setTimeoutMinutes((int) ApprovalConstant.DEFAULT_APPROVAL_TIMEOUT_MINUTES);
+
+        // 计算超时截止时间
+        long timeoutMs = ApprovalConstant.DEFAULT_APPROVAL_TIMEOUT_MINUTES * 60 * 1000;
+        approval.setTimeoutAt(new Timestamp(Instant.now().toEpochMilli() + timeoutMs));
+
+        // 3. 持久化
+        approvalRequestMapper.insert(approval);
+        log.info("审批单已创建: approvalId={}, taskId={}, riskLevel={}, route={}, timeoutAt={}",
+                approval.getApprovalId(), taskId, riskLevel, route.getValue(), approval.getTimeoutAt());
+
+        // 4. 发布 Pub/Sub 通知（新审批单）
+        approvalPubSubService.publishRequest(approval);
+
+        return approval;
+    }
+
+    // endregion
+
+    // region 审批操作
+
+    /**
+     * 审批通过
+     *
+     * @param approvalId 审批单 ID
+     * @param approverId 审批人 ID
+     * @param reason     通过理由
+     * @return 更新后的审批请求实体
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ApprovalRequestEO approve(Long approvalId, Long approverId, String reason) {
+        ApprovalRequestEO approval = getAndCheckPending(approvalId);
+
+        approval.setStatus(ApprovalConstant.APPROVAL_STATUS_APPROVED);
+        approval.setApproverId(approverId);
+        approval.setApproveReason(reason);
+        approval.setApprovedAt(new Timestamp(Instant.now().toEpochMilli()));
+
+        approvalRequestMapper.updateById(approval);
+        log.info("审批通过: approvalId={}, taskId={}, approverId={}", approvalId, approval.getTaskId(), approverId);
+
+        // 发布 Pub/Sub 通知（唤醒等待线程）
+        approvalPubSubService.publishResponse(approval);
+
+        // 审批通过后触发 Python 执行（从 requestPayload 反序列化触发请求）
+        triggerPythonAfterApproval(approval);
+
+        return approval;
+    }
+
+    /**
+     * 审批拒绝
+     *
+     * @param approvalId 审批单 ID
+     * @param approverId 审批人 ID
+     * @param reason     拒绝理由
+     * @return 更新后的审批请求实体
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ApprovalRequestEO reject(Long approvalId, Long approverId, String reason) {
+        ApprovalRequestEO approval = getAndCheckPending(approvalId);
+
+        approval.setStatus(ApprovalConstant.APPROVAL_STATUS_REJECTED);
+        approval.setApproverId(approverId);
+        approval.setRejectReason(reason);
+        approval.setApprovedAt(new Timestamp(Instant.now().toEpochMilli()));
+
+        approvalRequestMapper.updateById(approval);
+        log.info("审批拒绝: approvalId={}, taskId={}, approverId={}", approvalId, approval.getTaskId(), approverId);
+
+        // 发布 Pub/Sub 通知（唤醒等待线程）
+        approvalPubSubService.publishResponse(approval);
+
+        return approval;
+    }
+
+    // endregion
+
+    // region 查询
+
+    /**
+     * 分页查询审批列表
+     *
+     * @param queryRequest 查询请求
+     * @return 审批分页列表
+     */
+    @Override
+    public IPage<ApprovalRequestVO> listApprovals(ApprovalQueryRequest queryRequest) {
+        Page<ApprovalRequestEO> page = new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize());
+        LambdaQueryWrapper<ApprovalRequestEO> wrapper = new LambdaQueryWrapper<>();
+
+        // 按组织过滤
+        if (queryRequest.getOrgId() != null) {
+            wrapper.eq(ApprovalRequestEO::getOrgId, queryRequest.getOrgId());
+        }
+        // 按状态过滤
+        if (queryRequest.getStatus() != null && !queryRequest.getStatus().isBlank()) {
+            wrapper.eq(ApprovalRequestEO::getStatus, queryRequest.getStatus());
+        }
+        // 按路由过滤
+        if (queryRequest.getApprovalRoute() != null && !queryRequest.getApprovalRoute().isBlank()) {
+            wrapper.eq(ApprovalRequestEO::getApprovalRoute, queryRequest.getApprovalRoute());
+        }
+        // 按风险等级过滤
+        if (queryRequest.getRiskLevel() != null && !queryRequest.getRiskLevel().isBlank()) {
+            wrapper.eq(ApprovalRequestEO::getRiskLevel, queryRequest.getRiskLevel());
+        }
+        // 按任务 ID 过滤
+        if (queryRequest.getTaskId() != null) {
+            wrapper.eq(ApprovalRequestEO::getTaskId, queryRequest.getTaskId());
+        }
+
+        wrapper.orderByDesc(ApprovalRequestEO::getCreateTime);
+
+        IPage<ApprovalRequestEO> eoPage = approvalRequestMapper.selectPage(page, wrapper);
+        return eoPage.convert(this::convertToVO);
+    }
+
+    /**
+     * 查询审批详情
+     *
+     * @param approvalId 审批单 ID
+     * @return 审批请求 VO
+     */
+    @Override
+    public ApprovalRequestVO getApprovalDetail(Long approvalId) {
+        ApprovalRequestEO approval = approvalRequestMapper.selectById(approvalId);
+        ThrowUtils.throwIf(approval == null, ErrorCode.NOT_FOUND_ERROR, "审批单不存在: " + approvalId);
+        return convertToVO(approval);
+    }
+
+    /**
+     * 根据任务 ID 查询审批结果（Python 回调用）
+     *
+     * @param taskId 任务 ID
+     * @return 审批结果响应
+     */
+    @Override
+    public ApprovalResultResponse getApprovalResultByTaskId(Long taskId) {
+        LambdaQueryWrapper<ApprovalRequestEO> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ApprovalRequestEO::getTaskId, taskId)
+                .orderByDesc(ApprovalRequestEO::getCreateTime)
+                .last("LIMIT 1");
+        ApprovalRequestEO approval = approvalRequestMapper.selectOne(wrapper);
+
+        if (approval == null) {
+            ApprovalResultResponse response = new ApprovalResultResponse();
+            response.setTaskId(taskId);
+            response.setStatus("NOT_FOUND");
+            response.setApproved(false);
+            response.setTerminal(false);
+            response.setMessage("未找到审批单");
+            return response;
+        }
+
+        return buildResultResponse(approval);
+    }
+
+    /**
+     * 根据审批单 ID 查询审批结果
+     *
+     * @param approvalId 审批单 ID
+     * @return 审批结果响应
+     */
+    @Override
+    public ApprovalResultResponse getApprovalResult(Long approvalId) {
+        ApprovalRequestEO approval = approvalRequestMapper.selectById(approvalId);
+        if (approval == null) {
+            ApprovalResultResponse response = new ApprovalResultResponse();
+            response.setApprovalId(approvalId);
+            response.setStatus("NOT_FOUND");
+            response.setApproved(false);
+            response.setTerminal(false);
+            response.setMessage("未找到审批单");
+            return response;
+        }
+        return buildResultResponse(approval);
+    }
+
+    // endregion
+
+    // region 超时处理
+
+    /**
+     * 处理超时审批（M6.4 定时任务调用）
+     *
+     * @return 处理的超时审批单数量
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int processTimeoutApprovals() {
+        LambdaQueryWrapper<ApprovalRequestEO> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ApprovalRequestEO::getStatus, ApprovalConstant.APPROVAL_STATUS_PENDING)
+                .le(ApprovalRequestEO::getTimeoutAt, new Timestamp(Instant.now().toEpochMilli()));
+
+        List<ApprovalRequestEO> timeoutApprovals = approvalRequestMapper.selectList(wrapper);
+        if (timeoutApprovals.isEmpty()) {
+            return 0;
+        }
+
+        int count = 0;
+        for (ApprovalRequestEO approval : timeoutApprovals) {
+            approval.setStatus(ApprovalConstant.APPROVAL_STATUS_TIMEOUT);
+            approval.setApprovedAt(new Timestamp(Instant.now().toEpochMilli()));
+            approvalRequestMapper.updateById(approval);
+
+            // 发布超时通知
+            approvalPubSubService.publishResponse(approval);
+            count++;
+        }
+
+        log.info("超时审批处理完成: count={}", count);
+        return count;
+    }
+
+    // endregion
+
+    // region 私有方法
+
+    /**
+     * 查询审批单并校验为 PENDING 状态
+     */
+    private ApprovalRequestEO getAndCheckPending(Long approvalId) {
+        ApprovalRequestEO approval = approvalRequestMapper.selectById(approvalId);
+        ThrowUtils.throwIf(approval == null, ErrorCode.NOT_FOUND_ERROR, "审批单不存在: " + approvalId);
+        ThrowUtils.throwIf(!ApprovalConstant.APPROVAL_STATUS_PENDING.equals(approval.getStatus()),
+                ErrorCode.OPERATION_ERROR, "审批单已处理，无法重复操作: status=" + approval.getStatus());
+        return approval;
+    }
+
+    /**
+     * 实体转 VO
+     */
+    private ApprovalRequestVO convertToVO(ApprovalRequestEO approval) {
+        ApprovalRequestVO vo = new ApprovalRequestVO();
+        vo.setApprovalId(approval.getApprovalId());
+        vo.setTaskId(approval.getTaskId());
+        vo.setOrgId(approval.getOrgId());
+        vo.setWorkflowId(approval.getWorkflowId());
+        vo.setUserId(approval.getUserId());
+        vo.setRiskLevel(approval.getRiskLevel());
+        vo.setApprovalRoute(approval.getApprovalRoute());
+        vo.setStatus(approval.getStatus());
+        vo.setApproverId(approval.getApproverId());
+        vo.setApproveReason(approval.getApproveReason());
+        vo.setRejectReason(approval.getRejectReason());
+        vo.setRiskReasoning(approval.getRiskReasoning());
+        vo.setRequestPayload(approval.getRequestPayload());
+        vo.setTimeoutAt(approval.getTimeoutAt());
+        vo.setApprovedAt(approval.getApprovedAt());
+        vo.setCreateTime(approval.getCreateTime());
+        return vo;
+    }
+
+    /**
+     * 构建审批结果响应
+     */
+    private ApprovalResultResponse buildResultResponse(ApprovalRequestEO approval) {
+        ApprovalResultResponse response = new ApprovalResultResponse();
+        response.setApprovalId(approval.getApprovalId());
+        response.setTaskId(approval.getTaskId());
+        response.setStatus(approval.getStatus());
+        response.setRiskLevel(approval.getRiskLevel());
+        response.setApprovalRoute(approval.getApprovalRoute());
+        response.setApproved(ApprovalConstant.APPROVAL_STATUS_APPROVED.equals(approval.getStatus()));
+        response.setTerminal(ApprovalStatusEnum.isTerminal(approval.getStatus()));
+        response.setApproveReason(approval.getApproveReason());
+        response.setRejectReason(approval.getRejectReason());
+
+        switch (approval.getStatus()) {
+            case ApprovalConstant.APPROVAL_STATUS_APPROVED ->
+                    response.setMessage("审批已通过");
+            case ApprovalConstant.APPROVAL_STATUS_REJECTED ->
+                    response.setMessage("审批已拒绝");
+            case ApprovalConstant.APPROVAL_STATUS_TIMEOUT ->
+                    response.setMessage("审批已超时");
+            default -> response.setMessage("审批进行中");
+        }
+
+        return response;
+    }
+
+    /**
+     * 审批通过后触发 Python 执行
+     *
+     * <p>从审批单的 requestPayload 字段反序列化 TaskTriggerRequest，
+     * 调用 AiServiceClient 触发 Python 任务执行。
+     * 触发失败不影响审批结果（审批已通过），仅记录错误日志。</p>
+     *
+     * @param approval 审批请求实体
+     */
+    private void triggerPythonAfterApproval(ApprovalRequestEO approval) {
+        if (approval.getRequestPayload() == null || approval.getRequestPayload().isBlank()) {
+            log.warn("审批单 requestPayload 为空，无法触发 Python: approvalId={}", approval.getApprovalId());
+            return;
+        }
+
+        try {
+            TaskTriggerRequest triggerRequest = objectMapper.readValue(
+                    approval.getRequestPayload(), TaskTriggerRequest.class);
+            TaskTriggerResponse response = aiServiceClient.triggerTask(triggerRequest);
+            log.info("审批通过后 Python 任务已触发: approvalId={}, taskId={}, status={}",
+                    approval.getApprovalId(), approval.getTaskId(), response.getStatus());
+        } catch (Exception e) {
+            log.error("审批通过后触发 Python 失败: approvalId={}, taskId={}, error={}",
+                    approval.getApprovalId(), approval.getTaskId(), e.getMessage(), e);
+        }
+    }
+
+    // endregion
+}

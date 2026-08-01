@@ -6,9 +6,13 @@ import com.finrpa.agent.service.TaskService;
 import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskTriggerRequest;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
+import com.finrpa.approval.constant.ApprovalConstant;
 import com.finrpa.approval.dto.request.RiskDetectRequest;
 import com.finrpa.approval.dto.response.RiskDetectResultVO;
 import com.finrpa.approval.dto.response.RiskJudgeResponse;
+import com.finrpa.approval.entity.ApprovalRequestEO;
+import com.finrpa.approval.service.ApprovalRouteService;
+import com.finrpa.approval.service.ApprovalService;
 import com.finrpa.approval.service.RiskDetectService;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.exception.ThrowUtils;
@@ -18,6 +22,7 @@ import com.finrpa.workflows.dto.response.WorkflowRunVO;
 import com.finrpa.workflows.entity.WorkflowTemplateEO;
 import com.finrpa.workflows.service.WorkflowService;
 import com.finrpa.workflows.service.WorkflowTriggerService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,8 +44,9 @@ import java.util.regex.Pattern;
  *   <li>调用 Python AI 服务触发执行</li>
  * </ol>
  *
- * <p>M6.1 已接入关键词预筛 + LLM 二次判断，仅记录风险等级不阻塞任务执行；
- * M6.3 将实现 high/critical 阻塞等待审批。</p>
+ * <p>M6.1 已接入关键词预筛 + LLM 二次判断；
+ * M6.3 实现 high/critical 风险阻塞：创建审批单后返回 PENDING_APPROVAL，
+ * 审批通过后由 ApprovalService 触发 Python 执行。</p>
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
@@ -63,6 +69,18 @@ public class WorkflowTriggerServiceImpl implements WorkflowTriggerService {
 
     @Resource
     private RiskDetectService riskDetectService;
+
+    /** 审批服务（M6.3 high/critical 风险审批） */
+    @Resource
+    private ApprovalService approvalService;
+
+    /** 审批路由服务（M6.3 按风险等级路由） */
+    @Resource
+    private ApprovalRouteService approvalRouteService;
+
+    /** JSON 序列化工具（M6.3 存储触发请求到审批单） */
+    @Resource
+    private ObjectMapper objectMapper;
 
     @Override
     public WorkflowRunVO triggerWorkflow(Long workflowId, WorkflowRunRequest request,
@@ -109,22 +127,33 @@ public class WorkflowTriggerServiceImpl implements WorkflowTriggerService {
         triggerRequest.setWorkflowId(String.valueOf(workflowId));
 
         // 7. 风险检测（M6.1 关键词预筛 + LLM 二次判断）
-        // M6.1 阶段：仅记录风险等级，不阻塞任务执行；M6.3 将实现 high/critical 阻塞等待审批
         String finalRiskLevel = performRiskDetection(template, createRequest, task.getTaskId());
 
-        // 8. 调用 Python AI 服务触发执行
-        // TODO M6.3: high/critical 风险等级需等待 approval 审批通过后再触发
-        try {
-            TaskTriggerResponse response = aiServiceClient.triggerTask(triggerRequest);
-            log.info("Python 任务已触发: taskId={}, status={}, riskLevel={}",
-                    task.getTaskId(), response.getStatus(), finalRiskLevel);
-        } catch (Exception e) {
-            log.error("触发 Python 任务失败: taskId={}, error={}", task.getTaskId(), e.getMessage(), e);
-            throw new BusinessException(ErrorCode.AI_SERVICE_UNAVAILABLE,
-                    "AI 服务不可用: " + e.getMessage());
+        // 8. 审批路由判定（M6.3）
+        boolean needsApproval = approvalRouteService.needsHumanApproval(finalRiskLevel);
+
+        if (needsApproval) {
+            // high/critical 风险：创建审批单，返回 PENDING_APPROVAL（非阻塞）
+            log.info("任务需审批: taskId={}, riskLevel={}", task.getTaskId(), finalRiskLevel);
+            String requestPayload = serializeTriggerRequest(triggerRequest);
+            String riskReasoning = buildRiskReasoning(createRequest, finalRiskLevel);
+
+            ApprovalRequestEO approval = approvalService.createApproval(
+                    task.getTaskId(), orgId, workflowId, userId,
+                    finalRiskLevel, riskReasoning, requestPayload);
+
+            WorkflowRunVO runVO = new WorkflowRunVO();
+            runVO.setTaskId(task.getTaskId());
+            runVO.setWorkflowId(workflowId);
+            runVO.setState("PENDING_APPROVAL");
+            runVO.setApprovalId(approval.getApprovalId());
+            return runVO;
         }
 
-        // 9. 返回执行结果
+        // 9. low/medium 风险：直接调用 Python AI 服务触发执行
+        triggerPythonTask(triggerRequest, finalRiskLevel);
+
+        // 10. 返回执行结果
         WorkflowRunVO runVO = new WorkflowRunVO();
         runVO.setTaskId(task.getTaskId());
         runVO.setWorkflowId(workflowId);
@@ -133,6 +162,50 @@ public class WorkflowTriggerServiceImpl implements WorkflowTriggerService {
     }
 
     // region 内部方法
+
+    /**
+     * 序列化触发请求为 JSON（存入审批单 requestPayload 字段，审批通过后反序列化触发 Python）
+     *
+     * @param triggerRequest Python 触发请求
+     * @return JSON 字符串
+     */
+    private String serializeTriggerRequest(TaskTriggerRequest triggerRequest) {
+        try {
+            return objectMapper.writeValueAsString(triggerRequest);
+        } catch (Exception e) {
+            log.warn("序列化触发请求失败: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    /**
+     * 构建风险判断理由（供审批人参考）
+     *
+     * @param createRequest 任务创建请求
+     * @param riskLevel     风险等级
+     * @return 风险判断理由
+     */
+    private String buildRiskReasoning(TaskCreateRequest createRequest, String riskLevel) {
+        return String.format("任务目标: %s, 风险等级: %s", createRequest.getGoal(), riskLevel);
+    }
+
+    /**
+     * 调用 Python AI 服务触发任务执行
+     *
+     * @param triggerRequest Python 触发请求
+     * @param riskLevel      风险等级（用于日志）
+     */
+    private void triggerPythonTask(TaskTriggerRequest triggerRequest, String riskLevel) {
+        try {
+            TaskTriggerResponse response = aiServiceClient.triggerTask(triggerRequest);
+            log.info("Python 任务已触发: taskId={}, status={}, riskLevel={}",
+                    triggerRequest.getTaskId(), response.getStatus(), riskLevel);
+        } catch (Exception e) {
+            log.error("触发 Python 任务失败: taskId={}, error={}", triggerRequest.getTaskId(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.AI_SERVICE_UNAVAILABLE,
+                    "AI 服务不可用: " + e.getMessage());
+        }
+    }
 
     /**
      * 校验必填参数是否已提供。

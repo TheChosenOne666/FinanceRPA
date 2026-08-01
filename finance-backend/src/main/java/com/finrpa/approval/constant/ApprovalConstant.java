@@ -78,4 +78,57 @@ public interface ApprovalConstant {
     String ACTION_JUDGE = "judge";
 
     // endregion
+
+    // region 审批状态（M6.3）
+
+    /** 审批状态：待审批 */
+    String APPROVAL_STATUS_PENDING = "PENDING";
+
+    /** 审批状态：已通过 */
+    String APPROVAL_STATUS_APPROVED = "APPROVED";
+
+    /** 审批状态：已拒绝 */
+    String APPROVAL_STATUS_REJECTED = "REJECTED";
+
+    /** 审批状态：已超时 */
+    String APPROVAL_STATUS_TIMEOUT = "TIMEOUT";
+
+    // endregion
+
+    // region 审批路由（M6.3）
+
+    /** 审批路由：自动通过（low / medium 风险） */
+    String APPROVAL_ROUTE_AUTO = "auto";
+
+    /** 审批路由：部门审批（high 风险） */
+    String APPROVAL_ROUTE_DEPARTMENT = "department";
+
+    /** 审批路由：合规审计部审批（critical 风险） */
+    String APPROVAL_ROUTE_COMPLIANCE = "compliance";
+
+    // endregion
+
+    // region Redis Pub/Sub 频道（M6.3）
+
+    /** Pub/Sub 频道：审批请求（新审批单创建时发布，前端/管理端订阅） */
+    String CHANNEL_APPROVAL_REQUESTS = "approval:requests";
+
+    /** Pub/Sub 频道前缀：审批响应（审批完成时发布，Java 触发 Python + 前端订阅） */
+    String CHANNEL_APPROVAL_RESPONSES_PREFIX = "approval:responses:";
+
+    // endregion
+
+    // region 审批超时（M6.3）
+
+    /** 审批默认超时时间（分钟） */
+    long DEFAULT_APPROVAL_TIMEOUT_MINUTES = 30;
+
+    // endregion
+
+    // region 审批表名（M6.3）
+
+    /** 审批请求表名 */
+    String APPROVAL_REQUEST_TABLE_NAME = "rpa_approval_request";
+
+    // endregion
 }

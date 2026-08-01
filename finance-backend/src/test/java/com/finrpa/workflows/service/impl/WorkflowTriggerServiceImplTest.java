@@ -7,6 +7,8 @@ import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskTriggerRequest;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
 import com.finrpa.approval.dto.response.RiskDetectResultVO;
+import com.finrpa.approval.service.ApprovalRouteService;
+import com.finrpa.approval.service.ApprovalService;
 import com.finrpa.approval.service.RiskDetectService;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.response.ErrorCode;
@@ -14,6 +16,7 @@ import com.finrpa.workflows.dto.request.WorkflowRunRequest;
 import com.finrpa.workflows.dto.response.WorkflowRunVO;
 import com.finrpa.workflows.entity.WorkflowTemplateEO;
 import com.finrpa.workflows.service.WorkflowService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -64,6 +67,15 @@ class WorkflowTriggerServiceImplTest {
     @Mock
     private RiskDetectService riskDetectService;
 
+    @Mock
+    private ApprovalService approvalService;
+
+    @Mock
+    private ApprovalRouteService approvalRouteService;
+
+    @Mock
+    private ObjectMapper objectMapper;
+
     @InjectMocks
     private WorkflowTriggerServiceImpl workflowTriggerService;
 
@@ -76,6 +88,8 @@ class WorkflowTriggerServiceImplTest {
         detectResult.setSuggestedRiskLevel("low");
         detectResult.setSuggestedAction("proceed");
         lenient().when(riskDetectService.detect(any())).thenReturn(detectResult);
+        // M6.3 集成：默认 low 风险不需要审批
+        lenient().when(approvalRouteService.needsHumanApproval("low")).thenReturn(false);
     }
 
     // region triggerWorkflow 成功路径

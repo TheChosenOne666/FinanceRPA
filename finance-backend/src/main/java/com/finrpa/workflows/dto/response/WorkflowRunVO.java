@@ -26,4 +26,7 @@ public class WorkflowRunVO implements Serializable {
 
     /** 任务状态 */
     private String state;
+
+    /** 审批单 ID（state 为 PENDING_APPROVAL 时填充，M6.3） */
+    private Long approvalId;
 }

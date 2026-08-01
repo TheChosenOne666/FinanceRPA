@@ -6,12 +6,15 @@ import com.finrpa.agent.dto.request.SubTaskUpdateRequest;
 import com.finrpa.agent.dto.request.TaskStateUpdateRequest;
 import com.finrpa.agent.service.AuditLogService;
 import com.finrpa.agent.service.TaskService;
+import com.finrpa.approval.dto.response.ApprovalResultResponse;
+import com.finrpa.approval.service.ApprovalService;
 import com.finrpa.common.response.BaseResponse;
 import com.finrpa.common.response.ResultUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>POST /internal/tasks/{taskId}/subtasks —— 更新子任务状态</li>
  *   <li>POST /internal/tasks/{taskId}/coordination-state —— 更新协调状态（M4.2）</li>
  *   <li>POST /internal/audit/logs —— 上报审计日志</li>
+ *   <li>GET /internal/approvals/{taskId}/result —— 查询审批结果（M6.3，Python 回调用）</li>
  * </ul>
  * </p>
  *
@@ -49,6 +53,10 @@ public class InternalTaskController {
     /** 审计日志服务 */
     @Resource
     private AuditLogService auditLogService;
+
+    /** 审批服务（M6.3 Python 查询审批结果用） */
+    @Resource
+    private ApprovalService approvalService;
 
     // region 任务状态回调
 
@@ -108,6 +116,26 @@ public class InternalTaskController {
         // 1. 更新协调状态
         taskService.updateCoordinationState(taskId, request);
         return ResultUtils.success(true);
+    }
+
+    // endregion
+
+    // region 审批结果查询（M6.3）
+
+    /**
+     * 查询审批结果（Python 回调）
+     *
+     * <p>Python Executor 通过此接口查询任务关联的审批结果，
+     * 判断是否可以继续执行（APPROVED）或需要终止（REJECTED / TIMEOUT）。</p>
+     *
+     * @param taskId 任务 ID
+     * @return 审批结果响应
+     */
+    @GetMapping("/approvals/{taskId}/result")
+    @Operation(summary = "查询审批结果", description = "Python 查询任务关联的审批结果（PENDING / APPROVED / REJECTED / TIMEOUT）")
+    public BaseResponse<ApprovalResultResponse> getApprovalResult(@PathVariable Long taskId) {
+        log.info("收到审批结果查询: taskId={}", taskId);
+        return ResultUtils.success(approvalService.getApprovalResultByTaskId(taskId));
     }
 
     // endregion
