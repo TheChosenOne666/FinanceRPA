@@ -3,7 +3,9 @@ package com.finrpa.llm.controller;
 import com.finrpa.common.response.BaseResponse;
 import com.finrpa.common.response.ResultUtils;
 import com.finrpa.llm.dto.request.LlmCallLogCreateRequest;
+import com.finrpa.llm.dto.request.NeedsHumanReportRequest;
 import com.finrpa.llm.service.LlmCallLogService;
+import com.finrpa.llm.service.NeedsHumanService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>内部端点（实际访问路径前缀 {@code /api/internal}）：
  * <ul>
  *   <li>POST /internal/llm/calls —— 上报 LLM 调用记录（M5.4）</li>
+ *   <li>POST /internal/llm/needs-human —— 上报 NEEDS_HUMAN 事件入队（M5.5）</li>
  * </ul>
  * </p>
  *
@@ -38,6 +41,10 @@ public class InternalLlmController {
     @Resource
     private LlmCallLogService llmCallLogService;
 
+    /** NEEDS_HUMAN 队列服务 */
+    @Resource
+    private NeedsHumanService needsHumanService;
+
     /**
      * 上报 LLM 调用记录（Python 回调）
      *
@@ -52,6 +59,24 @@ public class InternalLlmController {
                 request.getRetryAttempt(), request.getSuccess());
         // 1. 保存调用记录
         boolean success = llmCallLogService.createCallLog(request);
+        return ResultUtils.success(success);
+    }
+
+    /**
+     * 上报 NEEDS_HUMAN 事件入队（Python 回调）
+     *
+     * <p>Python ResilientCaller 重试耗尽（层 3 兜底）后，上报详情入队等待操作员处置。</p>
+     *
+     * @param request 上报请求
+     * @return 操作结果
+     */
+    @PostMapping("/needs-human")
+    @Operation(summary = "上报 NEEDS_HUMAN 事件", description = "Python ResilientCaller 重试耗尽后上报详情入队")
+    public BaseResponse<Boolean> reportNeedsHuman(@RequestBody NeedsHumanReportRequest request) {
+        log.info("收到 NEEDS_HUMAN 事件回调: taskId={}, context={}, attempts={}",
+                request.getTaskId(), request.getContextName(), request.getAttempts());
+        // 1. 入队
+        boolean success = needsHumanService.reportNeedsHuman(request);
         return ResultUtils.success(success);
     }
 }

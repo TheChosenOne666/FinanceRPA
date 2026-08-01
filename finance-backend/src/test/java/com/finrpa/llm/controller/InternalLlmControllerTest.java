@@ -2,7 +2,9 @@ package com.finrpa.llm.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finrpa.llm.dto.request.LlmCallLogCreateRequest;
+import com.finrpa.llm.dto.request.NeedsHumanReportRequest;
 import com.finrpa.llm.service.LlmCallLogService;
+import com.finrpa.llm.service.NeedsHumanService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,15 +33,18 @@ class InternalLlmControllerTest {
 
     private MockMvc mockMvc;
     private LlmCallLogService llmCallLogService;
+    private NeedsHumanService needsHumanService;
 
     @BeforeEach
     void setUp() {
         // 1. mock 依赖
         llmCallLogService = mock(LlmCallLogService.class);
+        needsHumanService = mock(NeedsHumanService.class);
 
         // 2. 构建 MockMvc（standalone，不走拦截器）
         InternalLlmController controller = new InternalLlmController();
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "llmCallLogService", llmCallLogService);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "needsHumanService", needsHumanService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -158,4 +163,58 @@ class InternalLlmControllerTest {
 
         verify(llmCallLogService, times(1)).createCallLog(any(LlmCallLogCreateRequest.class));
     }
+
+    // region NEEDS_HUMAN 事件上报（M5.5）
+
+    @Test
+    @DisplayName("上报 NEEDS_HUMAN 事件 - 成功")
+    void reportNeedsHuman_Success() throws Exception {
+        // 1. 构建请求
+        NeedsHumanReportRequest request = new NeedsHumanReportRequest();
+        request.setTaskId("2082333099000000099");
+        request.setOrgId("2082342545947660289");
+        request.setSubtaskId("subtask-001");
+        request.setContextName("planner");
+        request.setScreenshotUrl("https://example.com/screenshot.png");
+        request.setLlmRawOutput("{\"invalid\": \"json\"}");
+        request.setValidationError("Validation error: missing field 'steps'");
+        request.setAttempts(3);
+
+        // 2. mock
+        when(needsHumanService.reportNeedsHuman(any(NeedsHumanReportRequest.class))).thenReturn(true);
+
+        // 3. 执行请求并验证
+        mockMvc.perform(post("/internal/llm/needs-human")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value(true));
+
+        verify(needsHumanService, times(1)).reportNeedsHuman(any(NeedsHumanReportRequest.class));
+    }
+
+    @Test
+    @DisplayName("上报 NEEDS_HUMAN 事件 - 无 subtask_id 场景")
+    void reportNeedsHuman_NoSubtaskId() throws Exception {
+        NeedsHumanReportRequest request = new NeedsHumanReportRequest();
+        request.setTaskId("2082333099000000099");
+        request.setContextName("executor");
+        request.setLlmRawOutput("raw output");
+        request.setValidationError("error");
+        request.setAttempts(2);
+
+        when(needsHumanService.reportNeedsHuman(any(NeedsHumanReportRequest.class))).thenReturn(true);
+
+        mockMvc.perform(post("/internal/llm/needs-human")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value(true));
+
+        verify(needsHumanService, times(1)).reportNeedsHuman(any(NeedsHumanReportRequest.class));
+    }
+
+    // endregion
 }

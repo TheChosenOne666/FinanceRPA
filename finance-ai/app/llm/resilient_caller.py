@@ -238,7 +238,7 @@ class ResilientCaller:
         # 上报 NEEDS_HUMAN 事件到 Java
         await self._report_needs_human(
             task_id=task_id, org_id=org_id, context_name=context_name,
-            last_error=last_error, attempts=total_attempts,
+            last_raw=last_raw, last_error=last_error, attempts=total_attempts,
         )
 
         raise NeedsHumanError(
@@ -349,10 +349,15 @@ class ResilientCaller:
         task_id: str | None,
         org_id: str | None,
         context_name: str,
+        last_raw: str | None,
         last_error: str | None,
         attempts: int,
     ) -> None:
-        """上报 NEEDS_HUMAN 事件到 Java（转人工介入状态）。
+        """上报 NEEDS_HUMAN 事件到 Java（转人工介入状态 + 详情入队）。
+
+        两步上报：
+        1. update_task_state(state=NEEDS_HUMAN) —— 更新任务状态为 NEEDS_HUMAN
+        2. report_needs_human() —— 上报详情入队（M5.5，供操作员查看处置）
 
         失败不阻断主流程（仅 warning 日志）。
         """
@@ -361,6 +366,7 @@ class ResilientCaller:
 
         message = f"LLM 调用重试耗尽（{context_name}，{attempts} 次尝试）: {last_error or '未知错误'}"
         try:
+            # 步骤 1：更新任务状态
             await self.java_client.update_task_state(
                 task_id=task_id,
                 state="NEEDS_HUMAN",
@@ -368,11 +374,31 @@ class ResilientCaller:
                 error_message=last_error,
             )
             logger.info(
-                "ResilientCaller: 已上报 NEEDS_HUMAN [task=%s, context=%s]",
+                "ResilientCaller: 已更新任务状态为 NEEDS_HUMAN [task=%s, context=%s]",
                 task_id, context_name,
             )
         except Exception as e:
             logger.warning(
-                "ResilientCaller: 上报 NEEDS_HUMAN 失败 [task=%s, context=%s]: %s",
+                "ResilientCaller: 更新任务状态为 NEEDS_HUMAN 失败 [task=%s, context=%s]: %s",
+                task_id, context_name, e,
+            )
+
+        # 步骤 2：上报详情入队（M5.5）
+        try:
+            await self.java_client.report_needs_human(
+                task_id=task_id,
+                org_id=org_id,
+                context_name=context_name,
+                llm_raw_output=last_raw,
+                validation_error=last_error,
+                attempts=attempts,
+            )
+            logger.info(
+                "ResilientCaller: 已上报 NEEDS_HUMAN 详情入队 [task=%s, context=%s]",
+                task_id, context_name,
+            )
+        except Exception as e:
+            logger.warning(
+                "ResilientCaller: 上报 NEEDS_HUMAN 详情入队失败 [task=%s, context=%s]: %s",
                 task_id, context_name, e,
             )

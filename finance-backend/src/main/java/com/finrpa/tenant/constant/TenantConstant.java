@@ -50,6 +50,9 @@ public interface TenantConstant {
             // LLM 调用记录表：有 org_id 字段，但由 Python 回调写入（无 JWT 上下文），
             // org_id 由 Python 端显式传入，需绕过自动租户过滤；对外统计 API 在 Service 层手动按 orgId 过滤
             "rpa_llm_call_log",
+            // NEEDS_HUMAN 队列表：有 org_id 字段，但由 Python 回调写入（无 JWT 上下文），
+            // org_id 由 Python 端显式传入，需绕过自动租户过滤；对外 API 在 Service 层手动按 orgId 过滤
+            "rpa_needs_human_queue",
             // Skill 元数据表：全局共享（无 org_id 字段），所有租户用同一套 Skill 定义
             "rpa_skill_meta",
             // 工作流模板表：全局共享（无 org_id 字段），所有租户用同一套模板

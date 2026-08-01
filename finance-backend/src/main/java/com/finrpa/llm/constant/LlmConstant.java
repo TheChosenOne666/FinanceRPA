@@ -36,4 +36,30 @@ public interface LlmConstant {
 
     /** 默认上下文名称 */
     String DEFAULT_CONTEXT = "unknown";
+
+    // region NEEDS_HUMAN 队列状态
+
+    /** NEEDS_HUMAN 队列状态：待处理 */
+    String NEEDS_HUMAN_STATUS_PENDING = "PENDING";
+
+    /** NEEDS_HUMAN 队列状态：已处置 */
+    String NEEDS_HUMAN_STATUS_RESOLVED = "RESOLVED";
+
+    // endregion
+
+    // region 处置动作
+
+    /** 处置动作：跳过当前子任务，续跑任务 */
+    String RESOLVE_ACTION_SKIP = "skip";
+
+    /** 处置动作：人工已处理，续跑任务 */
+    String RESOLVE_ACTION_MANUAL = "manual";
+
+    /** 处置动作：终止任务 */
+    String RESOLVE_ACTION_ABORT = "abort";
+
+    // endregion
+
+    /** NEEDS_HUMAN 队列表名 */
+    String NEEDS_HUMAN_TABLE_NAME = "rpa_needs_human_queue";
 }

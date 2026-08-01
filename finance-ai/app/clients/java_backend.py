@@ -368,3 +368,58 @@ class JavaBackendClient:
             record.get("task_id"), record.get("context_name"),
         )
         return True
+
+    async def report_needs_human(
+        self,
+        task_id: str,
+        org_id: str | None = None,
+        subtask_id: str | None = None,
+        context_name: str = "unknown",
+        screenshot_url: str | None = None,
+        llm_raw_output: str | None = None,
+        validation_error: str | None = None,
+        attempts: int = 0,
+    ) -> bool:
+        """上报 NEEDS_HUMAN 事件入队（M5.5，Java 侧持久化到 rpa_needs_human_queue 表）。
+
+        Python ResilientCaller 重试耗尽后调用此接口，将 LLM 原始输出、校验错误
+        等详情上报入队，供操作员查看并处置（skip / manual / abort）。
+
+        @param task_id: 任务 ID
+        @param org_id: 组织 ID（租户隔离）
+        @param subtask_id: 子任务 ID（可空）
+        @param context_name: 调用上下文名称（planner / replan / executor 等）
+        @param screenshot_url: 截图 URL（可空）
+        @param llm_raw_output: LLM 最后一次原始输出
+        @param validation_error: 校验错误信息
+        @param attempts: 总尝试次数（含首次）
+        @return: 是否成功
+        """
+        payload = {
+            "task_id": task_id,
+            "org_id": org_id,
+            "subtask_id": subtask_id,
+            "context_name": context_name,
+            "screenshot_url": screenshot_url,
+            "llm_raw_output": llm_raw_output,
+            "validation_error": validation_error,
+            "attempts": attempts,
+        }
+        logger.info(
+            "JavaBackendClient: 上报 NEEDS_HUMAN 事件 [task=%s, context=%s, attempts=%d]",
+            task_id, context_name, attempts,
+        )
+        resp = await self._request_with_retry(
+            "POST", "/api/internal/llm/needs-human", json=payload,
+        )
+        if resp is None:
+            logger.warning(
+                "JavaBackendClient: 上报 NEEDS_HUMAN 事件失败 [task=%s, context=%s]",
+                task_id, context_name,
+            )
+            return False
+        logger.info(
+            "JavaBackendClient: 上报 NEEDS_HUMAN 事件成功 [task=%s, context=%s]",
+            task_id, context_name,
+        )
+        return True
