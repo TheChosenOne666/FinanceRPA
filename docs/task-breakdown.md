@@ -1445,6 +1445,8 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `app/llm/model_router.py` + 单元测试 |
 | **描述** | 1. 页面复杂度评分：DOM 节点数 / 表单字段数 / 动态元素数 / 截图熵<br>2. 路由规则：score < 30 轻量 / 30-70 标准 / ≥ 70 重型<br>3. 从 Java 读取路由策略配置<br>4. 上报 Java：调用记录标记使用模型 |
 | **验收标准** | 不同复杂度页面路由到不同模型；策略可从 Java 配置更新；调用记录正确 |
+| **状态** | ✅ 已完成（2026-08-01）。实现页面复杂度评分 + 模型路由 + Java 配置热更新。最终落地：(1) **新建 `app/llm/model_router.py`**：`ModelRouter` 类 + `ComplexityScore` / `RoutingConfig` Pydantic 模型<br>(2) **页面复杂度评分 `score_complexity()`**：四维度加权 — DOM 节点数（权重 40%，每 5 节点 1 分，上限 40 分）+ 表单字段数（权重 30%，每字段 2 分，上限 30 分）+ 动态元素数（权重 20%，上限 20 分，含 button / a[href] / on* 事件处理器）+ 截图熵（权重 10%，0-1 归一化 × 10）；总分 0-100，档位判定 light(<30) / standard(30-70) / heavy(≥70)<br>(3) **DOM 统计 `_parse_dom_stats()`**：正则统计开标签数（`<[a-zA-Z][^/>]*>` 排除自闭合）/ 表单字段（input / select / textarea，大小写不敏感）/ 动态元素（button + a[href] + on* 事件处理器）<br>(4) **模型路由 `get_model()` / `route()`**：根据档位返回模型名 — light → gpt-4o-mini，standard → gpt-4o，heavy → gpt-4o-2024-08-06；`route()` 一步完成评分 + 选模型<br>(5) **Java 配置热更新 `get_routing_config()`**：GET /api/v1/ai/llm/routing-config，5 分钟缓存 TTL，兼容 BaseResponse 包装格式，Java 不可用时回退本地默认配置；`refresh_config()` 强制刷新缓存<br>(6) **32 个单元测试**：DOM 统计 8 个（空 DOM / 简单 DOM / 表单字段 / button / link / 事件处理器 / 自闭合标签 / 大小写不敏感）+ 复杂度评分 9 个（空 DOM / 简单 light / 复杂 heavy / 中等 standard / 截图熵加分 / 熵截断 / 负值截断 / 全字段 / 边界值）+ 模型路由 4 个（light / standard / heavy / 自定义配置）+ 路由配置 2 个（默认值 / 自定义阈值）+ Java 配置 6 个（无 Java 客户端 / 成功读取 / BaseResponse 包装 / 缓存 / 强制刷新 / 异常回退）+ 端到端路由 4 个（简单 DOM / 复杂 DOM / 返回元组 / 截图熵） |
+| **测试覆盖** | 32 个新测试全部通过 |
 
 #### M5.4 Java LLM 调用记录与统计
 
