@@ -7,6 +7,8 @@ import com.finrpa.ai.client.dto.TaskResumeResponse;
 import com.finrpa.ai.client.dto.TaskStateResponse;
 import com.finrpa.ai.client.dto.TaskTriggerRequest;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
+import com.finrpa.approval.dto.request.RiskJudgeRequest;
+import com.finrpa.approval.dto.response.RiskJudgeResponse;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.service.annotation.GetExchange;
@@ -29,6 +31,7 @@ import java.util.List;
  *   <li>POST /api/v1/ai/tasks/{taskId}/abort —— 终止任务</li>
  *   <li>POST /api/v1/ai/tasks/{taskId}/resume —— 任务续跑（M4.3）</li>
  *   <li>GET /api/v1/ai/skills —— 查询所有 Skill 元数据（M3.3 用于校验 Skill 存在性）</li>
+ *   <li>POST /api/v1/ai/risk/judge —— LLM 风险二次判断（M6.2，M6.1 预留接口）</li>
  * </ul>
  * </p>
  *
@@ -87,4 +90,20 @@ public interface AiServiceClient {
      */
     @PostExchange("/tasks/{taskId}/resume")
     TaskResumeResponse resumeTask(@PathVariable("taskId") String taskId, @RequestBody TaskResumeRequest request);
+
+    /**
+     * LLM 风险二次判断（M6.2 Python 端实现，M6.1 预留接口）
+     *
+     * <p>Java 关键词预筛命中后调用此接口，由 Python 走三层容错（M5.1 ResilientCaller）调 LLM，
+     * 输入任务目标 + 参数 + 预筛结果 → 输出 final_risk_level（low / medium / high / critical）。</p>
+     *
+     * <p><b>注意</b>：M6.1 阶段 Python 端尚未实现此接口，调用会返回 404 或失败。
+     * RiskDetectService 中已做兼容处理：M6.1 仅返回预筛结果，不调用此接口；
+     * M6.2 实现 Python 端后由 RiskDetectService 自动接入。</p>
+     *
+     * @param request 风险判断请求
+     * @return 风险判断响应
+     */
+    @PostExchange("/risk/judge")
+    RiskJudgeResponse judgeRisk(@RequestBody RiskJudgeRequest request);
 }

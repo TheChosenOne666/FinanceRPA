@@ -6,6 +6,10 @@ import com.finrpa.agent.service.TaskService;
 import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskTriggerRequest;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
+import com.finrpa.approval.dto.request.RiskDetectRequest;
+import com.finrpa.approval.dto.response.RiskDetectResultVO;
+import com.finrpa.approval.dto.response.RiskJudgeResponse;
+import com.finrpa.approval.service.RiskDetectService;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
@@ -35,7 +39,8 @@ import java.util.regex.Pattern;
  *   <li>调用 Python AI 服务触发执行</li>
  * </ol>
  *
- * <p>M3.4 预留 approval 模块接口（M6 实现），当前直接执行不审批。</p>
+ * <p>M6.1 已接入关键词预筛 + LLM 二次判断，仅记录风险等级不阻塞任务执行；
+ * M6.3 将实现 high/critical 阻塞等待审批。</p>
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
@@ -55,6 +60,9 @@ public class WorkflowTriggerServiceImpl implements WorkflowTriggerService {
 
     @Resource
     private AiServiceClient aiServiceClient;
+
+    @Resource
+    private RiskDetectService riskDetectService;
 
     @Override
     public WorkflowRunVO triggerWorkflow(Long workflowId, WorkflowRunRequest request,
@@ -100,19 +108,23 @@ public class WorkflowTriggerServiceImpl implements WorkflowTriggerService {
         triggerRequest.setParams(taskParams);
         triggerRequest.setWorkflowId(String.valueOf(workflowId));
 
-        // 7. 调用 Python AI 服务触发执行
-        // TODO M6: 风险检测 → 高风险任务需等待 approval 审批通过后再触发
+        // 7. 风险检测（M6.1 关键词预筛 + LLM 二次判断）
+        // M6.1 阶段：仅记录风险等级，不阻塞任务执行；M6.3 将实现 high/critical 阻塞等待审批
+        String finalRiskLevel = performRiskDetection(template, createRequest, task.getTaskId());
+
+        // 8. 调用 Python AI 服务触发执行
+        // TODO M6.3: high/critical 风险等级需等待 approval 审批通过后再触发
         try {
             TaskTriggerResponse response = aiServiceClient.triggerTask(triggerRequest);
-            log.info("Python 任务已触发: taskId={}, status={}",
-                    task.getTaskId(), response.getStatus());
+            log.info("Python 任务已触发: taskId={}, status={}, riskLevel={}",
+                    task.getTaskId(), response.getStatus(), finalRiskLevel);
         } catch (Exception e) {
             log.error("触发 Python 任务失败: taskId={}, error={}", task.getTaskId(), e.getMessage(), e);
             throw new BusinessException(ErrorCode.AI_SERVICE_UNAVAILABLE,
                     "AI 服务不可用: " + e.getMessage());
         }
 
-        // 8. 返回执行结果
+        // 9. 返回执行结果
         WorkflowRunVO runVO = new WorkflowRunVO();
         runVO.setTaskId(task.getTaskId());
         runVO.setWorkflowId(workflowId);
@@ -184,6 +196,49 @@ public class WorkflowTriggerServiceImpl implements WorkflowTriggerService {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    /**
+     * 执行风险检测（M6.1 关键词预筛 + LLM 二次判断）
+     *
+     * <p>M6.1 阶段：仅记录风险等级到日志，不阻塞任务执行。
+     * M6.3 将实现 high/critical 风险等级阻塞任务，等待审批通过后再触发。</p>
+     *
+     * @param template      工作流模板（含 industry / riskLevel 元数据）
+     * @param createRequest 任务创建请求（含 goal / params）
+     * @param taskId        任务 ID
+     * @return 最终风险等级（low / medium / high / critical），检测失败返回模板配置的 riskLevel
+     */
+    private String performRiskDetection(WorkflowTemplateEO template, TaskCreateRequest createRequest, Long taskId) {
+        String fallbackRiskLevel = template.getRiskLevel() != null ? template.getRiskLevel() : "low";
+        try {
+            RiskDetectRequest detectRequest = new RiskDetectRequest();
+            detectRequest.setGoal(createRequest.getGoal());
+            detectRequest.setParams(createRequest.getParams());
+            detectRequest.setIndustry(template.getIndustry());
+            detectRequest.setTaskId(taskId);
+
+            // 调用预筛 + LLM 二次判断（M6.2 Python 端未实现时回退使用预筛结果）
+            RiskJudgeResponse judgeResponse = riskDetectService.detectAndJudge(detectRequest);
+
+            String finalRiskLevel;
+            if (judgeResponse != null && judgeResponse.getFinalRiskLevel() != null) {
+                finalRiskLevel = judgeResponse.getFinalRiskLevel();
+                log.info("风险检测完成（LLM 二次判断）: taskId={}, riskLevel={}, reasoning={}, route={}",
+                        taskId, finalRiskLevel, judgeResponse.getReasoning(), judgeResponse.getApprovalRoute());
+            } else {
+                // M6.1 阶段：LLM 未调用或失败，使用预筛结果
+                RiskDetectResultVO detectResult = riskDetectService.detect(detectRequest);
+                finalRiskLevel = detectResult.getSuggestedRiskLevel();
+                log.info("风险检测完成（仅预筛）: taskId={}, riskLevel={}, hitKeywords={}, largeAmountHit={}",
+                        taskId, finalRiskLevel, detectResult.getHighRiskHitCount(), detectResult.isLargeAmountHit());
+            }
+            return finalRiskLevel;
+        } catch (Exception e) {
+            log.warn("风险检测失败，使用模板配置的风险等级: taskId={}, fallback={}, error={}",
+                    taskId, fallbackRiskLevel, e.getMessage());
+            return fallbackRiskLevel;
+        }
     }
 
     // endregion

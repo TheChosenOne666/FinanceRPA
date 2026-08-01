@@ -6,12 +6,15 @@ import com.finrpa.agent.service.TaskService;
 import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskTriggerRequest;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
+import com.finrpa.approval.dto.response.RiskDetectResultVO;
+import com.finrpa.approval.service.RiskDetectService;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.response.ErrorCode;
 import com.finrpa.workflows.dto.request.WorkflowRunRequest;
 import com.finrpa.workflows.dto.response.WorkflowRunVO;
 import com.finrpa.workflows.entity.WorkflowTemplateEO;
 import com.finrpa.workflows.service.WorkflowService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,8 +61,22 @@ class WorkflowTriggerServiceImplTest {
     @Mock
     private AiServiceClient aiServiceClient;
 
+    @Mock
+    private RiskDetectService riskDetectService;
+
     @InjectMocks
     private WorkflowTriggerServiceImpl workflowTriggerService;
+
+    @BeforeEach
+    void setUp() {
+        // M6.1 集成：风险检测默认返回 null（LLM 未调用，回退使用预筛结果）
+        // 预筛默认返回 low 风险等级，不阻塞任务执行
+        lenient().when(riskDetectService.detectAndJudge(any())).thenReturn(null);
+        RiskDetectResultVO detectResult = new RiskDetectResultVO();
+        detectResult.setSuggestedRiskLevel("low");
+        detectResult.setSuggestedAction("proceed");
+        lenient().when(riskDetectService.detect(any())).thenReturn(detectResult);
+    }
 
     // region triggerWorkflow 成功路径
 
