@@ -1433,6 +1433,8 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `app/llm/action_cache.py` + 单元测试 |
 | **描述** | 1. 缓存 Key：DOM 结构哈希（剥除动态内容）+ 导航目标哈希<br>2. Redis 读写：TTL 24 小时<br>3. 命中流程：查缓存 → 命中直接返回 → 未命中调 LLM → 写缓存<br>4. 上报 Java：调用记录标记 `cache_hit` |
 | **验收标准** | 相同页面结构命中缓存；缓存未命中时调 LLM 并写入；TTL 过期自动失效 |
+| **状态** | ✅ 已完成（2026-08-01）。实现 LLM Action 缓存读写 + ResilientCaller 集成。最终落地：(1) **新建 `app/llm/action_cache.py`**：`ActionCache` 类基于 Redis 实现缓存读写 — `_make_key()` 生成 Key（`llm:action:{dom_hash}:{goal_hash}`）；`_hash_dom()` 剥除动态内容后取 SHA256 前 16 位；`_hash_goal()` 导航目标 normalize（lower + strip）后取 SHA256 前 16 位；`get()` / `set()` / `delete()` / `clear_pattern()` 异步方法；TTL 默认 86400 秒（24 小时）；Redis 异常时 catch 不阻断主流程<br>(2) **DOM 动态内容剥除 `_strip_dynamic_content()`**：正则移除 `<script>` / `<style>` / `<noscript>` 标签及内容、HTML 注释、标签间文本内容（保留标签结构）、`data-*` 属性、CSRF token、nonce 属性、时间戳（ISO 8601 / 日期时间 / Unix 时间戳）、规范化空白<br>(3) **`ResilientCaller` 集成 ActionCache**：`__init__` 新增 `action_cache` 参数；`call()` 新增 `cache_key_dom` / `cache_key_goal` 参数 — 传入时先查缓存，命中直接返回 Pydantic 校验结果 + 上报 `cache_hit=True`；未命中调 LLM 成功后写入缓存（`data` dict）；`_report_call()` 新增 `cache_hit` 参数透传到 `LlmCallRecord`；向后兼容（未注入 ActionCache 或未传 cache_key 时不查缓存）<br>(4) **31 个单元测试**：缓存 Key 生成 6 个（格式 / 相同 DOM+目标 / 不同目标 / 不同 DOM / 大小写不敏感 / 空白去除）+ 动态内容剥除 10 个（script / style / 文本 / data-* / 时间戳 / CSRF token / 注释 / nonce / 相同结构不同内容相同哈希 / 不同结构不同哈希）+ Redis 读写 8 个（命中 / 未命中 / 写入 / 写入后读取 / get 异常返回 None / set 异常不抛 / delete / clear_pattern）+ ResilientCaller 集成 7 个（命中跳过 LLM / 未命中调 LLM 并写入 / 未传 cache_key 不查缓存 / 未注入 ActionCache 不查缓存 / 部分 cache_key 不查 / 写入失败不阻断 / 命中后不重写） |
+| **测试覆盖** | 31 个新测试全部通过；52 个回归测试全部通过（resilient_caller 22 + planner 15 + coordinator 15） |
 
 #### M5.3 Python 模型路由执行
 

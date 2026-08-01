@@ -38,6 +38,7 @@ from typing import Any, Awaitable, Callable, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from app.clients.java_backend import JavaBackendClient
+from app.llm.action_cache import ActionCache
 
 logger = logging.getLogger(__name__)
 
@@ -106,17 +107,20 @@ class ResilientCaller:
         max_retries: int = _DEFAULT_MAX_RETRIES,
         java_client: JavaBackendClient | None = None,
         model_name: str = _DEFAULT_MODEL_NAME,
+        action_cache: ActionCache | None = None,
     ):
         """
         @param llm_callable: 异步函数 prompt -> str（原始 LLM 调用）
         @param max_retries: 最大重试次数（默认 2，即首次 + 2 次重试 = 3 次尝试）
         @param java_client: Java 后端回调客户端（上报调用记录 + NEEDS_HUMAN 事件）
         @param model_name: LLM 模型名称（上报调用记录用）
+        @param action_cache: LLM Action 缓存（M5.2，传入则启用缓存）
         """
         self.llm_callable = llm_callable
         self.max_retries = max_retries
         self.java_client = java_client
         self.model_name = model_name
+        self.action_cache = action_cache
 
     async def call(
         self,
@@ -125,6 +129,8 @@ class ResilientCaller:
         task_id: str | None = None,
         org_id: str | None = None,
         context_name: str = "unknown",
+        cache_key_dom: str | None = None,
+        cache_key_goal: str | None = None,
     ) -> T:
         """三层容错调用 LLM，返回 Pydantic 校验后的结果。
 
@@ -133,9 +139,27 @@ class ResilientCaller:
         @param task_id: 任务 ID（上报调用记录 + NEEDS_HUMAN 用）
         @param org_id: 组织 ID（上报用）
         @param context_name: 调用上下文名称（"planner" / "replan" / "executor" 等，日志用）
+        @param cache_key_dom: 缓存 Key 的 DOM 结构（M5.2，传入则启用缓存查询）
+        @param cache_key_goal: 缓存 Key 的导航目标（M5.2，需与 cache_key_dom 同时传入）
         @return: Pydantic 校验后的结果
         @raises NeedsHumanError: 重试耗尽仍失败
         """
+        # M5.2：Action 缓存查询（cache_key_dom + cache_key_goal 同时传入时启用）
+        if self.action_cache and cache_key_dom and cache_key_goal:
+            cached = await self.action_cache.get(cache_key_dom, cache_key_goal)
+            if cached is not None:
+                logger.info(
+                    "ResilientCaller: 缓存命中，跳过 LLM 调用 [task=%s, context=%s]",
+                    task_id, context_name,
+                )
+                result = output_model.model_validate(cached)
+                # 上报缓存命中记录
+                await self._report_call(
+                    task_id=task_id, org_id=org_id, context_name=context_name,
+                    retry_attempt=0, success=True, duration_ms=0, cache_hit=True,
+                )
+                return result
+
         # 层 1：Prompt 注入 JSON Schema 约束
         enhanced_prompt = self._enhance_prompt(prompt, output_model)
 
@@ -170,6 +194,12 @@ class ResilientCaller:
                     task_id=task_id, org_id=org_id, context_name=context_name,
                     retry_attempt=attempt, success=True, duration_ms=elapsed_ms,
                 )
+
+                # M5.2：写入 Action 缓存（cache_key_dom + cache_key_goal 同时传入时）
+                if self.action_cache and cache_key_dom and cache_key_goal:
+                    await self.action_cache.set(
+                        cache_key_dom, cache_key_goal, data,
+                    )
 
                 return result
 
@@ -284,6 +314,7 @@ class ResilientCaller:
         success: bool,
         duration_ms: int,
         error_message: str | None = None,
+        cache_hit: bool = False,
     ) -> None:
         """上报单次 LLM 调用记录到 Java（M5.4 实现 Java 侧持久化）。
 
@@ -301,6 +332,7 @@ class ResilientCaller:
             success=success,
             error_message=error_message,
             duration_ms=duration_ms,
+            cache_hit=cache_hit,
             timestamp=datetime.utcnow().isoformat(),
         )
 
