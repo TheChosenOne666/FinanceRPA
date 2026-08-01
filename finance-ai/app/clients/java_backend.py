@@ -339,3 +339,32 @@ class JavaBackendClient:
             return False
         logger.info("JavaBackendClient: 上报审计日志成功 [task=%s]", task_id)
         return True
+
+    async def report_llm_call(self, record: dict) -> bool:
+        """上报 LLM 调用记录（M5.1 引入，M5.4 实现 Java 侧持久化）。
+
+        每次 LLM 调用（含重试）均通过此接口上报，Java 侧持久化到 rpa_llm_call_log 表
+        用于调用统计与成本分析。
+
+        @param record: LLM 调用记录字典（LlmCallRecord.model_dump()）
+        @return: 是否成功
+        """
+        logger.info(
+            "JavaBackendClient: 上报 LLM 调用记录 [task=%s, context=%s, retry=%d, success=%s]",
+            record.get("task_id"), record.get("context_name"),
+            record.get("retry_attempt", 0), record.get("success"),
+        )
+        resp = await self._request_with_retry(
+            "POST", "/api/internal/llm/calls", json=record,
+        )
+        if resp is None:
+            logger.warning(
+                "JavaBackendClient: 上报 LLM 调用记录失败 [task=%s, context=%s]（Java 侧端点可能未实现）",
+                record.get("task_id"), record.get("context_name"),
+            )
+            return False
+        logger.info(
+            "JavaBackendClient: 上报 LLM 调用记录成功 [task=%s, context=%s]",
+            record.get("task_id"), record.get("context_name"),
+        )
+        return True

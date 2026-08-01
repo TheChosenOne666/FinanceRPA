@@ -18,6 +18,7 @@ import logging
 from typing import Any
 
 from app.clients.java_backend import JavaBackendClient
+from app.llm.resilient_caller import NeedsHumanError
 
 from .event_bus import TaskEventBus
 from .executor import ExecutorAgent
@@ -124,7 +125,16 @@ class AgentCoordinator:
         else:
             try:
                 logger.info("Coordinator: 开始创建任务计划 [task=%s, goal=%s]", task_id, navigation_goal)
-                plan = await self.planner.create_plan(navigation_goal, context)
+                plan = await self.planner.create_plan(navigation_goal, context, task_id=task_id)
+            except NeedsHumanError as e:
+                # M5.1：ResilientCaller 重试耗尽 → NEEDS_HUMAN
+                logger.error(
+                    "Coordinator: 任务 %s 规划转 NEEDS_HUMAN: %s", task_id, e, exc_info=True,
+                )
+                state.status = "needs_human"
+                state.error_message = f"LLM 规划重试耗尽: {e}"
+                await self._on_task_terminal(state)
+                return state
             except Exception as e:
                 logger.error("Coordinator: 任务 %s 规划失败: %s", task_id, e, exc_info=True)
                 state.status = "failed"
@@ -319,7 +329,16 @@ class AgentCoordinator:
                     failed_subtask=failed_subtask,
                     failure_reason=result.error_message or "未知错误",
                     context=context,
+                    task_id=state.task_id,
                 )
+            except NeedsHumanError as e:
+                # M5.1：ResilientCaller 重试耗尽 → NEEDS_HUMAN
+                logger.error(
+                    "Coordinator: 重新规划转 NEEDS_HUMAN: %s [task=%s]", e, state.task_id, exc_info=True,
+                )
+                state.status = "needs_human"
+                state.error_message = f"LLM 重规划重试耗尽: {e}"
+                return "aborted"
             except Exception as e:
                 logger.error(
                     "Coordinator: 重新规划失败: %s [task=%s]", e, state.task_id, exc_info=True,

@@ -119,7 +119,7 @@ async def test_coordinator_replan_exhausted():
     from app.agent.schemas import TaskPlan
 
     class ReplanPlanner(PlannerAgent):
-        async def create_plan(self, navigation_goal, context=None):
+        async def create_plan(self, navigation_goal, context=None, task_id=None):
             return TaskPlan(
                 navigation_goal=navigation_goal,
                 subtasks=[
@@ -133,7 +133,7 @@ async def test_coordinator_replan_exhausted():
                 ],
             )
 
-        async def replan(self, original_goal, completed_subtasks, failed_subtask, failure_reason, context=None):
+        async def replan(self, original_goal, completed_subtasks, failed_subtask, failure_reason, context=None, task_id=None):
             return TaskPlan(
                 navigation_goal=original_goal,
                 subtasks=[
@@ -300,7 +300,7 @@ async def test_coordinator_skip_strategy():
 
     class SkipPlanner(PlannerAgent):
         """生成 2 个子任务：第一个 SKIP 策略会失败，第二个成功。"""
-        async def create_plan(self, navigation_goal, context=None):
+        async def create_plan(self, navigation_goal, context=None, task_id=None):
             return TaskPlan(
                 navigation_goal=navigation_goal,
                 subtasks=[
@@ -351,7 +351,7 @@ async def test_coordinator_retry_strategy_exhausted():
     from app.agent.schemas import TaskPlan
 
     class RetryPlanner(PlannerAgent):
-        async def create_plan(self, navigation_goal, context=None):
+        async def create_plan(self, navigation_goal, context=None, task_id=None):
             return TaskPlan(
                 navigation_goal=navigation_goal,
                 subtasks=[
@@ -388,7 +388,7 @@ async def test_coordinator_replan_then_succeed():
     from app.agent.schemas import TaskPlan
 
     class ReplanSucceedPlanner(PlannerAgent):
-        async def create_plan(self, navigation_goal, context=None):
+        async def create_plan(self, navigation_goal, context=None, task_id=None):
             return TaskPlan(
                 navigation_goal=navigation_goal,
                 subtasks=[
@@ -402,7 +402,7 @@ async def test_coordinator_replan_then_succeed():
                 ],
             )
 
-        async def replan(self, original_goal, completed_subtasks, failed_subtask, failure_reason, context=None):
+        async def replan(self, original_goal, completed_subtasks, failed_subtask, failure_reason, context=None, task_id=None):
             return TaskPlan(
                 navigation_goal=original_goal,
                 subtasks=[
@@ -491,7 +491,7 @@ async def test_coordinator_skip_publishes_sse_event():
     from app.agent.schemas import TaskPlan
 
     class SkipPlanner(PlannerAgent):
-        async def create_plan(self, navigation_goal, context=None):
+        async def create_plan(self, navigation_goal, context=None, task_id=None):
             return TaskPlan(
                 navigation_goal=navigation_goal,
                 subtasks=[
