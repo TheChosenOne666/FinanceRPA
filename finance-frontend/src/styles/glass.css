@@ -1220,6 +1220,143 @@ a:hover {
   word-break: break-all;
 }
 
+/* ---------- 19.1 子任务时间线 - M4.4 增强 ---------- */
+
+/* 重规划汇总条 */
+.timeline-replan-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin-bottom: 14px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.24);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--status-paused);
+  font-weight: 500;
+}
+
+/* 可点击时间线条目 */
+.timeline-item-clickable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.timeline-item-clickable:hover {
+  background: rgba(15, 36, 64, 0.03);
+}
+
+/* 展开箭头 */
+.timeline-chevron {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.timeline-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+/* 跳过状态的节点文本 */
+.timeline-node-skip {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* 展开详情面板 */
+.timeline-details {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(15, 36, 64, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.timeline-detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.timeline-detail-label {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.timeline-detail-value {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.timeline-result-pre {
+  margin: 0;
+  padding: 8px;
+  background: rgba(15, 36, 64, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.timeline-detail-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--finrpa-blue);
+  word-break: break-all;
+}
+
+/* 重规划分隔标记 */
+.timeline-replan-marker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0 6px 38px;
+  margin-bottom: 4px;
+}
+
+.timeline-replan-marker-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(139, 92, 246, 0.4),
+    transparent
+  );
+}
+
+.timeline-replan-marker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  color: var(--status-paused);
+  white-space: nowrap;
+  font-weight: 500;
+}
+
 /* ---------- 20. 浏览器实时流 ---------- */
 .browser-stream {
   padding: 16px 18px;

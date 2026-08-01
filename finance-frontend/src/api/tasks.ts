@@ -5,6 +5,7 @@
  * - GET  /tasks                分页查询任务列表
  * - GET  /tasks/{taskId}       查询任务详情（含子任务列表）
  * - POST /tasks/{taskId}/abort 终止任务
+ * - POST /tasks/{taskId}/resume 任务续跑（M4.3：从断点继续）
  * - POST /ai/tasks             触发任务执行（前端 → Java → Python）
  * - GET  /ai/tasks/{taskId}/state  查询任务状态（Python 透传）
  *
@@ -68,6 +69,21 @@ export async function abortTask(taskId: string): Promise<boolean> {
 }
 
 /**
+ * 任务续跑（M4.3：从断点继续执行失败或需人工介入的任务）
+ *
+ * 后端校验：仅 FAILED / NEEDS_HUMAN 状态可续跑，
+ * 读取 rpa_agent_coordination_state 中已存计划 + completed_subtasks，
+ * 调 Python POST /api/v1/ai/tasks/{taskId}/resume 从断点继续。
+ *
+ * @param taskId 任务 ID
+ * @returns 操作结果
+ */
+export async function resumeTask(taskId: string): Promise<boolean> {
+  const res = await axiosClient.post<BaseResponse<boolean>>(`/tasks/${taskId}/resume`)
+  return res.data.data
+}
+
+/**
  * 触发任务执行（前端 → Java 持久化 → Python 执行）
  *
  * @param payload 任务触发请求（goal / params / workflowId）
@@ -88,5 +104,6 @@ export const taskApi = {
   listTasks,
   getTaskDetail,
   abortTask,
+  resumeTask,
   triggerTask,
 }

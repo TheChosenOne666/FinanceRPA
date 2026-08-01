@@ -1405,6 +1405,8 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `components/Timeline.tsx` 增强、`routes/tasks/TaskDetail.tsx` 增强 |
 | **描述** | 1. 子任务时间线：垂直时间轴展示每个子任务状态<br>2. replan 标记：可视化展示 replan 发生点<br>3. 续跑按钮：任务中断后可点击续跑<br>4. 子任务详情：点击查看子任务参数与结果 |
 | **验收标准** | 时间线实时更新；replan 点可见；续跑按钮可用 |
+| **状态** | ✅ 已完成（2026-08-01）。实现前端子任务时间线增强 + 断点续跑 UI。最终落地：(1) **新建 `components/Timeline.tsx` 组件**（从 TaskDetail.tsx 中抽取 SubTaskTimeline 并增强）：垂直时间轴按 subtaskIndex 排序；REPLANNED 状态子任务节点显示 IconRefresh 图标；每个 REPLANNED 子任务后插入"第 N 次重规划"分隔标记（紫色渐变线 + pill 徽章）；顶部汇总条显示总重规划次数；子任务行可点击展开/折叠详情面板（完成条件 / 执行结果 JSON / 子任务 ID / 耗时），支持键盘 Enter/Space 操作；新增 SKIPPED 状态节点显示"—"符号<br>(2) **`Icons.tsx` 新增 `IconResume`**（顺时针箭头 + 播放三角，表示从断点继续）**+ `IconChevronDown`**（展开/折叠箭头）<br>(3) **`api/tasks.ts` 新增 `resumeTask(taskId)` 方法**：POST /tasks/{taskId}/resume，对齐后端 TaskController.resumeTask()<br>(4) **`TaskDetail.tsx` 增强**：新增 `canResume` 判定（仅 FAILED / NEEDS_HUMAN 状态显示续跑按钮）；绿色主题续跑按钮（IconResume + "断点续跑"）含 loading 态 + confirm 确认 + 错误提示；续跑成功后 refetch 刷新详情；替换内联 SubTaskTimeline 为新 Timeline 组件；移除冗余 useMemo / SubTaskVO 导入<br>(5) **`glass.css` 新增 19.1 节样式**：`.timeline-replan-summary`（紫色汇总条）/ `.timeline-item-clickable`（hover 高亮）/ `.timeline-chevron`（旋转动画）/ `.timeline-details`（展开面板）/ `.timeline-replan-marker`（重规划分隔标记，渐变线 + pill 徽章）/ `.timeline-node-skip` 等 |
+| **测试覆盖** | TypeScript 类型检查通过（tsc --noEmit exit 0）；Vite 生产构建通过（172 modules transformed，370KB JS + 38KB CSS）；0 个编译错误 |
 
 ---
 

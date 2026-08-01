@@ -1,12 +1,13 @@
 /**
  * 任务详情页
  *
- * 功能（M2.5）：
+ * 功能（M2.5 + M4.4 增强）：
  * - 基本信息：任务 ID / 目标 / 状态 / 进度 / 创建时间 / 更新时间 / 错误信息
- * - 子任务时间线：按 subtaskIndex 顺序展示，含状态徽章与起止时间
+ * - 子任务时间线：Timeline 组件（M4.4：replan 标记 + 可展开详情）
  * - 浏览器实时流：BrowserStream 组件（SSE 接收事件，执行中实时更新）
  * - 操作日志：当前阶段以 SSE 事件流为准（M3 后接入审计日志 API）
  * - 操作：终止任务（POST /tasks/{taskId}/abort）
+ * - 操作：断点续跑（POST /tasks/{taskId}/resume，仅 FAILED / NEEDS_HUMAN 可用）
  *
  * 数据刷新策略：
  * - 初次进入：调 GET /tasks/{taskId} 拉取详情
@@ -17,15 +18,16 @@
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
  */
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { taskApi } from '@/api/tasks'
 import { ApiError } from '@/api/AxiosClient'
-import type { SubTaskVO, TaskStatus } from '@/api/types'
+import type { TaskStatus } from '@/api/types'
 import BrowserStream from '@/components/BrowserStream'
 import StatusBadge from '@/components/StatusBadge'
+import Timeline from '@/components/Timeline'
 import {
   IconAlert,
   IconArrowLeft,
@@ -33,6 +35,7 @@ import {
   IconClock,
   IconExternal,
   IconRefresh,
+  IconResume,
   IconStop,
   IconTarget,
   IconTerminal,
@@ -56,6 +59,10 @@ function TaskDetail() {
   const [aborting, setAborting] = useState(false)
   const [abortError, setAbortError] = useState<string | null>(null)
 
+  // 1.1 续跑操作状态（M4.4）
+  const [resuming, setResuming] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
+
   // 2. 查询任务详情
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['task', taskId],
@@ -72,6 +79,9 @@ function TaskDetail() {
   // 3. 终态判定
   const isTerminal = !!data && TERMINAL_STATUSES.has(data.status)
 
+  // 3.1 可续跑判定（M4.4：仅 FAILED / NEEDS_HUMAN 可续跑）
+  const canResume = !!data && (data.status === 'FAILED' || data.status === 'NEEDS_HUMAN')
+
   // 4. 终止任务
   const handleAbort = async () => {
     if (!taskId) return
@@ -85,6 +95,22 @@ function TaskDetail() {
       setAbortError(err instanceof ApiError ? err.message : '终止任务失败')
     } finally {
       setAborting(false)
+    }
+  }
+
+  // 4.1 断点续跑（M4.4）
+  const handleResume = async () => {
+    if (!taskId) return
+    if (!window.confirm('确定要从此任务的断点续跑吗？\n将跳过已完成的子任务，从上次中断处继续执行。')) return
+    setResuming(true)
+    setResumeError(null)
+    try {
+      await taskApi.resumeTask(taskId)
+      await refetch()
+    } catch (err) {
+      setResumeError(err instanceof ApiError ? err.message : '续跑任务失败')
+    } finally {
+      setResuming(false)
     }
   }
 
@@ -148,6 +174,23 @@ function TaskDetail() {
             <IconRefresh size={14} />
             {isFetching ? '刷新中…' : '刷新'}
           </button>
+          {canResume && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              style={{
+                background: 'rgba(16, 185, 129, 0.08)',
+                color: 'var(--status-completed)',
+                border: '1px solid rgba(16, 185, 129, 0.32)',
+              }}
+              onClick={handleResume}
+              disabled={resuming}
+              title="从断点续跑（跳过已完成子任务）"
+            >
+              <IconResume size={14} />
+              {resuming ? '续跑中…' : '断点续跑'}
+            </button>
+          )}
           {!isTerminal && (
             <button
               type="button"
@@ -168,11 +211,17 @@ function TaskDetail() {
       </div>
       {/* endregion */}
 
-      {/* region 终止错误提示 */}
+      {/* region 终止 / 续跑错误提示 */}
       {abortError && (
         <div className="form-error" style={{ margin: '0 0 16px' }}>
           <IconAlert size={14} />
           {abortError}
+        </div>
+      )}
+      {resumeError && (
+        <div className="form-error" style={{ margin: '0 0 16px' }}>
+          <IconAlert size={14} />
+          {resumeError}
         </div>
       )}
       {/* endregion */}
@@ -233,14 +282,14 @@ function TaskDetail() {
             )}
           </section>
 
-          {/* 子任务时间线 */}
+          {/* 子任务时间线（M4.4：Timeline 组件，含 replan 标记 + 可展开详情） */}
           <section className="glass-card-static detail-section">
             <h2 className="section-title">
               <IconClock size={14} />
               子任务时间线
             </h2>
             {data.subtasks && data.subtasks.length > 0 ? (
-              <SubTaskTimeline subtasks={data.subtasks} />
+              <Timeline subtasks={data.subtasks} />
             ) : (
               <div className="detail-empty">
                 <IconClock size={28} />
@@ -336,96 +385,6 @@ function InfoItem({
     <div className="info-item">
       <span className="info-label">{label}</span>
       <span className={`info-value${mono ? ' info-value-mono' : ''}`}>{value}</span>
-    </div>
-  )
-}
-
-/**
- * 子任务时间线
- *
- * @param subtasks 子任务列表
- */
-function SubTaskTimeline({ subtasks }: { subtasks: SubTaskVO[] }) {
-  // 1. 按 subtaskIndex 升序
-  const sorted = useMemo(
-    () => [...subtasks].sort((a, b) => a.subtaskIndex - b.subtaskIndex),
-    [subtasks],
-  )
-
-  return (
-    <div className="timeline">
-      {sorted.map((st, idx) => (
-        <div key={st.subtaskId} className="timeline-item">
-          {/* 左侧：连接线 + 节点 */}
-          <div className="timeline-node-col">
-            <div className={`timeline-node timeline-node-${st.status.toLowerCase()}`}>
-              {st.status === 'COMPLETED' ? (
-                <IconCheck size={12} />
-              ) : st.status === 'FAILED' ? (
-                <IconAlert size={12} />
-              ) : (
-                <span className="timeline-node-num">{st.subtaskIndex + 1}</span>
-              )}
-            </div>
-            {idx < sorted.length - 1 && <div className="timeline-line" />}
-          </div>
-
-          {/* 右侧：内容 */}
-          <div className="timeline-content">
-            <div className="timeline-header">
-              <span className="timeline-title">
-                子任务 #{st.subtaskIndex + 1}
-              </span>
-              <StatusBadge status={st.status} subtask />
-            </div>
-            <div className="timeline-goal">{st.goal}</div>
-            {st.completionCondition && (
-              <div className="timeline-condition">
-                <IconCheck size={12} />
-                完成条件：{st.completionCondition}
-              </div>
-            )}
-            <div className="timeline-meta">
-              {st.startedAt && (
-                <span className="timeline-meta-item">
-                  <IconClock size={11} />
-                  开始：{dayjs(st.startedAt).format('HH:mm:ss')}
-                </span>
-              )}
-              {st.completedAt && (
-                <span className="timeline-meta-item">
-                  <IconCheck size={11} />
-                  完成：{dayjs(st.completedAt).format('HH:mm:ss')}
-                </span>
-              )}
-              {st.maxRetries !== undefined && st.maxRetries > 0 && (
-                <span className="timeline-meta-item">
-                  <IconRefresh size={11} />
-                  最大重试：{st.maxRetries}
-                </span>
-              )}
-              {st.failureStrategy && (
-                <span className="timeline-meta-item">
-                  <IconAlert size={11} />
-                  策略：{st.failureStrategy}
-                </span>
-              )}
-            </div>
-            {st.errorMessage && (
-              <div className="timeline-error">
-                <IconAlert size={11} />
-                {st.errorMessage}
-              </div>
-            )}
-            {st.resultData && (
-              <details className="timeline-result">
-                <summary>执行结果</summary>
-                <pre>{formatJson(st.resultData)}</pre>
-              </details>
-            )}
-          </div>
-        </div>
-      ))}
     </div>
   )
 }

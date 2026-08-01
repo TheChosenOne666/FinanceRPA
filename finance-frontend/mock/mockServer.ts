@@ -12,6 +12,7 @@
  *   GET  /api/tasks/:taskId             任务详情（含子任务）
  *   POST /api/ai/tasks                  触发任务（返回新任务 ID）
  *   POST /api/tasks/:taskId/abort       终止任务
+ *   POST /api/tasks/:taskId/resume      任务续跑（M4.4）
  *   GET  /api/ai/sse/tasks/:taskId      SSE 实时事件流
  *
  * SSE 场景（按 taskId 切换）：
@@ -207,6 +208,119 @@ const mockTasks: MockTask[] = [
       },
     ],
   },
+  {
+    // M4.4 测试：REPLANNED 子任务（验证 replan 标记 + SKIPPED 节点）
+    taskId: '700000000000000004',
+    orgId: MOCK_USER.orgId,
+    userId: MOCK_USER.userId,
+    goal: '下载农业银行 2026 年 7 月工资代发表',
+    status: 'SUCCESS',
+    currentStep: 4,
+    totalSteps: 4,
+    message: '任务已完成（含 1 次重规划）',
+    createTime: '2026-07-30T10:00:00.000Z',
+    updateTime: '2026-07-30T10:12:30.000Z',
+    subtasks: [
+      {
+        subtaskId: '710000000000000030',
+        taskId: '700000000000000004',
+        subtaskIndex: 0,
+        goal: '登录农业银行企业网银',
+        completionCondition: '页面显示账户总览',
+        maxRetries: 2,
+        failureStrategy: 'RETRY',
+        status: 'COMPLETED',
+        startedAt: '2026-07-30T10:00:05.000Z',
+        completedAt: '2026-07-30T10:01:20.000Z',
+        createTime: '2026-07-30T10:00:00.000Z',
+        updateTime: '2026-07-30T10:01:20.000Z',
+      },
+      {
+        subtaskId: '710000000000000031',
+        taskId: '700000000000000004',
+        subtaskIndex: 1,
+        goal: '点击"代发工资"菜单',
+        completionCondition: '页面显示代发工资列表',
+        maxRetries: 1,
+        failureStrategy: 'REPLAN',
+        status: 'REPLANNED',
+        errorMessage: '页面结构变化，菜单未找到',
+        startedAt: '2026-07-30T10:01:25.000Z',
+        completedAt: '2026-07-30T10:02:30.000Z',
+        createTime: '2026-07-30T10:00:00.000Z',
+        updateTime: '2026-07-30T10:02:30.000Z',
+      },
+      {
+        subtaskId: '710000000000000032',
+        taskId: '700000000000000004',
+        subtaskIndex: 2,
+        goal: '通过快捷入口进入代发工资页面',
+        completionCondition: '页面显示代发工资列表',
+        maxRetries: 1,
+        failureStrategy: 'RETRY',
+        status: 'COMPLETED',
+        startedAt: '2026-07-30T10:02:35.000Z',
+        completedAt: '2026-07-30T10:04:10.000Z',
+        resultData: '{"page":"salary_list","entries":42}',
+        createTime: '2026-07-30T10:00:00.000Z',
+        updateTime: '2026-07-30T10:04:10.000Z',
+      },
+      {
+        subtaskId: '710000000000000033',
+        taskId: '700000000000000004',
+        subtaskIndex: 3,
+        goal: '下载 7 月工资代发表 Excel',
+        completionCondition: '文件下载完成',
+        maxRetries: 0,
+        failureStrategy: 'SKIP',
+        status: 'SKIPPED',
+        errorMessage: '7 月数据尚未生成，跳过下载',
+        startedAt: '2026-07-30T10:04:15.000Z',
+        completedAt: '2026-07-30T10:04:20.000Z',
+        createTime: '2026-07-30T10:00:00.000Z',
+        updateTime: '2026-07-30T10:04:20.000Z',
+      },
+    ],
+  },
+  {
+    // M4.4 测试：NEEDS_HUMAN 状态（验证续跑按钮）
+    taskId: '700000000000000005',
+    orgId: MOCK_USER.orgId,
+    userId: MOCK_USER.userId,
+    goal: '登录中国银行网银并下载回单',
+    status: 'NEEDS_HUMAN',
+    currentStep: 1,
+    totalSteps: 3,
+    message: '等待人工介入识别短信验证码',
+    errorMessage: '触发 NEEDS_HUMAN：需要人工识别短信验证码',
+    createTime: '2026-07-31T14:00:00.000Z',
+    updateTime: '2026-07-31T14:05:30.000Z',
+    subtasks: [
+      {
+        subtaskId: '710000000000000040',
+        taskId: '700000000000000005',
+        subtaskIndex: 0,
+        goal: '登录中国银行企业网银',
+        status: 'COMPLETED',
+        startedAt: '2026-07-31T14:00:05.000Z',
+        completedAt: '2026-07-31T14:01:30.000Z',
+        createTime: '2026-07-31T14:00:00.000Z',
+        updateTime: '2026-07-31T14:01:30.000Z',
+      },
+      {
+        subtaskId: '710000000000000041',
+        taskId: '700000000000000005',
+        subtaskIndex: 1,
+        goal: '输入短信验证码',
+        status: 'FAILED',
+        errorMessage: '需要人工识别短信验证码',
+        startedAt: '2026-07-31T14:01:35.000Z',
+        completedAt: '2026-07-31T14:05:30.000Z',
+        createTime: '2026-07-31T14:00:00.000Z',
+        updateTime: '2026-07-31T14:05:30.000Z',
+      },
+    ],
+  },
 ]
 
 /**
@@ -269,6 +383,11 @@ export function mockServerPlugin(): Plugin {
             const abortMatch = pathname.match(/^\/api\/tasks\/([^/]+)\/abort$/)
             if (abortMatch && method === 'POST') {
               return handleAbortTask(res, decodeURIComponent(abortMatch[1]))
+            }
+            // 任务续跑：/api/tasks/:taskId/resume（M4.4）
+            const resumeMatch = pathname.match(/^\/api\/tasks\/([^/]+)\/resume$/)
+            if (resumeMatch && method === 'POST') {
+              return handleResumeTask(res, decodeURIComponent(resumeMatch[1]))
             }
 
             // 3. 未匹配的 /api/ 请求 → 放行到 proxy（实际会失败，但便于发现遗漏）
@@ -535,6 +654,29 @@ function handleAbortTask(res: ServerResponse, taskId: string): void {
       ctrl.aborted = true
     }
   }
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** POST /api/tasks/:taskId/resume（M4.4：任务续跑） */
+function handleResumeTask(res: ServerResponse, taskId: string): void {
+  const task = mockTasks.find((t) => t.taskId === taskId)
+  if (!task) {
+    return sendJson(res, 200, { code: 40400, data: null, message: `任务 ${taskId} 不存在` })
+  }
+  // 校验状态：仅 FAILED / NEEDS_HUMAN 可续跑
+  if (task.status !== 'FAILED' && task.status !== 'NEEDS_HUMAN') {
+    return sendJson(res, 200, {
+      code: 50001,
+      data: null,
+      message: `仅失败或需人工介入的任务可续跑，当前状态: ${task.status}`,
+    })
+  }
+  // 模拟续跑：状态 → EXECUTING，清除错误信息
+  task.status = 'EXECUTING'
+  task.errorMessage = undefined
+  task.message = '任务续跑中（从断点继续）'
+  task.updateTime = nowIso()
+  console.log(`[mock] 任务续跑: task=${taskId}`)
   sendJson(res, 200, { code: 0, data: true, message: 'ok' })
 }
 

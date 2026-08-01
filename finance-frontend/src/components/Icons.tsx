@@ -203,6 +203,26 @@ export function IconUser(props: IconProps) {
   )
 }
 
+/** 续跑图标（顺时针箭头 + 播放三角，表示从断点继续） */
+export function IconResume(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <polyline points="23 4 23 10 17 10" />
+      <path d="M20.49 9A9 9 0 1 0 18.5 18.36" />
+      <polygon points="9 7 15 12 9 17 9 7" />
+    </Svg>
+  )
+}
+
+/** 向下箭头（展开/折叠） */
+export function IconChevronDown(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <polyline points="6 9 12 15 18 9" />
+    </Svg>
+  )
+}
+
 /** 链接/外部图标 */
 export function IconExternal(props: IconProps) {
   return (
