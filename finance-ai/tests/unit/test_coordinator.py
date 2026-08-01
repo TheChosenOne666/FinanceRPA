@@ -555,3 +555,99 @@ async def test_coordinator_skip_publishes_sse_event():
     await asyncio.sleep(0.05)
     event_types = [e["event"] for e in events]
     assert "step_skipped" in event_types
+
+
+# ---------------------------------------------------------------------------
+# M4.3 断点续跑（initial_plan + resume_from）
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_coordinator_resume_with_initial_plan():
+    """M4.3：续跑时传入 initial_plan，应跳过 Planner.create_plan 直接用已存计划。"""
+    from app.agent.schemas import TaskPlan
+
+    # 1. 构造已存计划：3 个子任务，第 1 个已完成（在 resume_from 列表中）
+    subtask_0 = SubTask(
+        index=0, goal="已完成步骤", completion_condition="达成",
+        failure_strategy=FailureStrategy.ABORT, max_retries=0,
+    )
+    subtask_1 = SubTask(
+        index=1, goal="待执行步骤 1", completion_condition="达成",
+        failure_strategy=FailureStrategy.ABORT, max_retries=0,
+    )
+    subtask_2 = SubTask(
+        index=2, goal="待执行步骤 2", completion_condition="达成",
+        failure_strategy=FailureStrategy.ABORT, max_retries=0,
+    )
+    initial_plan = TaskPlan(
+        navigation_goal="续跑测试",
+        subtasks=[subtask_0, subtask_1, subtask_2],
+    )
+
+    # 2. mock Planner（create_plan 不应被调用）
+    planner = PlannerAgent()
+    planner.create_plan = AsyncMock(side_effect=AssertionError("续跑时不应调 Planner.create_plan"))
+
+    # 3. Executor：记录实际执行的子任务
+    executed_goals: list[str] = []
+
+    async def handler(goal, context):
+        executed_goals.append(goal)
+        return {"success": True, "data": {"goal": goal}}
+
+    executor = ExecutorAgent(action_handler=handler)
+    coordinator = AgentCoordinator(planner=planner, executor=executor)
+
+    # 4. 续跑：resume_from 包含 subtask_0 的 subtask_id
+    state = await coordinator.run(
+        task_id="test-resume",
+        org_id="org-1",
+        navigation_goal="续跑测试",
+        resume_from=[subtask_0.subtask_id],
+        initial_plan=initial_plan,
+    )
+
+    # 5. 验证
+    assert state.status == "completed"
+    # 已完成子任务 0 被跳过，只有 1 和 2 被执行
+    assert len(executed_goals) == 2
+    assert "已完成步骤" not in executed_goals
+    # completed_subtasks 包含全部 3 个（1 个 resume_from + 2 个新完成）
+    assert len(state.completed_subtasks) == 3
+    # Planner.create_plan 未被调用
+    planner.create_plan.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_resume_all_completed():
+    """M4.3：续跑时所有子任务都已完成，应直接返回 completed。"""
+    from app.agent.schemas import TaskPlan
+
+    subtask_0 = SubTask(
+        index=0, goal="步骤 0", completion_condition="达成",
+        failure_strategy=FailureStrategy.ABORT, max_retries=0,
+    )
+    initial_plan = TaskPlan(
+        navigation_goal="全部已完成",
+        subtasks=[subtask_0],
+    )
+
+    planner = PlannerAgent()
+    planner.create_plan = AsyncMock(side_effect=AssertionError("不应调 create_plan"))
+
+    async def handler(goal, context):
+        raise AssertionError("不应执行任何子任务")
+
+    executor = ExecutorAgent(action_handler=handler)
+    coordinator = AgentCoordinator(planner=planner, executor=executor)
+
+    state = await coordinator.run(
+        task_id="test-resume-all",
+        org_id="org-1",
+        navigation_goal="全部已完成",
+        resume_from=[subtask_0.subtask_id],
+        initial_plan=initial_plan,
+    )
+
+    assert state.status == "completed"
+    assert len(state.completed_subtasks) == 1

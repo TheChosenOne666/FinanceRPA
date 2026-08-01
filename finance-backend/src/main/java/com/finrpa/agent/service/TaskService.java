@@ -87,4 +87,14 @@ public interface TaskService {
      * @param request 协调状态更新请求
      */
     void updateCoordinationState(Long taskId, CoordinationStateUpdateRequest request);
+
+    /**
+     * 任务续跑（M4.3：从断点继续执行）
+     *
+     * <p>从 rpa_agent_coordination_state 读取已存计划 + completed_subtasks，
+     * 重置 replan_count，调 Python POST /api/v1/ai/tasks/{taskId}/resume 从断点继续执行。</p>
+     *
+     * @param taskId 任务 ID
+     */
+    void resumeTask(Long taskId);
 }

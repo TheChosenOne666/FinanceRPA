@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>GET /tasks —— 分页查询任务列表</li>
  *   <li>GET /tasks/{taskId} —— 查询任务详情（含子任务列表）</li>
  *   <li>POST /tasks/{taskId}/abort —— 终止任务</li>
+ *   <li>POST /tasks/{taskId}/resume —— 任务续跑（M4.3）</li>
  * </ul>
  * </p>
  *
@@ -87,6 +88,20 @@ public class TaskController {
     public BaseResponse<Boolean> abortTask(@PathVariable Long taskId) {
         // 1. 终止任务
         taskService.abortTask(taskId);
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 任务续跑（M4.3：从断点继续执行）
+     *
+     * @param taskId 任务 ID
+     * @return 操作结果
+     */
+    @PostMapping("/{taskId}/resume")
+    @Operation(summary = "任务续跑", description = "从断点继续执行失败或需人工介入的任务，不重做已完成子任务")
+    public BaseResponse<Boolean> resumeTask(@PathVariable Long taskId) {
+        // 1. 续跑任务
+        taskService.resumeTask(taskId);
         return ResultUtils.success(true);
     }
 

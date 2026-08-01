@@ -21,6 +21,8 @@ import com.finrpa.agent.enums.TaskStateEnum;
 import com.finrpa.agent.mapper.AgentSubTaskMapper;
 import com.finrpa.agent.mapper.AgentTaskMapper;
 import com.finrpa.agent.mapper.CoordinationStateMapper;
+import com.finrpa.ai.client.AiServiceClient;
+import com.finrpa.ai.client.dto.TaskResumeRequest;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.agent.service.TaskStateMachine;
 import com.finrpa.common.exception.BusinessException;
@@ -56,6 +58,10 @@ public class TaskServiceImpl implements TaskService {
     /** 协调状态 Mapper */
     @Resource
     private CoordinationStateMapper coordinationStateMapper;
+
+    /** Python AI 服务客户端（M4.3 续跑调 Python） */
+    @Resource
+    private AiServiceClient aiServiceClient;
 
     /** JSON 序列化工具 */
     @Resource
@@ -242,6 +248,105 @@ public class TaskServiceImpl implements TaskService {
         ThrowUtils.throwIf(rows <= 0, ErrorCode.OPERATION_ERROR, "任务终止失败");
 
         log.info("任务终止成功: taskId={}", taskId);
+    }
+
+    /**
+     * 任务续跑（M4.3：从断点继续执行）
+     *
+     * <p>流程：
+     * <ol>
+     *   <li>查询任务 + 校验租户权限 + 校验状态（仅 FAILED/NEEDS_HUMAN 可续跑）</li>
+     *   <li>查询协调状态 → 读取 completed_subtasks + navigation_goal + current_plan</li>
+     *   <li>重置协调状态：total_replans=0, status=RUNNING, error_message=null</li>
+     *   <li>更新任务状态为 EXECUTING</li>
+     *   <li>调 Python POST /api/v1/ai/tasks/{taskId}/resume</li>
+     * </ol>
+     *
+     * @param taskId 任务 ID
+     */
+    @Override
+    public void resumeTask(Long taskId) {
+        // 1. 校验参数
+        ThrowUtils.throwIf(taskId == null, ErrorCode.PARAMS_ERROR, "任务 ID 不能为空");
+
+        // 2. 查询任务 + 校验租户权限
+        AgentTaskEO task = agentTaskMapper.selectById(taskId);
+        ThrowUtils.throwIf(task == null, ErrorCode.NOT_FOUND_ERROR, "任务不存在");
+        String orgIdStr = TenantContext.getOrgId();
+        if (orgIdStr != null) {
+            ThrowUtils.throwIf(!task.getOrgId().equals(Long.parseLong(orgIdStr)),
+                    ErrorCode.NO_AUTH_ERROR, "无权操作其他组织的任务");
+        }
+
+        // 3. 校验状态：仅 FAILED / NEEDS_HUMAN 可续跑
+        TaskStateEnum currentState = TaskStateEnum.getEnumByValue(task.getStatus());
+        if (currentState != TaskStateEnum.FAILED && currentState != TaskStateEnum.NEEDS_HUMAN) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR,
+                    "仅失败或需人工介入的任务可续跑，当前状态: " + task.getStatus());
+        }
+
+        // 4. 查询协调状态
+        LambdaQueryWrapper<CoordinationStateEO> csQuery = new LambdaQueryWrapper<>();
+        csQuery.eq(CoordinationStateEO::getTaskId, taskId);
+        CoordinationStateEO cs = coordinationStateMapper.selectOne(csQuery);
+        ThrowUtils.throwIf(cs == null, ErrorCode.OPERATION_ERROR,
+                "协调状态不存在，无法续跑（任务可能未通过 Coordinator 执行）");
+        ThrowUtils.throwIf(cs.getCurrentPlan() == null || cs.getCurrentPlan().isEmpty(),
+                ErrorCode.OPERATION_ERROR, "已存计划为空，无法续跑");
+
+        // 5. 解析 completed_subtasks JSON → List<String>
+        List<String> completedSubtasks = new ArrayList<>();
+        if (cs.getCompletedSubtasks() != null && !cs.getCompletedSubtasks().isEmpty()) {
+            try {
+                completedSubtasks = objectMapper.readValue(
+                        cs.getCompletedSubtasks(),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)
+                );
+            } catch (Exception e) {
+                log.error("解析 completed_subtasks 失败: taskId={}", taskId, e);
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "已完成子任务列表解析失败");
+            }
+        }
+
+        log.info("任务续跑准备: taskId={}, completed={}, totalReplans={}, currentPlanLen={}",
+                taskId, completedSubtasks.size(), cs.getTotalReplans(), cs.getCurrentPlan().length());
+
+        // 6. 重置协调状态：total_replans=0, status=RUNNING, error_message=null
+        LambdaUpdateWrapper<CoordinationStateEO> csUpdate = new LambdaUpdateWrapper<>();
+        csUpdate.eq(CoordinationStateEO::getTaskId, taskId)
+                .set(CoordinationStateEO::getTotalReplans, 0)
+                .set(CoordinationStateEO::getStatus, "RUNNING")
+                .set(CoordinationStateEO::getErrorMessage, null);
+        coordinationStateMapper.update(null, csUpdate);
+
+        // 7. 更新任务状态为 EXECUTING
+        LambdaUpdateWrapper<AgentTaskEO> taskUpdate = new LambdaUpdateWrapper<>();
+        taskUpdate.eq(AgentTaskEO::getTaskId, taskId)
+                .set(AgentTaskEO::getStatus, TaskStateEnum.EXECUTING.getValue())
+                .set(AgentTaskEO::getMessage, "任务续跑中（从断点继续）");
+        agentTaskMapper.update(null, taskUpdate);
+
+        // 8. 调 Python 续跑
+        TaskResumeRequest resumeRequest = new TaskResumeRequest();
+        resumeRequest.setTaskId(taskId.toString());
+        resumeRequest.setOrgId(task.getOrgId().toString());
+        resumeRequest.setNavigationGoal(cs.getNavigationGoal());
+        resumeRequest.setCompletedSubtasks(completedSubtasks);
+        resumeRequest.setCurrentPlan(cs.getCurrentPlan());
+
+        try {
+            aiServiceClient.resumeTask(taskId.toString(), resumeRequest);
+            log.info("任务续跑已触发: taskId={}", taskId);
+        } catch (Exception e) {
+            log.error("调 Python 续跑失败: taskId={}", taskId, e);
+            // 回滚状态为 FAILED
+            LambdaUpdateWrapper<AgentTaskEO> rollback = new LambdaUpdateWrapper<>();
+            rollback.eq(AgentTaskEO::getTaskId, taskId)
+                    .set(AgentTaskEO::getStatus, TaskStateEnum.FAILED.getValue())
+                    .set(AgentTaskEO::getMessage, "续跑触发失败: " + e.getMessage());
+            agentTaskMapper.update(null, rollback);
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "续跑触发失败: " + e.getMessage());
+        }
     }
 
     // endregion

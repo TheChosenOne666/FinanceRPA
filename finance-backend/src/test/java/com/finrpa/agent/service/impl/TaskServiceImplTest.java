@@ -20,6 +20,8 @@ import com.finrpa.agent.enums.TaskStateEnum;
 import com.finrpa.agent.mapper.AgentSubTaskMapper;
 import com.finrpa.agent.mapper.AgentTaskMapper;
 import com.finrpa.agent.mapper.CoordinationStateMapper;
+import com.finrpa.ai.client.AiServiceClient;
+import com.finrpa.ai.client.dto.TaskResumeRequest;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.tenant.context.TenantContext;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -72,6 +74,9 @@ class TaskServiceImplTest {
 
     @Mock
     private CoordinationStateMapper coordinationStateMapper;
+
+    @Mock
+    private AiServiceClient aiServiceClient;
 
     @InjectMocks
     private TaskServiceImpl taskService;
@@ -759,6 +764,150 @@ class TaskServiceImplTest {
 
         // 4. 验证 insert 被调用
         verify(coordinationStateMapper, times(1)).insert(any(CoordinationStateEO.class));
+    }
+
+    // endregion
+
+    // region resumeTask（M4.3）
+
+    @Test
+    @DisplayName("resumeTask - 续跑成功（FAILED → EXECUTING + 调 Python）")
+    void resumeTask_Success() throws Exception {
+        // 1. mock 任务（FAILED 状态）
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.FAILED);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+
+        // 2. mock 协调状态
+        CoordinationStateEO cs = new CoordinationStateEO();
+        cs.setTaskId(TEST_TASK_ID);
+        cs.setNavigationGoal("下载银行流水");
+        cs.setCurrentPlan("{\"navigation_goal\":\"测试\",\"subtasks\":[]}");
+        cs.setCompletedSubtasks("[\"sub_001\",\"sub_002\"]");
+        cs.setTotalReplans(2);
+        cs.setStatus("FAILED");
+        when(coordinationStateMapper.selectOne(any())).thenReturn(cs);
+
+        // 3. mock update 返回 1
+        when(coordinationStateMapper.update(any(), any())).thenReturn(1);
+        when(agentTaskMapper.update(any(), any())).thenReturn(1);
+
+        // 4. mock Python 调用成功
+        when(aiServiceClient.resumeTask(any(), any())).thenReturn(null);
+
+        // 5. 调用
+        taskService.resumeTask(TEST_TASK_ID);
+
+        // 6. 验证 Python 被调用
+        verify(aiServiceClient, times(1)).resumeTask(eq(TEST_TASK_ID.toString()), any(TaskResumeRequest.class));
+        // 验证协调状态被重置（total_replans=0, status=RUNNING）
+        verify(coordinationStateMapper, times(1)).update(any(), any());
+        // 验证任务状态被更新为 EXECUTING
+        verify(agentTaskMapper, times(1)).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("resumeTask - NEEDS_HUMAN 状态也可续跑")
+    void resumeTask_NeedsHuman_Success() {
+        // 1. mock 任务（NEEDS_HUMAN 状态）
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.NEEDS_HUMAN);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+
+        // 2. mock 协调状态
+        CoordinationStateEO cs = new CoordinationStateEO();
+        cs.setTaskId(TEST_TASK_ID);
+        cs.setNavigationGoal("测试目标");
+        cs.setCurrentPlan("{\"subtasks\":[]}");
+        cs.setCompletedSubtasks("[]");
+        cs.setTotalReplans(1);
+        cs.setStatus("NEEDS_HUMAN");
+        when(coordinationStateMapper.selectOne(any())).thenReturn(cs);
+        when(coordinationStateMapper.update(any(), any())).thenReturn(1);
+        when(agentTaskMapper.update(any(), any())).thenReturn(1);
+        when(aiServiceClient.resumeTask(any(), any())).thenReturn(null);
+
+        // 3. 调用
+        taskService.resumeTask(TEST_TASK_ID);
+
+        // 4. 验证
+        verify(aiServiceClient, times(1)).resumeTask(any(), any());
+    }
+
+    @Test
+    @DisplayName("resumeTask - 任务不存在抛异常")
+    void resumeTask_TaskNotFound_ThrowsException() {
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(null);
+
+        assertThatThrownBy(() -> taskService.resumeTask(TEST_TASK_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("任务不存在");
+    }
+
+    @Test
+    @DisplayName("resumeTask - EXECUTING 状态不可续跑")
+    void resumeTask_InvalidStatus_ThrowsException() {
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.EXECUTING);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+
+        assertThatThrownBy(() -> taskService.resumeTask(TEST_TASK_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("仅失败或需人工介入的任务可续跑");
+    }
+
+    @Test
+    @DisplayName("resumeTask - 协调状态不存在抛异常")
+    void resumeTask_CoordinationStateNotFound_ThrowsException() {
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.FAILED);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+        when(coordinationStateMapper.selectOne(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> taskService.resumeTask(TEST_TASK_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("协调状态不存在");
+    }
+
+    @Test
+    @DisplayName("resumeTask - currentPlan 为空抛异常")
+    void resumeTask_EmptyPlan_ThrowsException() {
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.FAILED);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+
+        CoordinationStateEO cs = new CoordinationStateEO();
+        cs.setTaskId(TEST_TASK_ID);
+        cs.setCurrentPlan(null);
+        when(coordinationStateMapper.selectOne(any())).thenReturn(cs);
+
+        assertThatThrownBy(() -> taskService.resumeTask(TEST_TASK_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("已存计划为空");
+    }
+
+    @Test
+    @DisplayName("resumeTask - Python 调用失败时回滚状态为 FAILED")
+    void resumeTask_PythonCallFails_RollsBack() {
+        // 1. mock 任务 + 协调状态
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.FAILED);
+        when(agentTaskMapper.selectById(TEST_TASK_ID)).thenReturn(task);
+
+        CoordinationStateEO cs = new CoordinationStateEO();
+        cs.setTaskId(TEST_TASK_ID);
+        cs.setNavigationGoal("测试");
+        cs.setCurrentPlan("{\"subtasks\":[]}");
+        cs.setCompletedSubtasks("[]");
+        when(coordinationStateMapper.selectOne(any())).thenReturn(cs);
+        when(coordinationStateMapper.update(any(), any())).thenReturn(1);
+        when(agentTaskMapper.update(any(), any())).thenReturn(1);
+
+        // 2. mock Python 调用抛异常
+        when(aiServiceClient.resumeTask(any(), any()))
+                .thenThrow(new RuntimeException("Python 服务不可用"));
+
+        // 3. 调用应抛异常
+        assertThatThrownBy(() -> taskService.resumeTask(TEST_TASK_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("续跑触发失败");
+
+        // 4. 验证回滚：agentTaskMapper.update 被调用 2 次（一次 EXECUTING + 一次回滚 FAILED）
+        verify(agentTaskMapper, times(2)).update(any(), any());
     }
 
     // endregion

@@ -94,6 +94,7 @@ class AgentCoordinator:
         navigation_goal: str,
         context: dict[str, Any] | None = None,
         resume_from: list[str] | None = None,
+        initial_plan: TaskPlan | None = None,
     ) -> CoordinationState:
         """通过 Planner → Executor 协调执行完整任务。
 
@@ -102,6 +103,8 @@ class AgentCoordinator:
         @param navigation_goal: 高级用户目标
         @param context: 共享执行上下文
         @param resume_from: 已完成的子任务 ID 列表（用于断点续跑）
+        @param initial_plan: 续跑时传入的已存计划（M4.3）。传入时跳过 Planner.create_plan，
+                             直接用此计划执行，确保 subtask_id 与 completed_subtasks 匹配
         @return: 包含最终状态和结果的 CoordinationState
         """
         state = CoordinationState(
@@ -111,16 +114,23 @@ class AgentCoordinator:
             completed_subtasks=resume_from or [],
         )
 
-        # 1. 创建初始计划
-        try:
-            logger.info("Coordinator: 开始创建任务计划 [task=%s, goal=%s]", task_id, navigation_goal)
-            plan = await self.planner.create_plan(navigation_goal, context)
-        except Exception as e:
-            logger.error("Coordinator: 任务 %s 规划失败: %s", task_id, e, exc_info=True)
-            state.status = "failed"
-            state.error_message = f"规划失败: {e}"
-            await self._on_task_terminal(state)
-            return state
+        # 1. 创建初始计划（续跑时使用传入的已存计划，跳过 Planner）
+        if initial_plan is not None:
+            logger.info(
+                "Coordinator: 断点续跑 → 使用已存计划 [task=%s, subtasks=%d, completed=%d]",
+                task_id, len(initial_plan.subtasks), len(state.completed_subtasks),
+            )
+            plan = initial_plan
+        else:
+            try:
+                logger.info("Coordinator: 开始创建任务计划 [task=%s, goal=%s]", task_id, navigation_goal)
+                plan = await self.planner.create_plan(navigation_goal, context)
+            except Exception as e:
+                logger.error("Coordinator: 任务 %s 规划失败: %s", task_id, e, exc_info=True)
+                state.status = "failed"
+                state.error_message = f"规划失败: {e}"
+                await self._on_task_terminal(state)
+                return state
 
         state.current_plan = plan
         logger.info(

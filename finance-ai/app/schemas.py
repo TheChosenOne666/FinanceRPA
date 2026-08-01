@@ -63,6 +63,33 @@ class TaskAbortResponse(BaseModel):
     message: str = "Task aborted"
 
 
+class TaskResumeRequest(BaseModel):
+    """任务续跑请求（M4.3：Java → Python，从断点继续执行）。
+
+    Java 侧从 rpa_agent_coordination_state 读取已存计划 + completed_subtasks，
+    传入此接口让 Python Coordinator 从断点继续执行，不重做已完成子任务。
+    """
+
+    model_config = _CAMEL_CONFIG
+
+    task_id: str
+    org_id: str
+    navigation_goal: str
+    completed_subtasks: list[str] = Field(default_factory=list, description="已完成子任务 ID 列表")
+    current_plan: str = Field(description="已存计划 JSON 字符串（TaskPlan.model_dump_json()）")
+    params: dict | None = Field(default=None, description="工作流模板参数（上下文）")
+
+
+class TaskResumeResponse(BaseModel):
+    """任务续跑响应。"""
+
+    model_config = _CAMEL_CONFIG
+
+    task_id: str
+    status: str = "running"
+    message: str = "任务续跑已触发"
+
+
 class SseEvent(BaseModel):
     """SSE 事件。"""
 

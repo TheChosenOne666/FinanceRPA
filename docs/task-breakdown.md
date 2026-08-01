@@ -1392,6 +1392,9 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `agent/CoordinationStateService.java` 增强 + API |
 | **描述** | 1. `CoordinationStateService`：查询 `last_success_subtask_index`<br>2. 续跑 API：`POST /api/v1/tasks/{id}/resume`<br>3. 调 Python `POST /api/v1/ai/tasks/{id}/resume`（从 index+1 开始）<br>4. replan_count 重置逻辑 |
 | **验收标准** | 中断任务可从断点续跑；不重做已完成子任务；replan_count 重置正确 |
+| **状态** | ✅ 已完成（2026-08-01）。实现 Java + Python 双端续跑链路。最终落地：(1) **Python `Coordinator.run()` 新增 `initial_plan` 参数**：续跑时传入已存计划跳过 `Planner.create_plan`，确保 subtask_id 与 `completed_subtasks` 匹配（解决新计划 UUID 不匹配问题）；(2) **Python `app/schemas.py` 新增 `TaskResumeRequest` / `TaskResumeResponse`**（camelCase 对齐 Java）：含 taskId / orgId / navigationGoal / completedSubtasks / currentPlan / params；(3) **Python `app/api/tasks.py` 新增 `POST /api/v1/ai/tasks/{taskId}/resume` 端点**：反序列化 `current_plan` JSON → `TaskPlan` → 后台 `_resume_task_background` 调 `coordinator.run(resume_from=..., initial_plan=...)`，立即返回响应；(4) **Java 新增 `TaskResumeRequest` / `TaskResumeResponse` DTO** + `AiServiceClient.resumeTask()` 方法（`@PostExchange("/tasks/{taskId}/resume")`）；(5) **Java `TaskService.resumeTask()` 实现**：查询任务（校验 FAILED/NEEDS_HUMAN 状态 + 租户权限）→ 查询 `rpa_agent_coordination_state`（读取 completed_subtasks + navigation_goal + current_plan）→ 解析 completed_subtasks JSON → 重置 `total_replans=0, status=RUNNING, error_message=null` → 更新任务状态 EXECUTING → 调 Python resume API → Python 调用失败时回滚任务状态为 FAILED；(6) **Java `TaskController` 新增 `POST /tasks/{taskId}/resume` 端点** |
+| **测试覆盖** | Python `test_coordinator.py` 15 个测试通过（含新增 2 个：续跑跳过已完成子任务 + Planner.create_plan 未被调用验证 / 全部子任务已completed 直接返回）。Java `TaskServiceImplTest` 46 个测试通过（含新增 7 个：续跑成功 FAILED → EXECUTING + 调 Python / NEEDS_HUMAN 也可续跑 / 任务不存在 / EXECUTING 状态不可续跑 / 协调状态不存在 / currentPlan 为空 / Python 调用失败回滚 FAILED）。Python 全量 182 个通过（2 个 test_executor Redis 连接失败为环境问题非回归） |
+| **未做范围** | M4.4 前端子任务时间线展示（续跑按钮 UI + replan 可视化）留到后续任务 |
 
 #### M4.4 前端子任务时间线展示
 

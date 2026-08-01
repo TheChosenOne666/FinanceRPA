@@ -12,16 +12,24 @@ M4 预留：Planner/Coordinator 后台编排逻辑保留（注释），待 M4 �
 """
 
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException
+from pydantic import ValidationError
 
+from app.agent.coordinator import AgentCoordinator
 from app.agent.event_bus import get_event_bus
+from app.agent.executor import ExecutorAgent
+from app.agent.planner import PlannerAgent
+from app.agent.schemas import TaskPlan
 from app.clients.java_backend import JavaBackendClient
 from app.clients.skyvern_client import SkyvernClient, map_skyvern_status
 from app.config import get_settings
 from app.schemas import (
     TaskAbortResponse,
+    TaskResumeRequest,
+    TaskResumeResponse,
     TaskStateResponse,
     TaskTriggerRequest,
     TaskTriggerResponse,
@@ -267,4 +275,129 @@ async def abort_task(task_id: str) -> TaskAbortResponse:
         task_id=task_id,
         aborted=True,
         message="Task aborted",
+    )
+
+
+async def _resume_task_background(
+    request: TaskResumeRequest,
+) -> None:
+    """后台续跑任务（通过 Coordinator 从断点继续执行，M4.3）。
+
+    与 _execute_task_background 不同：
+    - 传入 initial_plan（从 coordination_state 读取的已存计划），跳过 Planner.create_plan
+    - 传入 resume_from=completed_subtasks，跳过已完成子任务
+    """
+    task_id = request.task_id
+    logger.info(
+        "后台续跑任务启动 [task=%s, org=%s, completed=%d], 等待信号量...",
+        task_id, request.org_id, len(request.completed_subtasks),
+    )
+
+    # 反序列化已存计划
+    try:
+        plan = TaskPlan.model_validate_json(request.current_plan)
+    except (ValidationError, json.JSONDecodeError) as e:
+        logger.error("续跑任务: 已存计划反序列化失败 [task=%s]: %s", task_id, e, exc_info=True)
+        java_client = JavaBackendClient()
+        try:
+            await java_client.update_task_state(
+                task_id=task_id,
+                state="FAILED",
+                message=f"续跑失败：已存计划反序列化失败: {e}",
+                error_message=str(e),
+            )
+        finally:
+            await java_client.close()
+        return
+
+    async with _get_semaphore():
+        logger.info("后台续跑任务获取信号量，开始执行 [task=%s]", task_id)
+
+        event_bus = get_event_bus()
+        event_bus.register(task_id)
+        _active_tasks.add(task_id)
+
+        java_client = JavaBackendClient()
+        planner = PlannerAgent()
+        executor = ExecutorAgent(
+            java_client=java_client,
+            event_bus=event_bus,
+            task_id=task_id,
+            org_id=request.org_id,
+        )
+        coordinator = AgentCoordinator(
+            planner=planner,
+            executor=executor,
+            java_client=java_client,
+            event_bus=event_bus,
+        )
+
+        try:
+            await coordinator.run(
+                task_id=task_id,
+                org_id=request.org_id,
+                navigation_goal=request.navigation_goal,
+                context=request.params,
+                resume_from=request.completed_subtasks,
+                initial_plan=plan,
+            )
+            logger.info("后台续跑任务 coordinator.run 完成 [task=%s]", task_id)
+        except Exception as e:
+            logger.error(
+                "后台续跑任务执行异常 [task=%s]: %s", task_id, e, exc_info=True,
+            )
+            await java_client.update_task_state(
+                task_id=task_id,
+                state="FAILED",
+                message=f"续跑异常: {e}",
+                error_message=str(e),
+            )
+            await event_bus.publish(
+                task_id,
+                "error",
+                {"state": "FAILED", "message": f"续跑异常: {e}"},
+            )
+        finally:
+            _active_tasks.discard(task_id)
+            await java_client.close()
+            logger.info(
+                "后台续跑任务结束，从活跃集合移除 [task=%s, 剩余活跃=%d]",
+                task_id, len(_active_tasks),
+            )
+            asyncio.get_event_loop().call_later(
+                300, lambda: event_bus.cleanup(task_id),
+            )
+
+
+@router.post("/{task_id}/resume", response_model=TaskResumeResponse)
+async def resume_task(task_id: str, request: TaskResumeRequest) -> TaskResumeResponse:
+    """任务续跑（M4.3：从断点继续执行，不重做已完成子任务）。
+
+    Java 侧从 rpa_agent_coordination_state 读取已存计划 + completed_subtasks，
+    传入此接口让 Python Coordinator 从断点继续执行。
+
+    流程：
+      1. 反序列化 current_plan JSON → TaskPlan
+      2. 后台启动 Coordinator（initial_plan + resume_from）
+      3. 立即返回响应（异步执行）
+    """
+    logger.info(
+        "API 任务续跑: task_id=%s, org_id=%s, completed_subtasks=%d",
+        task_id, request.org_id, len(request.completed_subtasks),
+    )
+
+    # 校验 task_id 一致性
+    if request.task_id != task_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"task_id 不匹配: path={task_id}, body={request.task_id}",
+        )
+
+    # 后台异步执行续跑
+    asyncio.create_task(_resume_task_background(request))
+
+    return TaskResumeResponse(
+        task_id=task_id,
+        status="running",
+        message="任务续跑已触发",
     )

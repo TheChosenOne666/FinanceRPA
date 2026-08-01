@@ -2,6 +2,8 @@ package com.finrpa.ai.client;
 
 import com.finrpa.ai.client.dto.SkillInfoResponse;
 import com.finrpa.ai.client.dto.TaskAbortResponse;
+import com.finrpa.ai.client.dto.TaskResumeRequest;
+import com.finrpa.ai.client.dto.TaskResumeResponse;
 import com.finrpa.ai.client.dto.TaskStateResponse;
 import com.finrpa.ai.client.dto.TaskTriggerRequest;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
@@ -25,6 +27,7 @@ import java.util.List;
  *   <li>POST /api/v1/ai/tasks —— 触发任务执行</li>
  *   <li>GET /api/v1/ai/tasks/{taskId}/state —— 查询任务状态</li>
  *   <li>POST /api/v1/ai/tasks/{taskId}/abort —— 终止任务</li>
+ *   <li>POST /api/v1/ai/tasks/{taskId}/resume —— 任务续跑（M4.3）</li>
  *   <li>GET /api/v1/ai/skills —— 查询所有 Skill 元数据（M3.3 用于校验 Skill 存在性）</li>
  * </ul>
  * </p>
@@ -71,4 +74,17 @@ public interface AiServiceClient {
      */
     @GetExchange("/skills")
     List<SkillInfoResponse> getSkills();
+
+    /**
+     * 任务续跑（M4.3：从断点继续执行）
+     *
+     * <p>Java 侧从 rpa_agent_coordination_state 读取已存计划 + completed_subtasks，
+     * 调此接口让 Python Coordinator 从断点继续执行，不重做已完成子任务。</p>
+     *
+     * @param taskId  任务 ID
+     * @param request 续跑请求（含 completedSubtasks + currentPlan + navigationGoal）
+     * @return 续跑响应
+     */
+    @PostExchange("/tasks/{taskId}/resume")
+    TaskResumeResponse resumeTask(@PathVariable("taskId") String taskId, @RequestBody TaskResumeRequest request);
 }
