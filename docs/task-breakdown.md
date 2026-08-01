@@ -1478,9 +1478,11 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 |----|------|
 | **规模** | L |
 | **前置依赖** | M5.4、M5.5 |
-| **产出物** | `routes/enterprise/NeedsHuman.tsx`、`routes/enterprise/LlmMonitor.tsx` |
+| **产出物** | `routes/llm/NeedsHuman.tsx`、`routes/llm/LlmMonitor.tsx` |
 | **描述** | 1. 接管队列：待处理列表 + 详情（截图 + LLM 原始输出 + 校验错误）<br>2. 处置操作：skip / manual / abort 三按钮<br>3. LLM 监控：调用次数 / 成本 / 缓存命中率 / 模型分布图表<br>4. ECharts 可视化 |
 | **验收标准** | 接管队列正确展示；处置按钮可用；LLM 监控图表数据准确 |
+| **状态** | ✅ 已完成（2026-08-01）。实现 NEEDS_HUMAN 接管队列页 + LLM 调用监控页。最终落地：(1) **安装 echarts + echarts-for-react 依赖**<br>(2) **新建 `src/api/needsHuman.ts`**：`listNeedsHuman` / `getNeedsHumanDetail` / `resolveNeedsHuman` 三个 API 方法，对齐 `NeedsHumanController`<br>(3) **新建 `src/api/llmMonitor.ts`**：`getCallStats` API 方法，对齐 `LlmCallLogController`<br>(4) **扩展 `src/api/types.ts`**：`NeedsHumanQueueVO` / `NeedsHumanQueryRequest` / `NeedsHumanResolveRequest` / `LlmCallStatsVO` / `ModelStatsVO` / `LlmCallStatsQueryRequest` 类型定义<br>(5) **扩展 `src/components/Icons.tsx`**：新增 6 个图标 — `IconChart`（柱状图）/ `IconShield`（盾牌）/ `IconSkip`（快进）/ `IconHand`（手掌）/ `IconDollar`（美元）/ `IconCamera` 已有<br>(6) **新建 `src/routes/llm/NeedsHuman.tsx`**：接管队列页 — 分页表格 + 状态筛选（PENDING/RESOLVED）+ 行展开详情（截图 + LLM 原始输出 + 校验错误，两列 grid 布局）+ 三按钮处置（skip→续跑/manual→续跑/abort→终止），使用 `useMutation` + `invalidateQueries` 处置后自动刷新<br>(7) **新建 `src/routes/llm/LlmMonitor.tsx`**：LLM 监控页 — 4 张汇总卡片（总调用次数/成功率+缓存命中率/Token 用量/总成本+平均耗时）+ 3 个 ECharts 图表（模型调用分布饼图 + 模型成本对比柱状图 + Token 用量柱状图）+ 模型统计明细表<br>(8) **路由注册 `src/router.tsx`**：`/needs-human` + `/llm-monitor` 两条新路由<br>(9) **导航集成 `src/routes/RootLayout.tsx`**：顶部导航新增"接管"和"监控"两个按钮，版本标识更新为 M5.6<br>(10) **样式 `src/styles/glass.css`**：新增 NeedsHuman 页面样式（展开行/详情布局/截图/代码块/处置按钮颜色）+ LlmMonitor 页面样式（汇总卡片/图表网格/统计明细表），沿用绿色主色调 `#047857`<br>(11) **TypeScript 编译通过**：`tsc --noEmit` 零错误 |
+| **测试覆盖** | TypeScript 编译零错误；API 类型对齐后端 DTO；ECharts 图表配置覆盖饼图/柱状图两种类型 |
 
 ---
 

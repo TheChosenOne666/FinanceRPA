@@ -2148,3 +2148,263 @@ a:hover {
 .workflow-runs-meta svg {
   color: var(--text-muted);
 }
+
+/* ============================================================
+ * M5.6 NEEDS_HUMAN 接管队列 + LLM 监控页样式
+ * ============================================================ */
+
+/* region NeedsHuman 页面 */
+
+.needs-human-page .cell-expand {
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.needs-human-page .cell-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 4px;
+  transition: background var(--transition-fast);
+}
+
+.needs-human-page .cell-expand-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.needs-human-page .detail-row > td {
+  padding: 0 !important;
+  border-top: none;
+  background: rgba(4, 120, 87, 0.02);
+}
+
+.needs-human-detail {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  padding: 20px 24px;
+}
+
+.detail-section {
+  margin-bottom: 16px;
+}
+
+.detail-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.detail-screenshot {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  object-fit: cover;
+}
+
+.detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  border-radius: 8px;
+  border: 1px dashed rgba(0, 0, 0, 0.1);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.detail-code-block {
+  margin: 0;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.detail-error {
+  background: rgba(239, 68, 68, 0.06);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+.detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.resolve-actions {
+  display: flex;
+  gap: 12px;
+  padding: 0 24px 20px;
+  flex-wrap: wrap;
+}
+
+.resolve-btn-skip {
+  color: #047857;
+  border-color: rgba(4, 120, 87, 0.3);
+}
+
+.resolve-btn-skip:hover:not(:disabled) {
+  background: rgba(4, 120, 87, 0.08);
+}
+
+.resolve-btn-manual {
+  background: #047857;
+  border-color: #047857;
+}
+
+.resolve-btn-abort {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+.resolve-btn-abort:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.context-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #047857;
+  background: rgba(4, 120, 87, 0.08);
+  border-radius: 4px;
+}
+
+.status-badge.status-pending {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.1);
+  border-radius: 4px;
+}
+
+.status-badge.status-resolved {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #047857;
+  background: rgba(4, 120, 87, 0.1);
+  border-radius: 4px;
+}
+
+.resolve-action-badge {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* endregion */
+
+/* region LlmMonitor 页面 */
+
+.llm-monitor-page .stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+}
+
+.stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.stat-icon-blue {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0284c7;
+}
+
+.stat-icon-green {
+  background: rgba(4, 120, 87, 0.1);
+  color: #047857;
+}
+
+.stat-icon-purple {
+  background: rgba(139, 92, 246, 0.1);
+  color: #7c3aed;
+}
+
+.stat-icon-amber {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+}
+
+.stat-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.stat-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.chart-card {
+  padding: 20px;
+}
+
+.chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+/* endregion */

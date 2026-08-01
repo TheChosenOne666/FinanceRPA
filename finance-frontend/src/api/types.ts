@@ -466,3 +466,137 @@ export interface WorkflowRunVO {
   /** 任务初始状态 */
   state: string;
 }
+
+// ============================================================
+// NEEDS_HUMAN 队列管理（M5.5）
+// 对齐 com.finrpa.llm.dto.request / response
+// ============================================================
+
+/**
+ * NEEDS_HUMAN 队列状态
+ */
+export type NeedsHumanStatus = 'PENDING' | 'RESOLVED';
+
+/**
+ * 处置动作
+ */
+export type ResolveAction = 'skip' | 'manual' | 'abort';
+
+/**
+ * NEEDS_HUMAN 队列视图对象（对齐 com.finrpa.llm.dto.response.NeedsHumanQueueVO）
+ */
+export interface NeedsHumanQueueVO {
+  /** 队列业务 ID */
+  queueId: string;
+  /** 任务 ID */
+  taskId: string;
+  /** 组织 ID */
+  orgId: string;
+  /** 子任务 ID */
+  subtaskId?: string;
+  /** 调用上下文名称 */
+  contextName: string;
+  /** 截图 URL */
+  screenshotUrl?: string;
+  /** LLM 最后一次原始输出 */
+  llmRawOutput?: string;
+  /** 校验错误信息 */
+  validationError?: string;
+  /** 总尝试次数 */
+  attempts: number;
+  /** 队列状态 */
+  status: NeedsHumanStatus;
+  /** 处置动作 */
+  resolveAction?: ResolveAction;
+  /** 处置人用户 ID */
+  resolvedBy?: string;
+  /** 处置时间 */
+  resolvedAt?: string;
+  /** 创建时间 */
+  createTime: string;
+}
+
+/**
+ * NEEDS_HUMAN 队列查询请求
+ */
+export interface NeedsHumanQueryRequest {
+  /** 当前页号 */
+  current: number;
+  /** 页面大小 */
+  pageSize: number;
+  /** 状态筛选 */
+  status?: NeedsHumanStatus | '';
+  /** 任务 ID 筛选 */
+  taskId?: string;
+}
+
+/**
+ * NEEDS_HUMAN 处置请求
+ */
+export interface NeedsHumanResolveRequest {
+  /** 处置动作 */
+  action: ResolveAction;
+}
+
+// ============================================================
+// LLM 调用统计（M5.4）
+// 对齐 com.finrpa.llm.dto.response.LlmCallStatsVO / ModelStatsVO
+// ============================================================
+
+/**
+ * 单模型统计（对齐 com.finrpa.llm.dto.response.ModelStatsVO）
+ */
+export interface ModelStatsVO {
+  /** 模型名 */
+  model: string;
+  /** 调用次数 */
+  calls: number;
+  /** 成功调用次数 */
+  successCalls: number;
+  /** 总 token 数 */
+  totalTokens: number;
+  /** 总成本（美元） */
+  cost: number;
+}
+
+/**
+ * LLM 调用统计 VO（对齐 com.finrpa.llm.dto.response.LlmCallStatsVO）
+ */
+export interface LlmCallStatsVO {
+  /** 总调用次数 */
+  totalCalls: number;
+  /** 成功调用次数 */
+  successCalls: number;
+  /** 失败调用次数 */
+  failedCalls: number;
+  /** 缓存命中次数 */
+  cacheHitCalls: number;
+  /** 缓存命中率（0-1） */
+  cacheHitRate: number;
+  /** 总 prompt token 数 */
+  totalPromptTokens: number;
+  /** 总 completion token 数 */
+  totalCompletionTokens: number;
+  /** 总 token 数 */
+  totalTokens: number;
+  /** 总成本（美元） */
+  totalCost: number;
+  /** 平均调用耗时（毫秒） */
+  avgDurationMs: number;
+  /** 按模型维度的统计列表 */
+  modelStats: ModelStatsVO[];
+}
+
+/**
+ * LLM 调用统计查询请求
+ */
+export interface LlmCallStatsQueryRequest {
+  /** 起始时间（ISO 字符串） */
+  startTime?: string;
+  /** 结束时间（ISO 字符串） */
+  endTime?: string;
+  /** 模型名筛选 */
+  model?: string;
+  /** 任务 ID 筛选 */
+  taskId?: string;
+}

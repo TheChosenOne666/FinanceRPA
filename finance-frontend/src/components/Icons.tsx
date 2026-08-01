@@ -234,4 +234,57 @@ export function IconExternal(props: IconProps) {
   )
 }
 
+/** 图表/监控图标（柱状图） */
+export function IconChart(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+      <line x1="3" y1="20" x2="21" y2="20" />
+    </Svg>
+  )
+}
+
+/** 盾牌/人工介入图标 */
+export function IconShield(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </Svg>
+  )
+}
+
+/** 跳过图标（快进） */
+export function IconSkip(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <polygon points="5 4 15 12 5 20 5 4" />
+      <line x1="19" y1="5" x2="19" y2="19" />
+    </Svg>
+  )
+}
+
+/** 人工处理图标（手掌） */
+export function IconHand(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
+      <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2" />
+      <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8" />
+      <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+    </Svg>
+  )
+}
+
+/** 美元/成本图标 */
+export function IconDollar(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </Svg>
+  )
+}
+
 export default Svg

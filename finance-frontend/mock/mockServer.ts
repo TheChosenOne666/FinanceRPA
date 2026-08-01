@@ -14,6 +14,10 @@
  *   POST /api/tasks/:taskId/abort       终止任务
  *   POST /api/tasks/:taskId/resume      任务续跑（M4.4）
  *   GET  /api/ai/sse/tasks/:taskId      SSE 实时事件流
+ *   GET  /api/llm/needs-human           NEEDS_HUMAN 队列列表（M5.6）
+ *   GET  /api/llm/needs-human/:queueId  NEEDS_HUMAN 详情（M5.6）
+ *   POST /api/llm/needs-human/:queueId/resolve 处置（M5.6）
+ *   GET  /api/llm/calls/stats           LLM 调用统计（M5.6）
  *
  * SSE 场景（按 taskId 切换）：
  *   mock-success      全部子任务成功
@@ -388,6 +392,31 @@ export function mockServerPlugin(): Plugin {
             const resumeMatch = pathname.match(/^\/api\/tasks\/([^/]+)\/resume$/)
             if (resumeMatch && method === 'POST') {
               return handleResumeTask(res, decodeURIComponent(resumeMatch[1]))
+            }
+            // NEEDS_HUMAN 队列列表：/api/llm/needs-human（M5.6）
+            if (pathname === '/api/llm/needs-human' && method === 'GET') {
+              return handleListNeedsHuman(req, res)
+            }
+            // NEEDS_HUMAN 处置：/api/llm/needs-human/:queueId/resolve（M5.6）
+            const resolveMatch = pathname.match(
+              /^\/api\/llm\/needs-human\/([^/]+)\/resolve$/,
+            )
+            if (resolveMatch && method === 'POST') {
+              return handleResolveNeedsHuman(req, res, decodeURIComponent(resolveMatch[1]))
+            }
+            // NEEDS_HUMAN 详情：/api/llm/needs-human/:queueId（M5.6）
+            const needsHumanDetailMatch = pathname.match(
+              /^\/api\/llm\/needs-human\/([^/]+)$/,
+            )
+            if (needsHumanDetailMatch && method === 'GET') {
+              return handleGetNeedsHumanDetail(
+                res,
+                decodeURIComponent(needsHumanDetailMatch[1]),
+              )
+            }
+            // LLM 调用统计：/api/llm/calls/stats（M5.6）
+            if (pathname === '/api/llm/calls/stats' && method === 'GET') {
+              return handleGetLlmStats(res)
             }
 
             // 3. 未匹配的 /api/ 请求 → 放行到 proxy（实际会失败，但便于发现遗漏）
@@ -1110,6 +1139,240 @@ async function simulateTaskExecution(taskId: string): Promise<void> {
     task.status = 'EXECUTING'
     task.updateTime = nowIso()
   }
+}
+
+// ============================================================
+// LLM NEEDS_HUMAN 队列 + 调用统计 Mock 数据（M5.6）
+// ============================================================
+
+/** Mock NEEDS_HUMAN 队列条目 */
+interface MockNeedsHumanQueue {
+  queueId: string
+  taskId: string
+  orgId: string
+  subtaskId?: string
+  contextName: string
+  screenshotUrl?: string
+  llmRawOutput?: string
+  validationError?: string
+  attempts: number
+  status: 'PENDING' | 'RESOLVED'
+  resolveAction?: 'skip' | 'manual' | 'abort'
+  resolvedBy?: string
+  resolvedAt?: string
+  createTime: string
+}
+
+/** Mock NEEDS_HUMAN 队列（内存存储） */
+const mockNeedsHumanQueue: MockNeedsHumanQueue[] = [
+  {
+    queueId: '800000000000000001',
+    taskId: '700000000000000005',
+    orgId: MOCK_USER.orgId,
+    subtaskId: '710000000000000041',
+    contextName: 'executor.step',
+    screenshotUrl:
+      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=bank%20login%20page%20with%20sms%20verification%20code%20input%20field%20highlighted&image_size=landscape_4_3',
+    llmRawOutput:
+      '{"action": "click", "selector": "#verify-btn", "reasoning": "需要点击获取验证码按钮"}',
+    validationError:
+      'Pydantic ValidationError: action "click" 无法完成，需要人工输入短信验证码（field: sms_code required）',
+    attempts: 3,
+    status: 'PENDING',
+    createTime: '2026-07-31T14:05:30.000Z',
+  },
+  {
+    queueId: '800000000000000002',
+    taskId: '700000000000000003',
+    orgId: MOCK_USER.orgId,
+    subtaskId: '710000000000000022',
+    contextName: 'planner.create_plan',
+    screenshotUrl:
+      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=bank%20statement%20download%20page%20with%20complex%20form%20and%20date%20range%20selector&image_size=landscape_4_3',
+    llmRawOutput:
+      '{"steps": [{"goal": "选择日期范围"}, {"goal": "点击下载"}], "reasoning": "页面结构较简单"}',
+    validationError:
+      'JSON Schema 校验失败：steps[0] 缺少必填字段 completion_condition；steps[1] 缺少必填字段 failure_strategy',
+    attempts: 3,
+    status: 'PENDING',
+    createTime: '2026-07-29T08:33:10.000Z',
+  },
+  {
+    queueId: '800000000000000003',
+    taskId: '700000000000000002',
+    orgId: MOCK_USER.orgId,
+    subtaskId: '710000000000000010',
+    contextName: 'executor.step',
+    screenshotUrl:
+      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=bank%20login%20page%20with%20password%20error%20message%20account%20locked&image_size=landscape_4_3',
+    llmRawOutput:
+      '{"action": "input", "selector": "#password", "value": "retry-password"}',
+    validationError:
+      '连续 3 次密码错误，账户已被临时锁定，LLM 仍尝试输入密码',
+    attempts: 3,
+    status: 'PENDING',
+    createTime: '2026-07-28T14:25:20.000Z',
+  },
+  {
+    queueId: '800000000000000004',
+    taskId: '700000000000000001',
+    orgId: MOCK_USER.orgId,
+    subtaskId: '710000000000000001',
+    contextName: 'planner.create_plan',
+    llmRawOutput:
+      '{"steps": [{"goal": "登录网银", "completion_condition": "账户总览页面"}]}',
+    validationError: 'JSON 解析成功但步骤数不足（最少 2 步，实际 1 步）',
+    attempts: 3,
+    status: 'RESOLVED',
+    resolveAction: 'skip',
+    resolvedBy: MOCK_USER.userId,
+    resolvedAt: '2026-07-28T09:13:00.000Z',
+    createTime: '2026-07-28T09:12:50.000Z',
+  },
+  {
+    queueId: '800000000000000005',
+    taskId: '700000000000000004',
+    orgId: MOCK_USER.orgId,
+    subtaskId: '710000000000000031',
+    contextName: 'executor.step',
+    llmRawOutput:
+      '{"action": "click", "selector": "#salary-menu", "reasoning": "点击代发工资菜单"}',
+    validationError: '元素 #salary-menu 不存在（页面结构已变化）',
+    attempts: 3,
+    status: 'RESOLVED',
+    resolveAction: 'manual',
+    resolvedBy: MOCK_USER.userId,
+    resolvedAt: '2026-07-30T10:02:25.000Z',
+    createTime: '2026-07-30T10:02:00.000Z',
+  },
+]
+
+/** GET /api/llm/needs-human */
+function handleListNeedsHuman(req: IncomingMessage, res: ServerResponse): void {
+  const q = parseQuery(req.url || '')
+  const status = q.status || ''
+  const taskId = q.taskId || ''
+
+  // 1. 过滤
+  let filtered = mockNeedsHumanQueue.filter((i) => i.orgId === MOCK_USER.orgId)
+  if (status) {
+    filtered = filtered.filter((i) => i.status === status)
+  }
+  if (taskId) {
+    filtered = filtered.filter((i) => i.taskId === taskId)
+  }
+
+  // 2. 排序（按创建时间倒序）
+  filtered.sort((a, b) => b.createTime.localeCompare(a.createTime))
+
+  sendJson(res, 200, {
+    code: 0,
+    data: filtered,
+    message: 'ok',
+  })
+}
+
+/** GET /api/llm/needs-human/:queueId */
+function handleGetNeedsHumanDetail(res: ServerResponse, queueId: string): void {
+  const item = mockNeedsHumanQueue.find((i) => i.queueId === queueId)
+  if (!item) {
+    return sendJson(res, 200, {
+      code: 40400,
+      data: null,
+      message: `队列 ${queueId} 不存在`,
+    })
+  }
+  sendJson(res, 200, { code: 0, data: item, message: 'ok' })
+}
+
+/** POST /api/llm/needs-human/:queueId/resolve */
+async function handleResolveNeedsHuman(
+  req: IncomingMessage,
+  res: ServerResponse,
+  queueId: string,
+): Promise<void> {
+  const body = await readBody(req)
+  const action = (body.action as string) || 'skip'
+  const item = mockNeedsHumanQueue.find((i) => i.queueId === queueId)
+  if (!item) {
+    return sendJson(res, 200, {
+      code: 40400,
+      data: null,
+      message: `队列 ${queueId} 不存在`,
+    })
+  }
+  if (item.status !== 'PENDING') {
+    return sendJson(res, 200, {
+      code: 50001,
+      data: null,
+      message: `队列 ${queueId} 已处置，不可重复操作`,
+    })
+  }
+  // 模拟处置
+  item.status = 'RESOLVED'
+  item.resolveAction = action as 'skip' | 'manual' | 'abort'
+  item.resolvedBy = MOCK_USER.userId
+  item.resolvedAt = nowIso()
+  console.log(`[mock] NEEDS_HUMAN 处置: queue=${queueId}, action=${action}`)
+
+  // 如果是 skip/manual，模拟任务续跑；如果是 abort，模拟任务终止
+  const task = mockTasks.find((t) => t.taskId === item.taskId)
+  if (task) {
+    if (action === 'abort') {
+      task.status = 'ABORTED'
+      task.errorMessage = '操作员终止任务'
+    } else {
+      task.status = 'EXECUTING'
+      task.errorMessage = undefined
+      task.message = '人工处置后续跑中'
+    }
+    task.updateTime = nowIso()
+  }
+
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** GET /api/llm/calls/stats */
+function handleGetLlmStats(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      totalCalls: 156,
+      successCalls: 142,
+      failedCalls: 14,
+      cacheHitCalls: 38,
+      cacheHitRate: 0.2436,
+      totalPromptTokens: 285000,
+      totalCompletionTokens: 95000,
+      totalTokens: 380000,
+      totalCost: 2.8473,
+      avgDurationMs: 2350,
+      modelStats: [
+        {
+          model: 'gpt-4o-mini',
+          calls: 85,
+          successCalls: 82,
+          totalTokens: 120000,
+          cost: 0.18,
+        },
+        {
+          model: 'gpt-4o',
+          calls: 52,
+          successCalls: 47,
+          totalTokens: 180000,
+          cost: 1.35,
+        },
+        {
+          model: 'gpt-4o-2024-08-06',
+          calls: 19,
+          successCalls: 13,
+          totalTokens: 80000,
+          cost: 1.3173,
+        },
+      ],
+    },
+    message: 'ok',
+  })
 }
 
 export default mockServerPlugin

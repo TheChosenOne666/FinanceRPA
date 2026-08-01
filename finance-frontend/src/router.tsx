@@ -9,8 +9,10 @@
  *   - /tasks/:taskId   任务详情（M2.5）
  *   - /workflows       工作流模板列表（M3.6）
  *   - /workflows/:workflowId           工作流详情（M3.6）
- *   - /workflows/:workflowId/runs      工作流执行历史（M3.6）
- *   - /403             403 无权限页
+ * - /workflows/:workflowId/runs      工作流执行历史（M3.6）
+ * - /needs-human     NEEDS_HUMAN 接管队列（M5.6）
+ * - /llm-monitor     LLM 调用监控（M5.6）
+ * - /403             403 无权限页
  *   - *                404 兜底
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
@@ -27,6 +29,8 @@ import TaskDetail from '@/routes/tasks/TaskDetail'
 import WorkflowsPage from '@/routes/workflows/Workflows'
 import WorkflowDetail from '@/routes/workflows/WorkflowDetail'
 import WorkflowRunsPage from '@/routes/workflows/WorkflowRuns'
+import NeedsHumanPage from '@/routes/llm/NeedsHuman'
+import LlmMonitorPage from '@/routes/llm/LlmMonitor'
 
 /** 路由配置 */
 export const router = createBrowserRouter([
@@ -65,6 +69,14 @@ export const router = createBrowserRouter([
       {
         path: 'workflows/:workflowId/runs',
         element: <WorkflowRunsPage />,
+      },
+      {
+        path: 'needs-human',
+        element: <NeedsHumanPage />,
+      },
+      {
+        path: 'llm-monitor',
+        element: <LlmMonitorPage />,
       },
       {
         path: '403',
