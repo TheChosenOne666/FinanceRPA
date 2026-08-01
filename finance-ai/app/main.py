@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.agent.event_bus import get_event_bus
-from app.api import health, skills, sse, tasks
+from app.api import health, risk, skills, sse, tasks
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -159,6 +159,7 @@ def create_app() -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(sse.router)
     app.include_router(skills.router)
+    app.include_router(risk.router)
 
     # 挂载 Skyvern 原生 API 路由（M3.7）
     # @from enterprise/skyvern/forge/api_app.py:create_api_app
