@@ -1,10 +1,8 @@
 package com.finrpa.agent.controller;
 
-import com.finrpa.agent.dto.request.AuditLogCreateRequest;
 import com.finrpa.agent.dto.request.CoordinationStateUpdateRequest;
 import com.finrpa.agent.dto.request.SubTaskUpdateRequest;
 import com.finrpa.agent.dto.request.TaskStateUpdateRequest;
-import com.finrpa.agent.service.AuditLogService;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.approval.dto.response.ApprovalResultResponse;
 import com.finrpa.approval.service.ApprovalService;
@@ -32,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>POST /internal/tasks/{taskId}/state —— 更新任务状态</li>
  *   <li>POST /internal/tasks/{taskId}/subtasks —— 更新子任务状态</li>
  *   <li>POST /internal/tasks/{taskId}/coordination-state —— 更新协调状态（M4.2）</li>
- *   <li>POST /internal/audit/logs —— 上报审计日志</li>
+ *   <li>POST /internal/audit/logs —— 上报审计日志（M7.1 已迁移至 audit/controller/InternalAuditController）</li>
  *   <li>GET /internal/approvals/{taskId}/result —— 查询审批结果（M6.3，Python 回调用）</li>
  * </ul>
  * </p>
@@ -49,10 +47,6 @@ public class InternalTaskController {
     /** 任务服务 */
     @Resource
     private TaskService taskService;
-
-    /** 审计日志服务 */
-    @Resource
-    private AuditLogService auditLogService;
 
     /** 审批服务（M6.3 Python 查询审批结果用） */
     @Resource
@@ -136,26 +130,6 @@ public class InternalTaskController {
     public BaseResponse<ApprovalResultResponse> getApprovalResult(@PathVariable Long taskId) {
         log.info("收到审批结果查询: taskId={}", taskId);
         return ResultUtils.success(approvalService.getApprovalResultByTaskId(taskId));
-    }
-
-    // endregion
-
-    // region 审计日志回调
-
-    /**
-     * 上报审计日志（Python 回调）
-     *
-     * @param request 审计日志创建请求
-     * @return 操作结果
-     */
-    @PostMapping("/audit/logs")
-    @Operation(summary = "上报审计日志", description = "Python Executor 回调记录任务执行的操作行为")
-    public BaseResponse<Boolean> createAuditLog(@RequestBody AuditLogCreateRequest request) {
-        log.info("收到审计日志回调: taskId={}, actionType={}, result={}",
-                request.getTaskId(), request.getActionType(), request.getExecutionResult());
-        // 1. 保存审计日志
-        boolean success = auditLogService.createAuditLog(request);
-        return ResultUtils.success(success);
     }
 
     // endregion

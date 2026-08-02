@@ -1,7 +1,7 @@
-package com.finrpa.agent.mapper;
+package com.finrpa.audit.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.finrpa.agent.entity.AuditLogEO;
+import com.finrpa.audit.entity.AuditLogEO;
 
 /**
  * 审计日志 Mapper 接口

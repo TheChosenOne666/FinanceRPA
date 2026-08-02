@@ -1566,7 +1566,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 
 ### M7 全链路审计
 
-#### M7.1 Java 审计日志 CRUD + 脱敏
+#### M7.1 Java 审计日志 CRUD + 脱敏 ✅
 
 | 项 | 内容 |
 |----|------|
@@ -1574,7 +1574,9 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **前置依赖** | M0.3、M1.2 |
 | **产出物** | `audit/` 模块（CRUD + 脱敏部分） |
 | **描述** | 1. 实体：`AuditLogEO`（按系统设计 6.4.1 结构）<br>2. `SanitizeService`：银行卡 / 身份证 / 密码 / 手机 / 邮箱 脱敏规则<br>3. 内部 API：`POST /internal/audit/logs`（Python 上报）<br>4. 对外 API：`GET /api/v1/audit/logs`（多维检索） / `GET /api/v1/audit/logs/{id}` |
-| **验收标准** | 审计日志持久化；脱敏规则正确；多维检索可用 |
+| **验收标准** | ✅ 审计日志持久化；✅ 脱敏规则正确；✅ 多维检索可用 |
+| **状态** | ✅ 已完成（2026-08-03）。将原散落在 `agent/` 模块下的审计代码迁移到独立 `audit/` 模块（符合系统设计 4.2 节包结构），并按系统设计 6.4.1 完整结构扩展。最终落地：<br>(1) **数据库扩展 `V17__extend_audit_log_table.sql`**：ALTER TABLE rpa_audit_log 新增 14 个字段（department_id / business_line_id / user_id / action_params / risk_level / approval_id / started_at / completed_at / duration_ms / before_screenshot_url / after_screenshot_url / llm_model / llm_tokens_used / llm_cost），新增 6 个多维检索索引（user_id / department_id / business_line_id / risk_level / action_type / started_at）；保持 `rpa_` 前缀一致性，复用现有数据<br>(2) **`audit/` 独立模块包结构**：constant / dto(request+response) / entity / mapper / service(impl) / controller 六个子包，对齐项目既有模块分层风格<br>(3) **`AuditLogEO` 实体扩展**：按系统设计 6.4.1 六大维度（基本信息 / 操作信息 / 风险信息 / 时间信息 / 截图 / LLM 信息）补全字段；截图 URL 字段在 M7.1 预留，由 M7.2 MinIO 集成后填充<br>(4) **`SanitizeService` 脱敏服务**（系统设计 6.4.3）：5 个显式脱敏方法（sanitizeCard 前4后4 / sanitizeIdCard 前6后4 / sanitizePassword 完全替换\*\*\* / sanitizePhone 前3后4 / sanitizeEmail 首字符+\*\*\*+@域名）+ `sanitizeActionParams(json)` 对 action_params JSON 整体脱敏（密码字段名匹配 password/pwd/passwd/secret 替换为\*\*\*；字符串值用正则识别身份证/银行卡/手机/邮箱并脱敏；递归处理嵌套对象与数组；JSON 解析失败降级为正则脱敏）<br>(5) **`AuditLogService` 接口扩展**：createAuditLog（Python 回调，actionParams 脱敏后存储）/ listAuditLogs（分页多维检索）/ getAuditLogDetail（按 auditId 查询详情）；实现层 BeanUtils.copyProperties + LambdaQueryWrapper 条件组装<br>(6) **`AuditController` 对外 API**：GET /v1/audit/logs（多维检索，从 TenantContext 自动填充 orgId 租户隔离）/ GET /v1/audit/logs/{auditId}（详情）<br>(7) **`InternalAuditController` 内部回调**：POST /internal/audit/logs（Python 上报，X-Internal-Token 鉴权由 InternalTokenInterceptor 拦截）；从 InternalTaskController 迁移而来，路径保持 /api/internal/audit/logs 不变<br>(8) **迁移清理**：删除 agent/ 下原 AuditLogEO / AuditLogMapper / AuditLogService(Impl) / AuditLogCreateRequest 5 个文件；InternalTaskController 移除 auditLogService 字段与 createAuditLog 方法；InternalTaskControllerTest 移除审计相关测试用例<br>(9) **DTO**：AuditLogCreateRequest 扩展完整字段（Python 上报）/ AuditLogQueryRequest 继承 PageRequest（orgId/taskId/userId/departmentId/businessLineId/riskLevel/actionType/executionResult/startTime/endTime）/ AuditLogVO（对外返回，actionParams 已脱敏） |
+| **测试覆盖** | ✅ 全量 502 个单元测试通过（含 audit 模块新增 4 个测试类共 40+ 用例）：(1) **SanitizeServiceImplTest** 26 个用例：5 种脱敏规则边界值（null/短号/标准/异常格式）+ action_params JSON 脱敏（密码字段名/卡号/手机/邮箱/身份证/嵌套对象/数组/数字布尔保留/非法JSON降级/非敏感文本保留）(2) **AuditLogServiceImplTest** 11 个用例：createAuditLog 成功+脱敏调用验证+空 actionParams 不调脱敏+默认 executionResult+参数校验+insert失败 / listAuditLogs 多维条件查询返回 VO+空条件查询 / getAuditLogDetail 存在+不存在抛 NOT_FOUND_ERROR (3) **AuditControllerTest** 3 个用例：列表查询从登录上下文填充 orgId（TenantContext ThreadLocal 验证）+无登录态不报错+详情返回 VO (4) **InternalAuditControllerTest** 2 个用例：上报成功+最小必填参数 |
 
 #### M7.2 Java MinIO 存储集成
 
