@@ -1,6 +1,7 @@
 package com.finrpa.approval.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.finrpa.agent.service.TaskService;
 import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
 import com.finrpa.approval.constant.ApprovalConstant;
@@ -11,6 +12,7 @@ import com.finrpa.approval.mapper.ApprovalRequestMapper;
 import com.finrpa.approval.service.ApprovalPubSubService;
 import com.finrpa.approval.service.ApprovalRouteService;
 import com.finrpa.common.exception.BusinessException;
+import com.finrpa.common.response.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,6 +53,9 @@ class ApprovalServiceImplTest {
     private AiServiceClient aiServiceClient;
 
     @Mock
+    private TaskService taskService;
+
+    @Mock
     private ObjectMapper objectMapper;
 
     @InjectMocks
@@ -59,7 +64,7 @@ class ApprovalServiceImplTest {
     // region createApproval
 
     @Test
-    @DisplayName("createApproval - high 风险创建审批单成功")
+    @DisplayName("createApproval - high 风险创建审批单成功（超时 30 分钟）")
     void createApproval_HighRisk_Success() {
         // arrange
         when(approvalRouteService.routeByRiskLevel("high"))
@@ -80,6 +85,32 @@ class ApprovalServiceImplTest {
         assertNotNull(result.getTimeoutAt());
         assertEquals("涉及转账操作", result.getRiskReasoning());
         assertEquals("{\"goal\":\"test\"}", result.getRequestPayload());
+
+        // verify Pub/Sub
+        verify(approvalPubSubService).publishRequest(any(ApprovalRequestEO.class));
+    }
+
+    @Test
+    @DisplayName("createApproval - critical 风险创建审批单成功（超时 60 分钟）")
+    void createApproval_CriticalRisk_Success() {
+        // arrange
+        when(approvalRouteService.routeByRiskLevel("critical"))
+                .thenReturn(com.finrpa.approval.enums.ApprovalRouteEnum.COMPLIANCE);
+        when(approvalRequestMapper.insert(any(ApprovalRequestEO.class))).thenReturn(1);
+
+        // act
+        ApprovalRequestEO result = approvalService.createApproval(
+                101L, 1L, 200L, 300L, "critical", "命中敏感数据+高风险操作", "{\"goal\":\"test\"}");
+
+        // assert
+        assertNotNull(result);
+        assertEquals(101L, result.getTaskId());
+        assertEquals("critical", result.getRiskLevel());
+        assertEquals("compliance", result.getApprovalRoute());
+        assertEquals("PENDING", result.getStatus());
+        assertEquals(60, result.getTimeoutMinutes());
+        assertNotNull(result.getTimeoutAt());
+        assertEquals("命中敏感数据+高风险操作", result.getRiskReasoning());
 
         // verify Pub/Sub
         verify(approvalPubSubService).publishRequest(any(ApprovalRequestEO.class));
@@ -215,10 +246,13 @@ class ApprovalServiceImplTest {
         int count = approvalService.processTimeoutApprovals();
 
         assertEquals(0, count);
+        // 无超时时不应调用任务终止或 Python 通知
+        verify(taskService, never()).abortTask(anyLong());
+        verify(aiServiceClient, never()).abortTask(anyString());
     }
 
     @Test
-    @DisplayName("processTimeoutApprovals - 有超时审批单标记为 TIMEOUT")
+    @DisplayName("processTimeoutApprovals - 有超时审批单标记为 TIMEOUT + 终止任务 + 通知 Python")
     void processTimeoutApprovals_HasTimeout() {
         ApprovalRequestEO approval1 = buildPendingApproval(801L, 100L, "high", "department");
         ApprovalRequestEO approval2 = buildPendingApproval(802L, 101L, "critical", "compliance");
@@ -231,7 +265,63 @@ class ApprovalServiceImplTest {
         assertEquals(2, count);
         assertEquals("TIMEOUT", approval1.getStatus());
         assertEquals("TIMEOUT", approval2.getStatus());
+        assertEquals("审批超时自动拒绝", approval1.getRejectReason());
+        assertEquals("审批超时自动拒绝", approval2.getRejectReason());
+        assertNotNull(approval1.getApprovedAt());
+        assertNotNull(approval2.getApprovedAt());
+
+        // 验证 Pub/Sub 通知
         verify(approvalPubSubService, times(2)).publishResponse(any(ApprovalRequestEO.class));
+
+        // 验证 Java 任务状态更新为 ABORTED
+        verify(taskService, times(1)).abortTask(100L);
+        verify(taskService, times(1)).abortTask(101L);
+
+        // 验证 Python 通知终止任务（防御性调用）
+        verify(aiServiceClient, times(1)).abortTask("100");
+        verify(aiServiceClient, times(1)).abortTask("101");
+    }
+
+    @Test
+    @DisplayName("processTimeoutApprovals - 任务状态更新失败不影响超时处理主流程")
+    void processTimeoutApprovals_TaskAbortFailure_DoesNotAffectMain() {
+        ApprovalRequestEO approval = buildPendingApproval(803L, 102L, "high", "department");
+        when(approvalRequestMapper.selectList(any(Wrapper.class)))
+                .thenReturn(List.of(approval));
+        when(approvalRequestMapper.updateById(any(ApprovalRequestEO.class))).thenReturn(1);
+        // 任务终止抛出异常
+        doThrow(new BusinessException(ErrorCode.OPERATION_ERROR, "任务已结束"))
+                .when(taskService).abortTask(102L);
+
+        int count = approvalService.processTimeoutApprovals();
+
+        // 主流程仍应成功返回 1
+        assertEquals(1, count);
+        assertEquals("TIMEOUT", approval.getStatus());
+        // Pub/Sub 通知仍应发布
+        verify(approvalPubSubService, times(1)).publishResponse(any(ApprovalRequestEO.class));
+        // Python 通知仍应调用
+        verify(aiServiceClient, times(1)).abortTask("102");
+    }
+
+    @Test
+    @DisplayName("processTimeoutApprovals - Python 通知失败不影响超时处理主流程")
+    void processTimeoutApprovals_PythonAbortFailure_DoesNotAffectMain() {
+        ApprovalRequestEO approval = buildPendingApproval(804L, 103L, "critical", "compliance");
+        when(approvalRequestMapper.selectList(any(Wrapper.class)))
+                .thenReturn(List.of(approval));
+        when(approvalRequestMapper.updateById(any(ApprovalRequestEO.class))).thenReturn(1);
+        // Python abort 抛出异常（预期行为：审批未通过时 Python 无活跃任务）
+        doThrow(new RuntimeException("404 Not Found"))
+                .when(aiServiceClient).abortTask("103");
+
+        int count = approvalService.processTimeoutApprovals();
+
+        // 主流程仍应成功返回 1
+        assertEquals(1, count);
+        assertEquals("TIMEOUT", approval.getStatus());
+        // 任务状态更新仍应执行
+        verify(taskService, times(1)).abortTask(103L);
     }
 
     // endregion

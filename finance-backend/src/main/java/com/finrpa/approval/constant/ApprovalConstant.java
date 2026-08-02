@@ -118,10 +118,32 @@ public interface ApprovalConstant {
 
     // endregion
 
-    // region 审批超时（M6.3）
+    // region 审批超时（M6.3 + M6.4）
 
     /** 审批默认超时时间（分钟） */
     long DEFAULT_APPROVAL_TIMEOUT_MINUTES = 30;
+
+    /** high 风险审批超时时间（分钟）—— 部门审批 */
+    long HIGH_APPROVAL_TIMEOUT_MINUTES = 30;
+
+    /** critical 风险审批超时时间（分钟）—— 合规审计部审批 */
+    long CRITICAL_APPROVAL_TIMEOUT_MINUTES = 60;
+
+    // endregion
+
+    // region 审批超时检测调度器（M6.4）
+
+    /** 超时审批扫描 cron 表达式：每分钟执行一次 */
+    String TIMEOUT_SCHEDULER_CRON = "0 * * * * ?";
+
+    /** ShedLock 锁名称：审批超时检测（分布式部署下保证仅单节点执行） */
+    String TIMEOUT_SCHEDULER_LOCK_NAME = "approval:timeout:scheduler";
+
+    /** ShedLock 锁持有时间（毫秒）：30 秒（小于扫描间隔，避免下一周期阻塞） */
+    long TIMEOUT_SCHEDULER_LOCK_AT_MOST = 30_000L;
+
+    /** ShedLock 锁最短持有时间（毫秒）：5 秒 */
+    long TIMEOUT_SCHEDULER_LOCK_AT_LEAST = 5_000L;
 
     // endregion
 

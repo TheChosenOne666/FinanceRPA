@@ -1530,9 +1530,11 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 |----|------|
 | **规模** | M |
 | **前置依赖** | M6.3 |
-| **产出物** | `approval/ApprovalTimeoutScheduler.java` |
+| **产出物** | `approval/ApprovalTimeoutScheduler.java` + `config/ShedLockConfig.java` |
 | **描述** | 1. ShedLock + Spring Scheduler：每分钟扫描 pending 审批<br>2. 超时阈值：high 30min / critical 60min<br>3. 超时处理：自动 reject + 推送通知 + 通知 Python |
 | **验收标准** | 超时审批自动拒绝；通知推送成功；Python 收到 rejected 终止任务 |
+| **状态** | ✅ 已完成（2026-08-02）。实现 Java 审批超时检测 + ShedLock 分布式锁。最终落地：(1) **`ApprovalConstant` 扩展超时阈值**：`HIGH_APPROVAL_TIMEOUT_MINUTES=30` / `CRITICAL_APPROVAL_TIMEOUT_MINUTES=60` / 调度器 cron `0 * * * * ?`（每分钟执行）/ ShedLock 锁名称 `approval:timeout:scheduler`（锁持有 30s，最短 5s）<br>(2) **`ApprovalServiceImpl.createApproval()` 按风险等级设置超时**：新增 `getTimeoutMinutesByRiskLevel()` 私有方法，critical→60min / high→30min / 其他→30min 默认值<br>(3) **`ApprovalServiceImpl.processTimeoutApprovals()` 增强**：超时处理流程从"仅标记 TIMEOUT + Pub/Sub"扩展为四步 —— ①标记 TIMEOUT + 填充 rejectReason="审批超时自动拒绝" + approvedAt ②发布 Pub/Sub 通知（唤醒等待线程 + 通知前端）③调 `taskService.abortTask()` 更新 Java 任务状态为 ABORTED（审批超时 → 任务终止）④调 `aiServiceClient.abortTask()` 通知 Python 终止任务（防御性调用，审批未通过时 Python 无活跃任务，调用失败仅记录 debug 日志）<br>(4) **新增 `TaskService` 依赖注入**：ApprovalServiceImpl 注入 TaskService 用于超时后终止任务；任务状态更新失败不回滚超时处理主流程（try-catch 包裹，仅记录错误日志）<br>(5) **新建 `ShedLockConfig` 配置类**：`@Configuration` + `@EnableSchedulerLock(defaultLockAtMostFor="PT30S")` + `RedisLockProvider` Bean（基于 Redis SET NX PX，锁 key 前缀 `finrpa:shedlock`）<br>(6) **新建 `ApprovalTimeoutScheduler` 调度器**：`@Component` + `@Scheduled(cron="0 * * * * ?")` + `@SchedulerLock(name="approval:timeout:scheduler", lockAtMostFor="PT30S", lockAtLeastFor="PT5S")`，委托 `ApprovalService.processTimeoutApprovals()` 处理；调度器内部 try-catch 包裹，异常不向外抛出（避免 Spring Scheduler 停止调度）<br>(7) **ShedLock 依赖**：pom.xml 已预置 `shedlock-spring` 5.13.0 + `shedlock-provider-redis-spring` 5.13.0，M6.4 配置启用<br>(8) **设计决策**：超时阈值按风险等级区分（high 30min 部门审批 / critical 60min 合规审计部审批）；任务状态更新与 Python 通知均采用防御性调用（失败不影响主流程），避免单个任务异常导致整批超时处理回滚 |
+| **测试覆盖** | 6 个新测试全部通过：ApprovalTimeoutSchedulerTest 3 个（正常扫描委托 + 无超时返回 0 + 服务异常不向外抛出）+ ApprovalServiceImplTest 新增 3 个（createApproval critical 风险超时 60min + processTimeoutApprovals 任务终止失败不影响主流程 + Python 通知失败不影响主流程）；原有 processTimeoutApprovals_HasTimeout 测试增强断言（验证 rejectReason + approvedAt + taskService.abortTask + aiServiceClient.abortTask 调用）；全部 414 个测试通过（含 10 个 WorkflowTriggerServiceImpl 回归测试 + 46 个 TaskServiceImplTest 回归测试） |
 
 #### M6.5 前端审批中心
 

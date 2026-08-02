@@ -3,6 +3,7 @@ package com.finrpa.approval.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.finrpa.agent.service.TaskService;
 import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskTriggerRequest;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
@@ -52,9 +53,13 @@ public class ApprovalServiceImpl implements ApprovalService {
     @Resource
     private ApprovalPubSubService approvalPubSubService;
 
-    /** Python AI 服务客户端（审批通过后触发 Python 执行） */
+    /** Python AI 服务客户端（审批通过后触发 Python 执行 / 超时后通知 Python 终止） */
     @Resource
     private AiServiceClient aiServiceClient;
+
+    /** 任务服务（审批超时后更新 Java 任务状态为 ABORTED） */
+    @Resource
+    private TaskService taskService;
 
     /** JSON 序列化工具（反序列化审批单中的触发请求） */
     @Resource
@@ -94,10 +99,12 @@ public class ApprovalServiceImpl implements ApprovalService {
         approval.setStatus(ApprovalConstant.APPROVAL_STATUS_PENDING);
         approval.setRiskReasoning(riskReasoning);
         approval.setRequestPayload(requestPayload);
-        approval.setTimeoutMinutes((int) ApprovalConstant.DEFAULT_APPROVAL_TIMEOUT_MINUTES);
+        // 按风险等级设置超时时间：high=30min / critical=60min（M6.4）
+        long timeoutMinutes = getTimeoutMinutesByRiskLevel(riskLevel);
+        approval.setTimeoutMinutes((int) timeoutMinutes);
 
         // 计算超时截止时间
-        long timeoutMs = ApprovalConstant.DEFAULT_APPROVAL_TIMEOUT_MINUTES * 60 * 1000;
+        long timeoutMs = timeoutMinutes * 60 * 1000;
         approval.setTimeoutAt(new Timestamp(Instant.now().toEpochMilli() + timeoutMs));
 
         // 3. 持久化
@@ -282,6 +289,14 @@ public class ApprovalServiceImpl implements ApprovalService {
     /**
      * 处理超时审批（M6.4 定时任务调用）
      *
+     * <p>对每个超时的 PENDING 审批单执行：
+     * <ol>
+     *   <li>标记状态为 TIMEOUT</li>
+     *   <li>更新 Java 任务状态为 ABORTED（审批超时视为任务终止）</li>
+     *   <li>发布 Pub/Sub 通知（唤醒等待线程 + 通知前端）</li>
+     *   <li>通知 Python 终止任务（防御性调用，审批未通过时 Python 无活跃任务，调用失败忽略）</li>
+     * </ol>
+     *
      * @return 处理的超时审批单数量
      */
     @Override
@@ -299,12 +314,23 @@ public class ApprovalServiceImpl implements ApprovalService {
         int count = 0;
         for (ApprovalRequestEO approval : timeoutApprovals) {
             approval.setStatus(ApprovalConstant.APPROVAL_STATUS_TIMEOUT);
+            approval.setRejectReason("审批超时自动拒绝");
             approval.setApprovedAt(new Timestamp(Instant.now().toEpochMilli()));
             approvalRequestMapper.updateById(approval);
 
-            // 发布超时通知
+            // 发布超时通知（Pub/Sub 广播 + 唤醒等待线程）
             approvalPubSubService.publishResponse(approval);
+
+            // 更新 Java 任务状态为 ABORTED（审批超时 → 任务终止）
+            updateTaskStateOnTimeout(approval);
+
+            // 通知 Python 终止任务（防御性：审批未通过时 Python 无活跃任务，调用失败仅记录日志）
+            notifyPythonAbortOnTimeout(approval);
+
             count++;
+            log.warn("审批超时已处理: approvalId={}, taskId={}, riskLevel={}, route={}",
+                    approval.getApprovalId(), approval.getTaskId(),
+                    approval.getRiskLevel(), approval.getApprovalRoute());
         }
 
         log.info("超时审批处理完成: count={}", count);
@@ -402,6 +428,72 @@ public class ApprovalServiceImpl implements ApprovalService {
         } catch (Exception e) {
             log.error("审批通过后触发 Python 失败: approvalId={}, taskId={}, error={}",
                     approval.getApprovalId(), approval.getTaskId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 根据风险等级获取审批超时时间（分钟）
+     *
+     * <p>M6.4 超时阈值：high=30min（部门审批）/ critical=60min（合规审计部审批）。
+     * 其他风险等级使用默认值 30 分钟（理论上不会进入审批流程）。</p>
+     *
+     * @param riskLevel 风险等级
+     * @return 超时时间（分钟）
+     */
+    private long getTimeoutMinutesByRiskLevel(String riskLevel) {
+        if ("critical".equalsIgnoreCase(riskLevel)) {
+            return ApprovalConstant.CRITICAL_APPROVAL_TIMEOUT_MINUTES;
+        }
+        if ("high".equalsIgnoreCase(riskLevel)) {
+            return ApprovalConstant.HIGH_APPROVAL_TIMEOUT_MINUTES;
+        }
+        return ApprovalConstant.DEFAULT_APPROVAL_TIMEOUT_MINUTES;
+    }
+
+    /**
+     * 审批超时后更新 Java 任务状态为 ABORTED
+     *
+     * <p>审批超时视为任务终止。任务状态更新失败不影响审批超时处理主流程，
+     * 仅记录错误日志（避免单个任务异常导致整批超时处理回滚）。</p>
+     *
+     * @param approval 超时的审批请求实体
+     */
+    private void updateTaskStateOnTimeout(ApprovalRequestEO approval) {
+        Long taskId = approval.getTaskId();
+        if (taskId == null) {
+            log.warn("审批超时但 taskId 为空，无法更新任务状态: approvalId={}", approval.getApprovalId());
+            return;
+        }
+        try {
+            taskService.abortTask(taskId);
+            log.info("审批超时后任务已终止: taskId={}, approvalId={}", taskId, approval.getApprovalId());
+        } catch (Exception e) {
+            log.error("审批超时后更新任务状态失败: approvalId={}, taskId={}, errorType={}, error={}",
+                    approval.getApprovalId(), taskId, e.getClass().getSimpleName(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 审批超时后通知 Python 终止任务
+     *
+     * <p>防御性调用：审批未通过时 Python 无活跃任务，调用通常返回 404 或失败，属正常情况。
+     * 调用失败仅记录日志，不影响审批超时处理主流程。</p>
+     *
+     * @param approval 超时的审批请求实体
+     */
+    private void notifyPythonAbortOnTimeout(ApprovalRequestEO approval) {
+        Long taskId = approval.getTaskId();
+        if (taskId == null) {
+            return;
+        }
+        try {
+            aiServiceClient.abortTask(String.valueOf(taskId));
+            log.info("审批超时后已通知 Python 终止任务: taskId={}, approvalId={}",
+                    taskId, approval.getApprovalId());
+        } catch (Exception e) {
+            log.debug("审批超时后通知 Python 终止任务失败（预期行为，审批未通过时 Python 无活跃任务）: "
+                            + "taskId={}, approvalId={}, error={}",
+                    taskId, approval.getApprovalId(), e.getMessage());
         }
     }
 
