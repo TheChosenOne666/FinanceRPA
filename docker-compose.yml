@@ -162,6 +162,12 @@ services:
       LLM_KEY: ${SKYVERN_LLM_KEY:-VOLCENGINE_DOUBAO_SEED_1_6}
       # 火山方舟 API Key（豆包视觉模型，Skyvern 原生支持）
       VOLCENGINE_API_KEY: ${VOLCENGINE_API_KEY:-placeholder-for-m37-verification}
+      # === finance-ai 自有 LLM 配置（M6.2 risk_judge 用，复用火山方舟豆包） ===
+      # litellm 调用火山方舟需 volcengine/ 前缀模型名 + VOLCENGINE_API_KEY
+      LLM_PROVIDER: volcengine
+      LLM_API_KEY: ${VOLCENGINE_API_KEY:-}
+      LLM_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
+      LLM_MODEL: volcengine/doubao-seed-evolving
     ports:
       - "8000:8000"
     volumes:

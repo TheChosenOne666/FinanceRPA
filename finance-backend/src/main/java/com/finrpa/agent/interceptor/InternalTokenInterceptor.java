@@ -54,12 +54,17 @@ public class InternalTokenInterceptor implements HandlerInterceptor {
         if (!StringUtils.hasText(token) || !token.equals(aiServiceProperties.getInternalToken())) {
             log.warn("内部 API 鉴权失败: path={}, remoteAddr={}",
                     request.getRequestURI(), request.getRemoteAddr());
-            // 3. 返回 401 错误
+            // 3. 返回 401 错误（写出 body 后必须 flush，否则可能被后续 filter 吞掉）
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setCharacterEncoding("UTF-8");
             BaseResponse<?> body = ResultUtils.error(ErrorCode.FORBIDDEN_ERROR, "内部 API 鉴权失败");
-            response.getWriter().write(objectMapper.writeValueAsString(body));
+            try {
+                response.getWriter().write(objectMapper.writeValueAsString(body));
+                response.getWriter().flush();
+            } catch (IOException e) {
+                log.error("写出 401 响应 body 失败: path={}", request.getRequestURI(), e);
+            }
             return false;
         }
 

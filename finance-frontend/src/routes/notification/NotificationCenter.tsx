@@ -180,10 +180,10 @@ function NotificationCenter() {
   const statsError = statsQuery.error
   const channelsError = channelsQuery.error
 
-  /** 成功率百分比 */
+  /** 成功率百分比（后端 Long 序列化为 String，需 Number() 显式转换） */
   const successRatePct =
-    stats && stats.totalAttempts > 0
-      ? Math.round(stats.successRate * 100)
+    stats && Number(stats.totalAttempts) > 0
+      ? Math.round(Number(stats.successRate) * 100)
       : 0
 
   return (

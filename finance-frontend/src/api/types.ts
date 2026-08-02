@@ -744,18 +744,21 @@ export interface NotificationTestRequest {
 
 /**
  * 通知重试队列统计（对齐 com.finrpa.notification.dto.response.RetryQueueStatsVO）
+ *
+ * 说明：后端 JsonConfig 将 Long 字段序列化为 String（防 JS 精度丢失），
+ * 此处类型声明为 string | number 兼容，使用时通过 Number() 转换做数学运算。
  */
 export interface RetryQueueStatsVO {
   /** 当前队列待重试任务数 */
-  queueSize: number;
+  queueSize: string | number;
   /** 总尝试次数（含首次发送与所有重试） */
-  totalAttempts: number;
+  totalAttempts: string | number;
   /** 成功次数 */
-  successCount: number;
+  successCount: string | number;
   /** 失败次数 */
-  failureCount: number;
+  failureCount: string | number;
   /** 成功率（0.0 ~ 1.0） */
-  successRate: number;
+  successRate: string | number;
   /** 超过最大重试次数的告警数（待人工介入） */
-  alertCount: number;
+  alertCount: string | number;
 }

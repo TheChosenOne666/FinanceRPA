@@ -15,6 +15,8 @@ from contextlib import asynccontextmanager
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import __version__
 from app.agent.event_bus import get_event_bus
@@ -22,6 +24,14 @@ from app.api import health, risk, skills, sse, tasks
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+# 不需要鉴权的公开路径（健康检查、Skyvern 原生 API 由 Skyvern 自身鉴权）
+PUBLIC_PATH_PREFIXES = (
+    "/api/v1/ai/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+)
 
 
 @asynccontextmanager
@@ -103,6 +113,47 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("FinanceRPA AI 服务关闭")
 
 
+class InternalTokenMiddleware(BaseHTTPMiddleware):
+    """内部 API 鉴权中间件（对齐 Java InternalTokenInterceptor）。
+
+    拦截 finance-ai 自有路由 /api/v1/ai/*（排除 /health），
+    校验 X-Internal-Token Header 是否匹配配置的共享密钥。
+
+    说明：
+      - 仅 Docker 内网可达，不对外暴露
+      - Skyvern 原生路由 /v1、/api/v1/tasks、/api/v2/* 由 Skyvern 自身鉴权，本中间件不拦截
+      - 健康检查 /api/v1/ai/health 不需鉴权（供 Docker healthcheck 调用）
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # 1. 仅拦截 finance-ai 自有路由 /api/v1/ai/*
+        if not path.startswith("/api/v1/ai/"):
+            return await call_next(request)
+
+        # 2. 公开路径放行（health 等）
+        if path.startswith(PUBLIC_PATH_PREFIXES):
+            return await call_next(request)
+
+        # 3. 校验 X-Internal-Token Header
+        settings = get_settings()
+        token = request.headers.get("X-Internal-Token")
+        expected = settings.internal_api_token
+        if not token or token != expected:
+            logger.warning(
+                "内部 API 鉴权失败: path=%s, remote=%s",
+                path, request.client.host if request.client else "unknown",
+            )
+            return JSONResponse(
+                status_code=401,
+                content={"code": 40100, "message": "内部 API 鉴权失败", "data": None},
+            )
+
+        # 4. 鉴权通过
+        return await call_next(request)
+
+
 def create_app() -> FastAPI:
     """构造 FastAPI 应用实例。
 
@@ -112,8 +163,8 @@ def create_app() -> FastAPI:
       - legacy_v2_router → /api/v2（Skyvern v2 API，含 /api/v2/tasks 等）
 
     路由共存说明：
-      - finance-ai 自有路由：/api/v1/ai/*（health、tasks、sse、skills）
-      - Skyvern 原生路由：/api/v1/tasks、/api/v1/workflows 等
+      - finance-ai 自有路由：/api/v1/ai/*（health、tasks、sse、skills）—— 由 InternalTokenMiddleware 鉴权
+      - Skyvern 原生路由：/api/v1/tasks、/api/v1/workflows 等 —— 由 Skyvern 自身鉴权
       - 两者路径不冲突（/api/v1/ai/* vs /api/v1/tasks），可共存
     """
     settings = get_settings()
@@ -132,6 +183,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # 内部 API 鉴权中间件（拦截 /api/v1/ai/*，校验 X-Internal-Token）
+    app.add_middleware(InternalTokenMiddleware)
 
     # M3.7：Skyvern context 中间件（每个请求设置 skyvern_context，任务执行必需）
     # @from skyvern/forge/api_app.py:request_middleware
