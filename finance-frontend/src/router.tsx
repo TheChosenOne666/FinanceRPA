@@ -31,6 +31,7 @@ import WorkflowDetail from '@/routes/workflows/WorkflowDetail'
 import WorkflowRunsPage from '@/routes/workflows/WorkflowRuns'
 import NeedsHumanPage from '@/routes/llm/NeedsHuman'
 import LlmMonitorPage from '@/routes/llm/LlmMonitor'
+import ApprovalCenter from '@/routes/enterprise/ApprovalCenter'
 
 /** 路由配置 */
 export const router = createBrowserRouter([
@@ -77,6 +78,10 @@ export const router = createBrowserRouter([
       {
         path: 'llm-monitor',
         element: <LlmMonitorPage />,
+      },
+      {
+        path: 'approvals',
+        element: <ApprovalCenter />,
       },
       {
         path: '403',

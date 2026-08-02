@@ -14,7 +14,7 @@
 
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/AuthStore'
-import { IconChart, IconList, IconShield, IconTarget, IconWorkflow } from '@/components/Icons'
+import { IconApproval, IconChart, IconList, IconShield, IconTarget, IconWorkflow } from '@/components/Icons'
 
 function RootLayout() {
   const user = useAuthStore((s) => s.user)
@@ -100,6 +100,15 @@ function RootLayout() {
             >
               <IconShield size={14} />
               接管
+            </button>
+            <button
+              type="button"
+              className="root-nav-btn"
+              onClick={() => navigate('/approvals')}
+              title="审批中心"
+            >
+              <IconApproval size={14} />
+              审批
             </button>
             <button
               type="button"

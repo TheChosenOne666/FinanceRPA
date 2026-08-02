@@ -2408,3 +2408,113 @@ a:hover {
 }
 
 /* endregion */
+
+/* ---------- 30. 审批中心页（M6.5） ---------- */
+
+/* 审批 Tab 切换栏 */
+.approval-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(26, 58, 92, 0.04);
+  border-radius: var(--radius-md);
+  width: fit-content;
+}
+
+/* 审批 Tab 按钮 */
+.approval-tab {
+  padding: 6px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.approval-tab:hover {
+  color: var(--text-secondary);
+}
+
+/* 审批 Tab 激活态 */
+.approval-tab-active {
+  background: var(--glass-bg);
+  color: var(--finrpa-blue);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* 审批详情信息网格 */
+.approval-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px 24px;
+  padding: 4px 0 8px;
+}
+
+/* 审批详情信息项 */
+.approval-detail-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 审批详情信息标签 */
+.approval-detail-meta-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* 审批详情信息值 */
+.approval-detail-meta-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+/* 审批详情文本展示（任务目标 / 理由） */
+.approval-detail-text {
+  padding: 10px 12px;
+  background: rgba(26, 58, 92, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+/* 风险判断理由展示框（突出显示） */
+.approval-detail-reasoning {
+  padding: 10px 12px;
+  background: rgba(249, 115, 22, 0.06);
+  border: 1px solid rgba(249, 115, 22, 0.22);
+  border-left: 3px solid var(--status-needs-human);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+/* 危险按钮（审批拒绝） */
+.btn-danger {
+  background: transparent;
+  color: var(--status-failed);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--status-failed);
+}
+
+.btn-danger:active:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+}
+
+/* ---------- end 审批中心页 ---------- */

@@ -600,3 +600,86 @@ export interface LlmCallStatsQueryRequest {
   /** 任务 ID 筛选 */
   taskId?: string;
 }
+
+// ============================================================
+// 审批管理（M6.5）
+// 对齐 com.finrpa.approval.dto.request / response
+// ============================================================
+
+/**
+ * 审批状态（对齐 com.finrpa.approval.enums.ApprovalStatusEnum）
+ */
+export type ApprovalStatus =
+  | 'PENDING' // 待审批
+  | 'APPROVED' // 已通过
+  | 'REJECTED' // 已拒绝
+  | 'TIMEOUT'; // 已超时
+
+/**
+ * 审批路由（对齐 com.finrpa.approval.enums.ApprovalRouteEnum）
+ */
+export type ApprovalRoute = 'auto' | 'department' | 'compliance';
+
+/**
+ * 审批请求视图（对齐 com.finrpa.approval.dto.response.ApprovalRequestVO）
+ */
+export interface ApprovalRequestVO {
+  /** 审批单 ID（雪花算法） */
+  approvalId: string;
+  /** 关联任务 ID */
+  taskId: string;
+  /** 组织 ID */
+  orgId: string;
+  /** 关联工作流模板 ID */
+  workflowId?: string;
+  /** 触发用户 ID */
+  userId: string;
+  /** 风险等级：low / medium / high / critical */
+  riskLevel: WorkflowRiskLevel;
+  /** 审批路由：auto / department / compliance */
+  approvalRoute: ApprovalRoute;
+  /** 审批状态 */
+  status: ApprovalStatus;
+  /** 审批人 ID（审批完成后填充） */
+  approverId?: string;
+  /** 通过理由 */
+  approveReason?: string;
+  /** 拒绝理由 */
+  rejectReason?: string;
+  /** 风险判断理由（LLM / 关键词检测结果） */
+  riskReasoning?: string;
+  /** 请求负载 JSON 字符串（TaskTriggerRequest 序列化，含 goal / params / workflowId） */
+  requestPayload?: string;
+  /** 超时截止时间（ISO 字符串） */
+  timeoutAt?: string;
+  /** 审批完成时间（ISO 字符串） */
+  approvedAt?: string;
+  /** 创建时间（ISO 字符串） */
+  createTime: string;
+}
+
+/**
+ * 审批分页查询请求（对齐 com.finrpa.approval.dto.request.ApprovalQueryRequest）
+ */
+export interface ApprovalQueryRequest {
+  /** 当前页号（从 1 开始） */
+  current: number;
+  /** 页面大小 */
+  pageSize: number;
+  /** 审批状态筛选 */
+  status?: ApprovalStatus | '';
+  /** 审批路由筛选 */
+  approvalRoute?: ApprovalRoute | '';
+  /** 风险等级筛选 */
+  riskLevel?: WorkflowRiskLevel | '';
+  /** 任务 ID 精确查询 */
+  taskId?: string;
+}
+
+/**
+ * 审批操作请求（对齐 com.finrpa.approval.dto.request.ApprovalActionRequest）
+ */
+export interface ApprovalActionRequest {
+  /** 审批理由（通过或拒绝的原因说明） */
+  reason?: string;
+}
