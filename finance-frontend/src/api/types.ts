@@ -683,3 +683,79 @@ export interface ApprovalActionRequest {
   /** 审批理由（通过或拒绝的原因说明） */
   reason?: string;
 }
+
+// ============================================================
+// 通知管理（M6.6）
+// 对齐 com.finrpa.notification.dto.request / response
+// ============================================================
+
+/**
+ * 通知通道类型（对齐 com.finrpa.notification.enums.NotificationChannelEnum）
+ */
+export type NotificationChannelType = 'wecom' | 'dingtalk';
+
+/**
+ * 通知模板类型（对齐 com.finrpa.notification.enums.NotificationTemplateEnum）
+ */
+export type NotificationTemplateType =
+  | 'APPROVAL_PENDING' // 审批待处理
+  | 'APPROVAL_TIMEOUT' // 审批超时告警
+  | 'TASK_FAILED' // 任务失败
+  | 'NEEDS_HUMAN' // NEEDS_HUMAN 接管
+  | 'RISK_ESCALATION'; // 风险等级升级
+
+/**
+ * 通知通道信息（对齐 com.finrpa.notification.dto.response.ChannelVO）
+ */
+export interface ChannelVO {
+  /** 通道类型：wecom / dingtalk */
+  channel: NotificationChannelType;
+  /** 通道中文名 */
+  label: string;
+  /** 是否已配置 Webhook URL */
+  configured: boolean;
+}
+
+/**
+ * 通知发送结果（对齐 com.finrpa.notification.dto.response.NotificationSendResultVO）
+ */
+export interface NotificationSendResultVO {
+  /** 通道类型 */
+  channel: string;
+  /** 是否发送成功 */
+  success: boolean;
+  /** 错误信息（失败时填充） */
+  errorMessage?: string;
+  /** 通道原始响应（用于审计 / 调试） */
+  rawResponse?: string;
+}
+
+/**
+ * 通知测试发送请求（对齐 com.finrpa.notification.dto.request.NotificationTestRequest）
+ */
+export interface NotificationTestRequest {
+  /** 通道类型：wecom / dingtalk（必填） */
+  channel: NotificationChannelType;
+  /** 模板类型（必填） */
+  templateType: NotificationTemplateType;
+  /** 模板参数（键值对，可选） */
+  params?: Record<string, unknown>;
+}
+
+/**
+ * 通知重试队列统计（对齐 com.finrpa.notification.dto.response.RetryQueueStatsVO）
+ */
+export interface RetryQueueStatsVO {
+  /** 当前队列待重试任务数 */
+  queueSize: number;
+  /** 总尝试次数（含首次发送与所有重试） */
+  totalAttempts: number;
+  /** 成功次数 */
+  successCount: number;
+  /** 失败次数 */
+  failureCount: number;
+  /** 成功率（0.0 ~ 1.0） */
+  successRate: number;
+  /** 超过最大重试次数的告警数（待人工介入） */
+  alertCount: number;
+}

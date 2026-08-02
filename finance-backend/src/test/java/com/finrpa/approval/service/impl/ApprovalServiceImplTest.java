@@ -13,6 +13,8 @@ import com.finrpa.approval.service.ApprovalPubSubService;
 import com.finrpa.approval.service.ApprovalRouteService;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.response.ErrorCode;
+import com.finrpa.notification.enums.NotificationTemplateEnum;
+import com.finrpa.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,11 +26,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -57,6 +61,9 @@ class ApprovalServiceImplTest {
 
     @Mock
     private ObjectMapper objectMapper;
+
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private ApprovalServiceImpl approvalService;
@@ -88,6 +95,10 @@ class ApprovalServiceImplTest {
 
         // verify Pub/Sub
         verify(approvalPubSubService).publishRequest(any(ApprovalRequestEO.class));
+
+        // verify 通知触发（M6.6 APPROVAL_PENDING）—— approvalId 在 mock 测试中为 null（未走 MyBatis 雪花赋值）
+        verify(notificationService).dispatch(eq(NotificationTemplateEnum.APPROVAL_PENDING),
+                anyMap(), isNull(), eq(100L), eq(300L));
     }
 
     @Test
@@ -280,6 +291,10 @@ class ApprovalServiceImplTest {
         // 验证 Python 通知终止任务（防御性调用）
         verify(aiServiceClient, times(1)).abortTask("100");
         verify(aiServiceClient, times(1)).abortTask("101");
+
+        // 验证通知触发（M6.6 APPROVAL_TIMEOUT × 2）
+        verify(notificationService, times(2)).dispatch(eq(NotificationTemplateEnum.APPROVAL_TIMEOUT),
+                anyMap(), any(), any(), any());
     }
 
     @Test

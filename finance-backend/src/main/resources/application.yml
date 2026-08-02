@@ -92,3 +92,16 @@ ai:
     max-attempts: 3
     # 初始退避（毫秒），指数递增
     backoff: 1000
+
+# 通知模块配置（M6.6 企业微信/钉钉群机器人 Webhook）
+notification:
+  # 企业微信群机器人
+  wecom:
+    # Webhook URL（空表示未配置；生产环境通过 WECOM_WEBHOOK_URL 环境变量注入）
+    webhook-url: ${WECOM_WEBHOOK_URL:}
+  # 钉钉群机器人
+  dingtalk:
+    # Webhook URL（空表示未配置；生产环境通过 DINGTALK_WEBHOOK_URL 环境变量注入）
+    webhook-url: ${DINGTALK_WEBHOOK_URL:}
+    # 加签密钥（启用加签模式时必填；生产环境通过 DINGTALK_SECRET 环境变量注入）
+    secret: ${DINGTALK_SECRET:}

@@ -21,6 +21,8 @@ import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
 import com.finrpa.approval.enums.ApprovalRouteEnum;
+import com.finrpa.notification.enums.NotificationTemplateEnum;
+import com.finrpa.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +66,10 @@ public class ApprovalServiceImpl implements ApprovalService {
     /** JSON 序列化工具（反序列化审批单中的触发请求） */
     @Resource
     private ObjectMapper objectMapper;
+
+    /** 通知服务（M6.6 审批触发通知：待处理 / 超时告警） */
+    @Resource
+    private NotificationService notificationService;
 
     // region 创建审批
 
@@ -114,6 +120,9 @@ public class ApprovalServiceImpl implements ApprovalService {
 
         // 4. 发布 Pub/Sub 通知（新审批单）
         approvalPubSubService.publishRequest(approval);
+
+        // 5. 推送通知（M6.6 APPROVAL_PENDING：企微 → 钉钉 Fallback → 重试队列）
+        notifyApprovalPending(approval);
 
         return approval;
     }
@@ -327,6 +336,9 @@ public class ApprovalServiceImpl implements ApprovalService {
             // 通知 Python 终止任务（防御性：审批未通过时 Python 无活跃任务，调用失败仅记录日志）
             notifyPythonAbortOnTimeout(approval);
 
+            // 推送通知（M6.6 APPROVAL_TIMEOUT：企微 → 钉钉 Fallback → 重试队列）
+            notifyApprovalTimeout(approval);
+
             count++;
             log.warn("审批超时已处理: approvalId={}, taskId={}, riskLevel={}, route={}",
                     approval.getApprovalId(), approval.getTaskId(),
@@ -494,6 +506,68 @@ public class ApprovalServiceImpl implements ApprovalService {
             log.debug("审批超时后通知 Python 终止任务失败（预期行为，审批未通过时 Python 无活跃任务）: "
                             + "taskId={}, approvalId={}, error={}",
                     taskId, approval.getApprovalId(), e.getMessage());
+        }
+    }
+
+    /**
+     * 推送审批待处理通知（M6.6）
+     *
+     * <p>审批单创建后调用通知服务（含 Fallback + 重试队列），
+     * 推送 APPROVAL_PENDING 模板到企微 / 钉钉群。通知失败不影响审批创建主流程。</p>
+     *
+     * @param approval 审批请求实体
+     */
+    private void notifyApprovalPending(ApprovalRequestEO approval) {
+        try {
+            java.util.Map<String, Object> params = new java.util.HashMap<>();
+            params.put("approvalId", String.valueOf(approval.getApprovalId()));
+            params.put("taskId", String.valueOf(approval.getTaskId()));
+            params.put("riskLevel", approval.getRiskLevel());
+            params.put("approvalRoute", approval.getApprovalRoute());
+            params.put("timeoutMinutes", String.valueOf(approval.getTimeoutMinutes()));
+            params.put("riskReasoning", approval.getRiskReasoning() == null ? "-" : approval.getRiskReasoning());
+
+            boolean ok = notificationService.dispatch(
+                    NotificationTemplateEnum.APPROVAL_PENDING, params,
+                    approval.getApprovalId(), approval.getTaskId(), approval.getUserId());
+            if (ok) {
+                log.info("审批待处理通知已发送: approvalId={}", approval.getApprovalId());
+            } else {
+                log.warn("审批待处理通知发送失败，已入重试队列: approvalId={}", approval.getApprovalId());
+            }
+        } catch (Exception e) {
+            log.error("审批待处理通知触发异常: approvalId={}, error={}",
+                    approval.getApprovalId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 推送审批超时告警通知（M6.6）
+     *
+     * <p>审批超时后调用通知服务（含 Fallback + 重试队列），
+     * 推送 APPROVAL_TIMEOUT 模板到企微 / 钉钉群。通知失败不影响超时处理主流程。</p>
+     *
+     * @param approval 超时的审批请求实体
+     */
+    private void notifyApprovalTimeout(ApprovalRequestEO approval) {
+        try {
+            java.util.Map<String, Object> params = new java.util.HashMap<>();
+            params.put("approvalId", String.valueOf(approval.getApprovalId()));
+            params.put("taskId", String.valueOf(approval.getTaskId()));
+            params.put("riskLevel", approval.getRiskLevel());
+            params.put("timeoutMinutes", String.valueOf(approval.getTimeoutMinutes()));
+
+            boolean ok = notificationService.dispatch(
+                    NotificationTemplateEnum.APPROVAL_TIMEOUT, params,
+                    approval.getApprovalId(), approval.getTaskId(), approval.getUserId());
+            if (ok) {
+                log.info("审批超时告警已发送: approvalId={}", approval.getApprovalId());
+            } else {
+                log.warn("审批超时告警发送失败，已入重试队列: approvalId={}", approval.getApprovalId());
+            }
+        } catch (Exception e) {
+            log.error("审批超时告警通知触发异常: approvalId={}, error={}",
+                    approval.getApprovalId(), e.getMessage(), e);
         }
     }
 

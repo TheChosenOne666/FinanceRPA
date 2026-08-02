@@ -2518,3 +2518,235 @@ a:hover {
 }
 
 /* ---------- end 审批中心页 ---------- */
+
+/* ---------- 31. 通知中心页（M6.6 扩展） ---------- */
+
+/* 统计卡片网格：默认 4 列，窄屏自适应 */
+.notification-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+/* 统计卡片（基于 glass-card-static，加上彩色顶边框） */
+.notification-stat-card {
+  position: relative;
+  padding: 18px 20px;
+  border-top: 3px solid var(--accent-info);
+  overflow: hidden;
+}
+
+/* 4 种配色变体 */
+.notification-stat-info {
+  border-top-color: var(--status-running);
+}
+
+.notification-stat-success {
+  border-top-color: var(--status-completed);
+}
+
+.notification-stat-warning {
+  border-top-color: var(--status-pending-approval);
+}
+
+.notification-stat-danger {
+  border-top-color: var(--status-failed);
+}
+
+/* 卡片标题 */
+.notification-stat-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* 主数值 */
+.notification-stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  margin-top: 8px;
+  letter-spacing: -0.02em;
+}
+
+/* 辅助说明 */
+.notification-stat-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+/* 板块容器（通道列表 + 测试表单） */
+.notification-section {
+  margin-bottom: 24px;
+}
+
+/* 板块标题（图标 + 文字） */
+.notification-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+
+/* 通道卡片网格 */
+.notification-channels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+/* 通道卡片 */
+.notification-channel-card {
+  padding: 14px 16px;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all var(--transition-fast);
+}
+
+/* 已配置通道：绿色描边 + 浅色背景 */
+.notification-channel-configured {
+  border-color: rgba(16, 185, 129, 0.32);
+  background: rgba(16, 185, 129, 0.04);
+}
+
+/* 通道中文名 */
+.notification-channel-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* 通道状态行（图标 + 文字） */
+.notification-channel-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 已配置状态绿色 */
+.notification-channel-configured .notification-channel-status {
+  color: var(--status-completed);
+}
+
+/* 测试发送表单容器 */
+.notification-test-form {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 表单字段横向行（通道 + 模板） */
+.notification-form-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* JSON 参数输入框（等宽字体 + 语法友好） */
+.notification-params-input {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 90px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* 表单按钮区 */
+.notification-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 发送结果容器 */
+.notification-result {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: rgba(26, 58, 92, 0.03);
+}
+
+/* 成功结果：绿色描边 */
+.notification-result-success {
+  border-color: rgba(16, 185, 129, 0.32);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+/* 失败结果：红色描边 */
+.notification-result-failure {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+/* 结果头部（图标 + 状态 + 通道标签） */
+.notification-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notification-result-success .notification-result-header {
+  color: var(--status-completed);
+}
+
+.notification-result-failure .notification-result-header {
+  color: var(--status-failed);
+}
+
+/* 通道标签（结果头部右侧） */
+.notification-result-channel {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* 结果正文（错误信息 / 原始响应） */
+.notification-result-body {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* 原始响应 / 错误信息展示块（保留空白与换行） */
+.notification-result-pre {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  background: rgba(26, 58, 92, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* ---------- end 通知中心页 ---------- */

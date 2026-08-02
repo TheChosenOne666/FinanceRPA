@@ -11,7 +11,9 @@
  *   - /workflows/:workflowId           工作流详情（M3.6）
  * - /workflows/:workflowId/runs      工作流执行历史（M3.6）
  * - /needs-human     NEEDS_HUMAN 接管队列（M5.6）
- * - /llm-monitor     LLM 调用监控（M5.6）
+ * - /llm-monitor     LLM 调用监控（M5.6)
+ * - /approvals       审批中心（M6.5）
+ * - /notification    通知中心（M6.6）
  * - /403             403 无权限页
  *   - *                404 兜底
  *
@@ -32,6 +34,7 @@ import WorkflowRunsPage from '@/routes/workflows/WorkflowRuns'
 import NeedsHumanPage from '@/routes/llm/NeedsHuman'
 import LlmMonitorPage from '@/routes/llm/LlmMonitor'
 import ApprovalCenter from '@/routes/enterprise/ApprovalCenter'
+import NotificationCenter from '@/routes/notification/NotificationCenter'
 
 /** 路由配置 */
 export const router = createBrowserRouter([
@@ -82,6 +85,10 @@ export const router = createBrowserRouter([
       {
         path: 'approvals',
         element: <ApprovalCenter />,
+      },
+      {
+        path: 'notification',
+        element: <NotificationCenter />,
       },
       {
         path: '403',

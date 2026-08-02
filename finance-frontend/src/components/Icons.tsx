@@ -298,4 +298,24 @@ export function IconApproval(props: IconProps) {
   )
 }
 
+/** 通知铃铛图标（M6.6 通知中心） */
+export function IconBell(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </Svg>
+  )
+}
+
+/** 发送/纸飞机图标（M6.6 通知测试发送按钮） */
+export function IconSend(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </Svg>
+  )
+}
+
 export default Svg
