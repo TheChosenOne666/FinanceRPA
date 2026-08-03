@@ -28,4 +28,32 @@ public interface AuditConstant {
 
     /** 邮箱正则 */
     String EMAIL_REGEX = "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}";
+
+    // region 截图存储（M7.2 MinIO）
+
+    /** 截图阶段：操作前 */
+    String SCREENSHOT_PHASE_BEFORE = "before";
+
+    /** 截图阶段：操作后 */
+    String SCREENSHOT_PHASE_AFTER = "after";
+
+    /** 截图文件扩展名 */
+    String SCREENSHOT_FILE_EXTENSION = ".png";
+
+    /** 截图对象路径分隔符 */
+    String SCREENSHOT_PATH_SEPARATOR = "/";
+
+    /** 截图清理调度器 cron 表达式：每日凌晨 3 点执行 */
+    String SCREENSHOT_CLEANUP_CRON = "0 0 3 * * ?";
+
+    /** 截图清理调度器 ShedLock 锁名称 */
+    String SCREENSHOT_CLEANUP_LOCK_NAME = "audit-screenshot-cleanup";
+
+    /** 截图清理调度器锁最大持有时间（30 分钟，清理大量对象时可能较慢） */
+    String SCREENSHOT_CLEANUP_LOCK_AT_MOST = "PT30M";
+
+    /** 截图清理调度器锁最短持有时间（10 秒，避免瞬间释放导致重复执行） */
+    String SCREENSHOT_CLEANUP_LOCK_AT_LEAST = "PT10S";
+
+    // endregion
 }

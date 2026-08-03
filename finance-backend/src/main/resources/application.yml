@@ -11,6 +11,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  # 文件上传配置（M7.2 审计截图 multipart 上传，PNG 截图通常 2-5MB）
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 15MB
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
@@ -105,3 +110,18 @@ notification:
     webhook-url: ${DINGTALK_WEBHOOK_URL:}
     # 加签密钥（启用加签模式时必填；生产环境通过 DINGTALK_SECRET 环境变量注入）
     secret: ${DINGTALK_SECRET:}
+
+# MinIO 对象存储配置（M7.2 审计截图存储）
+minio:
+  # MinIO 服务地址（含协议与端口）
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  # 访问密钥
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  # 秘密密钥
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  # Bucket 前缀，完整 bucket 名为 {prefix}{org_id}（系统设计 6.4.4）
+  bucket-prefix: ${MINIO_BUCKET_PREFIX:finrpa-audit-}
+  # 预签名 URL 有效期（小时，系统设计 6.4.4 约定 1 小时）
+  presign-expiry-hours: ${MINIO_PRESIGN_EXPIRY_HOURS:1}
+  # 截图保留期（天，系统设计 6.4.4 约定 90 天）
+  retention-days: ${MINIO_RETENTION_DAYS:90}
