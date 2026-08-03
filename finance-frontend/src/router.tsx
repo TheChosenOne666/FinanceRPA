@@ -14,6 +14,7 @@
  * - /llm-monitor     LLM 调用监控（M5.6)
  * - /approvals       审批中心（M6.5）
  * - /notification    通知中心（M6.6）
+ * - /audit-logs      审计日志（M7.5）
  * - /403             403 无权限页
  *   - *                404 兜底
  *
@@ -35,6 +36,7 @@ import NeedsHumanPage from '@/routes/llm/NeedsHuman'
 import LlmMonitorPage from '@/routes/llm/LlmMonitor'
 import ApprovalCenter from '@/routes/enterprise/ApprovalCenter'
 import NotificationCenter from '@/routes/notification/NotificationCenter'
+import AuditLogs from '@/routes/enterprise/AuditLogs'
 
 /** 路由配置 */
 export const router = createBrowserRouter([
@@ -89,6 +91,10 @@ export const router = createBrowserRouter([
       {
         path: 'notification',
         element: <NotificationCenter />,
+      },
+      {
+        path: 'audit-logs',
+        element: <AuditLogs />,
       },
       {
         path: '403',

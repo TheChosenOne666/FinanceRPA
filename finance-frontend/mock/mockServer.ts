@@ -418,6 +418,24 @@ export function mockServerPlugin(): Plugin {
             if (pathname === '/api/llm/calls/stats' && method === 'GET') {
               return handleGetLlmStats(res)
             }
+            // 审计日志导出：/api/v1/audit/logs/export（M7.5，必须在 :auditId 之前匹配）
+            if (pathname === '/api/v1/audit/logs/export' && method === 'GET') {
+              return handleExportAuditLogs(req, res)
+            }
+            // 审计日志列表：/api/v1/audit/logs（M7.5）
+            if (pathname === '/api/v1/audit/logs' && method === 'GET') {
+              return handleListAuditLogs(req, res)
+            }
+            // 审计日志详情：/api/v1/audit/logs/:auditId（M7.5）
+            const auditDetailMatch = pathname.match(
+              /^\/api\/v1\/audit\/logs\/([^/]+)$/,
+            )
+            if (auditDetailMatch && method === 'GET') {
+              return handleGetAuditLogDetail(
+                res,
+                decodeURIComponent(auditDetailMatch[1]),
+              )
+            }
 
             // 3. 未匹配的 /api/ 请求 → 放行到 proxy（实际会失败，但便于发现遗漏）
             return next()
@@ -1373,6 +1391,539 @@ function handleGetLlmStats(res: ServerResponse): void {
     },
     message: 'ok',
   })
+}
+
+// ============================================================
+// 审计日志接口（M7.5）
+// ============================================================
+
+/** Mock 审计日志记录 */
+interface MockAuditLog {
+  auditId: string
+  taskId: string
+  orgId: string
+  departmentId?: string
+  businessLineId?: string
+  userId?: string
+  actionType: string
+  targetElement?: string
+  pageUrl?: string
+  actionParams?: string
+  executionResult: 'success' | 'failed'
+  errorMessage?: string
+  riskLevel?: 'low' | 'medium' | 'high' | 'critical'
+  approvalId?: string
+  startedAt?: string
+  completedAt?: string
+  durationMs?: number
+  beforeScreenshotUrl?: string
+  afterScreenshotUrl?: string
+  llmModel?: string
+  llmTokensUsed?: number
+  llmCost?: number
+  createTime: string
+}
+
+/** Mock 截图 URL（使用 picsum.photos 占位图） */
+const MOCK_SCREENSHOT_BEFORE =
+  'https://picsum.photos/seed/finrpa-before/640/400'
+const MOCK_SCREENSHOT_AFTER =
+  'https://picsum.photos/seed/finrpa-after/640/400'
+
+/** Mock 审计日志数据：覆盖不同 actionType / riskLevel / executionResult / 截图 / LLM */
+const mockAuditLogs: MockAuditLog[] = [
+  {
+    auditId: '800000000000000001',
+    taskId: '700000000000000001',
+    orgId: MOCK_USER.orgId,
+    departmentId: '500000000000000001',
+    businessLineId: '600000000000000001',
+    userId: MOCK_USER.userId,
+    actionType: 'NAVIGATE',
+    targetElement: 'https://corporate.icbc.com.cn/',
+    pageUrl: 'https://corporate.icbc.com.cn/ICBCINES/financialmarketstable.jsp',
+    actionParams:
+      '{"url":"https://corporate.icbc.com.cn/ICBCINES/financialmarketstable.jsp"}',
+    executionResult: 'success',
+    riskLevel: 'low',
+    startedAt: '2026-07-28T09:12:40.000Z',
+    completedAt: '2026-07-28T09:12:52.000Z',
+    durationMs: 12350,
+    beforeScreenshotUrl: MOCK_SCREENSHOT_BEFORE,
+    afterScreenshotUrl: MOCK_SCREENSHOT_AFTER,
+    llmModel: 'gpt-4o-mini',
+    llmTokensUsed: 320,
+    llmCost: 0.00048,
+    createTime: '2026-07-28T09:12:40.000Z',
+  },
+  {
+    auditId: '800000000000000002',
+    taskId: '700000000000000001',
+    orgId: MOCK_USER.orgId,
+    userId: MOCK_USER.userId,
+    actionType: 'LOGIN',
+    targetElement: 'input[name="username"]',
+    pageUrl: 'https://corporate.icbc.com.cn/login',
+    actionParams:
+      '{"username":"admin_demo_yhsec","password":"********","captcha":"a1b2"}',
+    executionResult: 'success',
+    riskLevel: 'high',
+    approvalId: '300000000000000001',
+    startedAt: '2026-07-28T09:13:00.000Z',
+    completedAt: '2026-07-28T09:13:25.000Z',
+    durationMs: 25180,
+    beforeScreenshotUrl: MOCK_SCREENSHOT_BEFORE,
+    afterScreenshotUrl: MOCK_SCREENSHOT_AFTER,
+    llmModel: 'gpt-4o',
+    llmTokensUsed: 1850,
+    llmCost: 0.013875,
+    createTime: '2026-07-28T09:13:00.000Z',
+  },
+  {
+    auditId: '800000000000000003',
+    taskId: '700000000000000001',
+    orgId: MOCK_USER.orgId,
+    actionType: 'CLICK',
+    targetElement: '#download-statement-btn',
+    pageUrl: 'https://corporate.icbc.com.cn/accounts/statements',
+    actionParams: '{"selector":"#download-statement-btn"}',
+    executionResult: 'success',
+    riskLevel: 'medium',
+    startedAt: '2026-07-28T09:14:20.000Z',
+    completedAt: '2026-07-28T09:14:42.000Z',
+    durationMs: 22340,
+    beforeScreenshotUrl: MOCK_SCREENSHOT_BEFORE,
+    afterScreenshotUrl: MOCK_SCREENSHOT_AFTER,
+    createTime: '2026-07-28T09:14:20.000Z',
+  },
+  {
+    auditId: '800000000000000004',
+    taskId: '700000000000000001',
+    orgId: MOCK_USER.orgId,
+    actionType: 'FILE_DOWNLOAD',
+    targetElement: 'a[href*="statement.pdf"]',
+    pageUrl: 'https://corporate.icbc.com.cn/accounts/statements/download',
+    actionParams:
+      '{"fileKey":"statements/2026-06-icbc.pdf","size":245678,"account":"6222********1234"}',
+    executionResult: 'success',
+    riskLevel: 'low',
+    startedAt: '2026-07-28T09:15:00.000Z',
+    completedAt: '2026-07-28T09:15:42.000Z',
+    durationMs: 42180,
+    createTime: '2026-07-28T09:15:00.000Z',
+  },
+  {
+    auditId: '800000000000000010',
+    taskId: '700000000000000002',
+    orgId: MOCK_USER.orgId,
+    userId: MOCK_USER.userId,
+    actionType: 'LOGIN',
+    targetElement: 'input[name="password"]',
+    pageUrl: 'https://biz.cmbchina.com/login',
+    actionParams:
+      '{"username":"admin_demo_yhsec","password":"********","smsCode":"123456"}',
+    executionResult: 'failed',
+    errorMessage: '密码错误连续 3 次，账户被临时锁定',
+    riskLevel: 'critical',
+    approvalId: '300000000000000002',
+    startedAt: '2026-07-28T14:22:15.000Z',
+    completedAt: '2026-07-28T14:25:30.000Z',
+    durationMs: 195000,
+    beforeScreenshotUrl: MOCK_SCREENSHOT_BEFORE,
+    afterScreenshotUrl: MOCK_SCREENSHOT_AFTER,
+    llmModel: 'gpt-4o',
+    llmTokensUsed: 2450,
+    llmCost: 0.018375,
+    createTime: '2026-07-28T14:22:15.000Z',
+  },
+  {
+    auditId: '800000000000000020',
+    taskId: '700000000000000003',
+    orgId: MOCK_USER.orgId,
+    actionType: 'NAVIGATE',
+    targetElement: 'https://biz.ccb.com/',
+    pageUrl: 'https://biz.ccb.com/corporate/dashboard',
+    actionParams: '{"url":"https://biz.ccb.com/corporate/dashboard"}',
+    executionResult: 'success',
+    riskLevel: 'low',
+    startedAt: '2026-07-29T08:30:05.000Z',
+    completedAt: '2026-07-29T08:30:50.000Z',
+    durationMs: 45230,
+    llmModel: 'gpt-4o-mini',
+    llmTokensUsed: 410,
+    llmCost: 0.000615,
+    createTime: '2026-07-29T08:30:05.000Z',
+  },
+  {
+    auditId: '800000000000000021',
+    taskId: '700000000000000003',
+    orgId: MOCK_USER.orgId,
+    actionType: 'INPUT_TEXT',
+    targetElement: 'input[name="account_number"]',
+    pageUrl: 'https://biz.ccb.com/corporate/quarterly',
+    actionParams:
+      '{"selector":"input[name=\\"account_number\\"]","value":"6227********5678"}',
+    executionResult: 'success',
+    riskLevel: 'medium',
+    startedAt: '2026-07-29T08:31:10.000Z',
+    completedAt: '2026-07-29T08:31:25.000Z',
+    durationMs: 15420,
+    createTime: '2026-07-29T08:31:10.000Z',
+  },
+  {
+    auditId: '800000000000000022',
+    taskId: '700000000000000003',
+    orgId: MOCK_USER.orgId,
+    actionType: 'FORM_FILL',
+    targetElement: 'form#quarterly-form',
+    pageUrl: 'https://biz.ccb.com/corporate/quarterly',
+    actionParams:
+      '{"quarter":"Q2","year":2026,"account":"6227********5678","format":"pdf"}',
+    executionResult: 'success',
+    riskLevel: 'high',
+    approvalId: '300000000000000003',
+    startedAt: '2026-07-29T08:32:00.000Z',
+    completedAt: '2026-07-29T08:32:10.000Z',
+    durationMs: 10240,
+    llmModel: 'gpt-4o',
+    llmTokensUsed: 920,
+    llmCost: 0.0069,
+    createTime: '2026-07-29T08:32:00.000Z',
+  },
+  {
+    auditId: '800000000000000023',
+    taskId: '700000000000000003',
+    orgId: MOCK_USER.orgId,
+    actionType: 'WAIT',
+    targetElement: '.loading-spinner',
+    pageUrl: 'https://biz.ccb.com/corporate/quarterly',
+    actionParams: '{"selector":".loading-spinner","timeoutMs":30000}',
+    executionResult: 'success',
+    riskLevel: 'low',
+    startedAt: '2026-07-29T08:32:30.000Z',
+    completedAt: '2026-07-29T08:33:00.000Z',
+    durationMs: 30180,
+    createTime: '2026-07-29T08:32:30.000Z',
+  },
+  {
+    auditId: '800000000000000024',
+    taskId: '700000000000000003',
+    orgId: MOCK_USER.orgId,
+    actionType: 'SCREENSHOT',
+    targetElement: 'body',
+    pageUrl: 'https://biz.ccb.com/corporate/quarterly/result',
+    actionParams: '{"selector":"body"}',
+    executionResult: 'success',
+    riskLevel: 'low',
+    startedAt: '2026-07-29T08:33:20.000Z',
+    completedAt: '2026-07-29T08:33:22.000Z',
+    durationMs: 1820,
+    beforeScreenshotUrl: MOCK_SCREENSHOT_BEFORE,
+    afterScreenshotUrl: MOCK_SCREENSHOT_AFTER,
+    createTime: '2026-07-29T08:33:20.000Z',
+  },
+  {
+    auditId: '800000000000000030',
+    taskId: '700000000000000004',
+    orgId: MOCK_USER.orgId,
+    actionType: 'CLICK',
+    targetElement: 'button#transfer',
+    pageUrl: 'https://biz.boc.com/transfer/confirm',
+    actionParams:
+      '{"selector":"button#transfer","amount":50000,"toAccount":"6214********9876"}',
+    executionResult: 'failed',
+    errorMessage: '风控触发：单笔转账金额超过 5 万元阈值，需要审批',
+    riskLevel: 'critical',
+    approvalId: '300000000000000004',
+    startedAt: '2026-08-01T10:15:30.000Z',
+    completedAt: '2026-08-01T10:15:45.000Z',
+    durationMs: 15280,
+    beforeScreenshotUrl: MOCK_SCREENSHOT_BEFORE,
+    afterScreenshotUrl: MOCK_SCREENSHOT_AFTER,
+    llmModel: 'gpt-4o',
+    llmTokensUsed: 3200,
+    llmCost: 0.024,
+    createTime: '2026-08-01T10:15:30.000Z',
+  },
+  {
+    auditId: '800000000000000031',
+    taskId: '700000000000000004',
+    orgId: MOCK_USER.orgId,
+    actionType: 'INPUT_TEXT',
+    targetElement: 'input[name="to_account"]',
+    pageUrl: 'https://biz.boc.com/transfer',
+    actionParams:
+      '{"selector":"input[name=\\"to_account\\"]","value":"6214********9876"}',
+    executionResult: 'success',
+    riskLevel: 'high',
+    approvalId: '300000000000000004',
+    startedAt: '2026-08-01T10:14:00.000Z',
+    completedAt: '2026-08-01T10:14:15.000Z',
+    durationMs: 15340,
+    createTime: '2026-08-01T10:14:00.000Z',
+  },
+]
+
+/** 排序字段白名单（对齐后端 AuditConstant.ALLOWED_SORT_FIELDS） */
+const AUDIT_SORT_FIELDS = new Set([
+  'auditId',
+  'taskId',
+  'riskLevel',
+  'startedAt',
+  'durationMs',
+  'createTime',
+])
+
+/** 风险等级排序权重 */
+const RISK_LEVEL_WEIGHT: Record<string, number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+}
+
+/**
+ * 应用筛选条件到 mock 数据
+ *
+ * @param logs   原始数据
+ * @param params 查询参数
+ * @returns 过滤后的数据（未排序、未分页）
+ */
+function filterAuditLogs(
+  logs: MockAuditLog[],
+  params: Record<string, string>,
+): MockAuditLog[] {
+  return logs.filter((log) => {
+    if (params.taskId && log.taskId !== params.taskId) return false
+    if (params.userId && log.userId !== params.userId) return false
+    if (params.departmentId && log.departmentId !== params.departmentId)
+      return false
+    if (params.businessLineId && log.businessLineId !== params.businessLineId)
+      return false
+    if (params.riskLevel && log.riskLevel !== params.riskLevel) return false
+    if (params.actionType && log.actionType !== params.actionType) return false
+    if (params.executionResult && log.executionResult !== params.executionResult)
+      return false
+    if (
+      params.startTime &&
+      log.startedAt &&
+      log.startedAt < params.startTime
+    )
+      return false
+    if (
+      params.endTime &&
+      log.startedAt &&
+      log.startedAt > params.endTime
+    )
+      return false
+    return true
+  })
+}
+
+/**
+ * 应用排序
+ *
+ * @param logs  原始数据
+ * @param field 排序字段
+ * @param order 排序顺序
+ * @returns 排序后的数据
+ */
+function sortAuditLogs(
+  logs: MockAuditLog[],
+  field: string,
+  order: string,
+): MockAuditLog[] {
+  const sorted = [...logs]
+  const dir = order === 'ascend' ? 1 : -1
+  sorted.sort((a, b) => {
+    let av: string | number = ''
+    let bv: string | number = ''
+    switch (field) {
+      case 'auditId':
+        av = a.auditId
+        bv = b.auditId
+        break
+      case 'taskId':
+        av = a.taskId
+        bv = b.taskId
+        break
+      case 'riskLevel':
+        av = RISK_LEVEL_WEIGHT[a.riskLevel ?? ''] ?? 0
+        bv = RISK_LEVEL_WEIGHT[b.riskLevel ?? ''] ?? 0
+        break
+      case 'startedAt':
+        av = a.startedAt ?? ''
+        bv = b.startedAt ?? ''
+        break
+      case 'durationMs':
+        av = a.durationMs ?? 0
+        bv = b.durationMs ?? 0
+        break
+      case 'createTime':
+      default:
+        av = a.createTime
+        bv = b.createTime
+        break
+    }
+    if (av < bv) return -1 * dir
+    if (av > bv) return 1 * dir
+    return 0
+  })
+  return sorted
+}
+
+/** GET /api/v1/audit/logs */
+function handleListAuditLogs(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  const params = parseQuery(req.url || '')
+  const current = Math.max(1, parseInt(params.current || '1', 10))
+  const pageSize = Math.max(1, parseInt(params.pageSize || '10', 10))
+  const sortField = AUDIT_SORT_FIELDS.has(params.sortField)
+    ? params.sortField
+    : 'createTime'
+  const sortOrder = params.sortOrder === 'ascend' ? 'ascend' : 'descend'
+
+  // 1. 过滤 → 排序 → 分页
+  const filtered = filterAuditLogs(mockAuditLogs, params)
+  const sorted = sortAuditLogs(filtered, sortField, sortOrder)
+  const total = sorted.length
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const start = (current - 1) * pageSize
+  const records = sorted.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      records,
+      current,
+      size: pageSize,
+      total,
+      pages,
+    },
+    message: 'ok',
+  })
+}
+
+/** GET /api/v1/audit/logs/:auditId */
+function handleGetAuditLogDetail(
+  res: ServerResponse,
+  auditId: string,
+): void {
+  const log = mockAuditLogs.find((l) => l.auditId === auditId)
+  if (!log) {
+    return sendJson(res, 200, {
+      code: 40400,
+      data: null,
+      message: `审计日志 ${auditId} 不存在`,
+    })
+  }
+  sendJson(res, 200, { code: 0, data: log, message: 'ok' })
+}
+
+/**
+ * GET /api/v1/audit/logs/export
+ *
+ * 返回 text/csv 二进制流（UTF-8 BOM + RFC 4180 转义），
+ * 文件名 `audit_logs_yyyyMMdd.csv`，对齐后端 CsvExporter。
+ */
+function handleExportAuditLogs(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  const params = parseQuery(req.url || '')
+  // 1. 过滤 + 排序（同 list，但忽略分页）
+  const sortField = AUDIT_SORT_FIELDS.has(params.sortField)
+    ? params.sortField
+    : 'createTime'
+  const sortOrder = params.sortOrder === 'ascend' ? 'ascend' : 'descend'
+  const filtered = filterAuditLogs(mockAuditLogs, params)
+  const sorted = sortAuditLogs(filtered, sortField, sortOrder)
+
+  // 2. CSV 表头（与后端 CsvExporter 23 列对齐）
+  const headers = [
+    '审计ID',
+    '任务ID',
+    '组织ID',
+    '部门ID',
+    '业务线ID',
+    '用户ID',
+    '动作类型',
+    '目标元素',
+    '页面URL',
+    '操作参数',
+    '执行结果',
+    '错误信息',
+    '风险等级',
+    '审批单ID',
+    '开始时间',
+    '完成时间',
+    '耗时(ms)',
+    '操作前截图URL',
+    '操作后截图URL',
+    'LLM模型',
+    'LLM token用量',
+    'LLM成本(美元)',
+    '创建时间',
+  ]
+
+  /** RFC 4180 转义：含 , " \n \r 时用 " 包裹，内部 " 转义为 "" */
+  const escape = (v: unknown): string => {
+    const s = v == null ? '' : String(v)
+    if (/[",\n\r]/.test(s)) {
+      return `"${s.replace(/"/g, '""')}"`
+    }
+    return s
+  }
+
+  // 3. 拼装 CSV 内容
+  const rows = [headers.map(escape).join(',')]
+  for (const log of sorted) {
+    rows.push(
+      [
+        log.auditId,
+        log.taskId,
+        log.orgId,
+        log.departmentId ?? '',
+        log.businessLineId ?? '',
+        log.userId ?? '',
+        log.actionType,
+        log.targetElement ?? '',
+        log.pageUrl ?? '',
+        log.actionParams ?? '',
+        log.executionResult,
+        log.errorMessage ?? '',
+        log.riskLevel ?? '',
+        log.approvalId ?? '',
+        log.startedAt ?? '',
+        log.completedAt ?? '',
+        log.durationMs ?? '',
+        log.beforeScreenshotUrl ?? '',
+        log.afterScreenshotUrl ?? '',
+        log.llmModel ?? '',
+        log.llmTokensUsed ?? '',
+        log.llmCost ?? '',
+        log.createTime,
+      ]
+        .map(escape)
+        .join(','),
+    )
+  }
+  // 4. UTF-8 BOM（Excel 中文不乱码）
+  const bom = '\uFEFF'
+  const csv = bom + rows.join('\r\n') + '\r\n'
+
+  // 5. 设置响应头：Content-Type + Content-Disposition（RFC 5987）
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const filename = `audit_logs_${today}.csv`
+  res.statusCode = 200
+  res.setHeader('Content-Type', 'text/csv; charset=UTF-8')
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+  )
+  res.end(Buffer.from(csv, 'utf-8'))
 }
 
 export default mockServerPlugin

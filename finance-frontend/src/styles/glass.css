@@ -2750,3 +2750,430 @@ a:hover {
 }
 
 /* ---------- end 通知中心页 ---------- */
+
+/* ---------- 32. 审计日志页（M7.5） ---------- */
+
+/* 筛选栏：允许换行 + 末尾对齐 */
+.audit-toolbar {
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+/* 任务 ID 输入框：固定宽度，避免被压缩 */
+.audit-filter-taskid {
+  min-width: 200px;
+}
+
+/* 文本输入类筛选框统一宽度 */
+.audit-filter-input {
+  width: 180px;
+}
+
+/* 重置按钮区：贴右对齐 */
+.audit-filter-actions {
+  margin-left: auto;
+}
+
+/* 表格 URL 列：超长省略 */
+.audit-table .cell-url {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* 表格"文本弱化"占位符 */
+.text-muted {
+  color: var(--text-muted);
+}
+
+/* 执行结果标签：成功 / 失败 */
+.tag-result-success {
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--status-completed);
+  border: 1px solid rgba(16, 185, 129, 0.24);
+}
+
+.tag-result-failed {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--status-failed);
+  border: 1px solid rgba(239, 68, 68, 0.24);
+}
+
+/* 导出状态提示：浮于顶部右侧 */
+.audit-export-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: var(--status-completed);
+  font-size: 13px;
+  font-weight: 500;
+  animation: modal-fade-in var(--transition-normal);
+}
+
+/* 错误提示变体 */
+.audit-export-toast-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.28);
+  color: var(--status-failed);
+}
+
+/* 时间线视图容器 */
+.audit-timeline-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 4px;
+}
+
+/* 单个任务时间线分组 */
+.audit-timeline-group {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  overflow: hidden;
+}
+
+/* 分组头部（可点击折叠） */
+.audit-timeline-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(26, 58, 92, 0.03);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--transition-fast);
+}
+
+.audit-timeline-header:hover {
+  background: rgba(26, 58, 92, 0.06);
+}
+
+/* 任务 ID */
+.audit-timeline-taskid {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--finrpa-blue);
+}
+
+/* 任务元信息（步数 / 成功率 / 累计耗时） */
+.audit-timeline-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.audit-timeline-meta strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* 时间范围（右侧贴齐） */
+.audit-timeline-range {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+}
+
+/* 时间线条目列表（清除 ol 默认序号） */
+.audit-timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 16px 16px 16px 20px;
+  position: relative;
+}
+
+/* 时间线主轴竖线 */
+.audit-timeline-list::before {
+  content: '';
+  position: absolute;
+  left: 36px;
+  top: 16px;
+  bottom: 16px;
+  width: 2px;
+  background: var(--border-subtle);
+}
+
+/* 单条时间线条目 */
+.audit-timeline-item {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  padding: 8px 0 12px 28px;
+}
+
+/* 步骤圆点（含序号） */
+.audit-timeline-dot {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--glass-bg);
+  border: 2px solid var(--status-completed);
+  color: var(--status-completed);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+/* 失败步骤：红色边框 */
+.audit-timeline-dot-failed {
+  border-color: var(--status-failed);
+  color: var(--status-failed);
+}
+
+/* 风险等级配色（叠加在 dot 上） */
+.audit-timeline-dot-risk-high {
+  border-color: var(--status-needs-human);
+  color: var(--status-needs-human);
+}
+
+.audit-timeline-dot-risk-critical {
+  border-color: var(--status-failed);
+  color: var(--status-failed);
+}
+
+/* 时间线内容区（可点击） */
+.audit-timeline-content {
+  flex: 1;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.audit-timeline-content:hover {
+  background: rgba(26, 58, 92, 0.04);
+}
+
+/* 第一行：动作 + 标签 */
+.audit-timeline-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 动作类型 */
+.audit-timeline-action {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* LLM 模型标签 */
+.audit-timeline-llm {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(26, 58, 92, 0.05);
+  border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+}
+
+/* 第二行：时间 + 耗时 + URL */
+.audit-timeline-line2 {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.audit-timeline-duration {
+  color: var(--text-secondary);
+}
+
+.audit-timeline-url {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  font-size: 11px;
+}
+
+/* 时间线分组超过最大展示数时的提示 */
+.audit-timeline-more {
+  padding: 12px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px dashed var(--border-subtle);
+}
+
+/* ---------- 审计详情弹窗 ---------- */
+
+/* 弹窗宽度：稍宽以容纳截图对比 */
+.audit-modal-card {
+  max-width: 880px !important;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* 详情 URL 链接 */
+.audit-detail-link {
+  color: var(--finrpa-blue);
+  text-decoration: none;
+  word-break: break-all;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+}
+
+.audit-detail-link:hover {
+  text-decoration: underline;
+}
+
+/* 等宽文本块（目标元素等） */
+.audit-detail-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* 错误信息样式（基于 approval-detail-reasoning 覆盖配色为红色） */
+.audit-detail-error {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.22);
+  border-left-color: var(--status-failed);
+}
+
+/* 截图对比网格：左右两列 */
+.audit-screenshot-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* 单个截图单元格 */
+.audit-screenshot-cell {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--glass-bg);
+}
+
+/* 截图标签（Before / After） */
+.audit-screenshot-label {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(26, 58, 92, 0.03);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* 截图图片：宽度撑满，高度自适应 */
+.audit-screenshot-img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  background: #fff;
+}
+
+/* 截图占位符 */
+.audit-screenshot-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 32px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  background: rgba(26, 58, 92, 0.02);
+}
+
+/* 截图时效提示 */
+.audit-screenshot-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+/* 操作参数 JSON 代码块 */
+.audit-detail-code {
+  margin: 0;
+  padding: 12px 14px;
+  background: rgba(26, 58, 92, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* LLM 信息网格 */
+.audit-llm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+/* LLM 单项 */
+.audit-llm-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: rgba(26, 58, 92, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+/* LLM 标签 */
+.audit-llm-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* LLM 值 */
+.audit-llm-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+/* ---------- end 审计日志页 ---------- */

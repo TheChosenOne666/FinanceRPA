@@ -762,3 +762,135 @@ export interface RetryQueueStatsVO {
   /** 超过最大重试次数的告警数（待人工介入） */
   alertCount: string | number;
 }
+
+// ============================================================
+// 审计日志（M7.5）
+// 对齐 com.finrpa.audit.dto.request / response
+// ============================================================
+
+/**
+ * 审计执行结果（对齐 com.finrpa.audit.constant.AuditConstant.RESULT_*）
+ */
+export type AuditExecutionResult = 'success' | 'failed';
+
+/**
+ * 审计操作类型（对齐 AuditLogCreateRequest.actionType 注释示例）
+ *
+ * 说明：后端 actionType 为字符串字段，未做枚举强约束；前端枚举仅作为筛选下拉项。
+ */
+export type AuditActionType =
+  | 'NAVIGATE' // 页面跳转
+  | 'CLICK' // 元素点击
+  | 'INPUT_TEXT' // 文本输入
+  | 'LOGIN' // 登录操作
+  | 'FILE_DOWNLOAD' // 文件下载
+  | 'FORM_FILL' // 表单填写
+  | 'WAIT' // 等待
+  | 'SCREENSHOT'; // 截图
+
+/**
+ * 审计排序字段白名单（对齐 com.finrpa.audit.constant.AuditConstant.ALLOWED_SORT_FIELDS）
+ */
+export type AuditSortField =
+  | 'auditId'
+  | 'taskId'
+  | 'riskLevel'
+  | 'startedAt'
+  | 'durationMs'
+  | 'createTime';
+
+/**
+ * 排序顺序（对齐 com.finrpa.common.constant.CommonConstant.SORT_ORDER_*）
+ *
+ * 后端约定：`ascend` 升序、`descend` 降序（默认）
+ */
+export type SortOrder = 'ascend' | 'descend';
+
+/**
+ * 审计日志视图（对齐 com.finrpa.audit.dto.response.AuditLogVO）
+ *
+ * 说明：后端 JsonConfig 将 Long 字段序列化为 String（防 JS 精度丢失），
+ * 所有 ID 字段类型声明为 string。
+ */
+export interface AuditLogVO {
+  /** 审计 ID（雪花算法） */
+  auditId: string;
+  /** 关联任务 ID */
+  taskId: string;
+  /** 组织 ID */
+  orgId: string;
+  /** 部门 ID */
+  departmentId?: string;
+  /** 业务线 ID */
+  businessLineId?: string;
+  /** 用户 ID */
+  userId?: string;
+  /** 动作类型：NAVIGATE / CLICK / INPUT_TEXT / LOGIN 等 */
+  actionType: string;
+  /** 目标元素（CSS Selector / XPath） */
+  targetElement?: string;
+  /** 页面 URL */
+  pageUrl?: string;
+  /** 操作参数 JSON 字符串（已脱敏） */
+  actionParams?: string;
+  /** 执行结果：success / failed */
+  executionResult: AuditExecutionResult;
+  /** 错误信息（执行失败时填充） */
+  errorMessage?: string;
+  /** 风险等级：low / medium / high / critical */
+  riskLevel?: WorkflowRiskLevel;
+  /** 关联审批单 ID */
+  approvalId?: string;
+  /** 开始时间（ISO 字符串） */
+  startedAt?: string;
+  /** 完成时间（ISO 字符串） */
+  completedAt?: string;
+  /** 执行耗时（毫秒） */
+  durationMs?: number;
+  /** 操作前截图 URL（MinIO 预签名，1 小时有效） */
+  beforeScreenshotUrl?: string;
+  /** 操作后截图 URL（MinIO 预签名，1 小时有效） */
+  afterScreenshotUrl?: string;
+  /** LLM 模型名 */
+  llmModel?: string;
+  /** LLM token 用量 */
+  llmTokensUsed?: number;
+  /** LLM 成本（美元） */
+  llmCost?: number;
+  /** 创建时间（ISO 字符串） */
+  createTime: string;
+}
+
+/**
+ * 审计日志分页查询请求（对齐 com.finrpa.audit.dto.request.AuditLogQueryRequest）
+ *
+ * 说明：orgId 由后端从 TenantContext 自动填充，前端无需传递。
+ */
+export interface AuditLogQueryRequest {
+  /** 当前页号（从 1 开始） */
+  current: number;
+  /** 页面大小 */
+  pageSize: number;
+  /** 排序字段（仅允许白名单） */
+  sortField?: AuditSortField;
+  /** 排序顺序 */
+  sortOrder?: SortOrder;
+  /** 任务 ID 精确查询 */
+  taskId?: string;
+  /** 用户 ID 精确查询 */
+  userId?: string;
+  /** 部门 ID 精确查询 */
+  departmentId?: string;
+  /** 业务线 ID 精确查询 */
+  businessLineId?: string;
+  /** 风险等级筛选 */
+  riskLevel?: WorkflowRiskLevel | '';
+  /** 操作类型筛选 */
+  actionType?: AuditActionType | '';
+  /** 执行结果筛选 */
+  executionResult?: AuditExecutionResult | '';
+  /** 起始时间（包含，ISO 字符串，对应 java.sql.Timestamp） */
+  startTime?: string;
+  /** 截止时间（包含，ISO 字符串，对应 java.sql.Timestamp） */
+  endTime?: string;
+}
