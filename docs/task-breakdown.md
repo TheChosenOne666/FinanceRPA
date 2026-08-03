@@ -1629,7 +1629,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 
 ### M8 运营大屏
 
-#### M8.1 Java 统计 API + Redis 缓存
+#### M8.1 Java 统计 API + Redis 缓存 ✅
 
 | 项 | 内容 |
 |----|------|
@@ -1638,6 +1638,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `dashboard/` 模块完整代码 |
 | **描述** | 1. 统计指标：按系统设计 6.9.1 节 8 类指标<br>2. Redis 缓存：key `dashboard:{org}:{metric}:{date}`，TTL 5min/1h<br>3. 缓存失效：任务完成时 ApplicationEvent 主动刷新<br>4. API：`GET /api/v1/dashboard/overview` / `trends` / `business-lines` / `errors` / `costs` / `approvals` |
 | **验收标准** | 统计数据准确；缓存命中率 > 80%；任务完成后缓存刷新 |
+| **完成情况** | 已完成。`DashboardConstant`（缓存 key/TTL/指标常量）、`DashboardStatsMapper`（11 类 SQL 聚合查询，按 org_id 手动租户隔离）、`DashboardService`/`DashboardServiceImpl`（Redisson 缓存读穿写回 + 8 类指标组装 + 趋势日期合并填零）、`DashboardController`（6 个 REST 端点）、`TaskTerminalEvent` + `DashboardCacheRefreshListener`（任务终态事件驱动按 orgId 模式批量失效缓存）、6 个响应 VO + 6 个内部统计 DTO 全部落地；`DashboardServiceImplTest` 11 个用例覆盖缓存命中/未命中、指标计算（成功率/命中率/P95）、空值归零、事件失效，全部通过；`TaskServiceImpl` 已在任务进入终态时发布 `TaskTerminalEvent`。 |
 
 #### M8.2 前端 Dashboard（ECharts）
 

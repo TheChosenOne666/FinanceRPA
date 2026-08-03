@@ -18,6 +18,7 @@ import com.finrpa.agent.entity.AgentSubTaskEO;
 import com.finrpa.agent.entity.AgentTaskEO;
 import com.finrpa.agent.entity.CoordinationStateEO;
 import com.finrpa.agent.enums.TaskStateEnum;
+import com.finrpa.agent.event.TaskTerminalEvent;
 import com.finrpa.agent.mapper.AgentSubTaskMapper;
 import com.finrpa.agent.mapper.AgentTaskMapper;
 import com.finrpa.agent.mapper.CoordinationStateMapper;
@@ -32,6 +33,7 @@ import com.finrpa.tenant.context.TenantContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -66,6 +68,10 @@ public class TaskServiceImpl implements TaskService {
     /** JSON 序列化工具 */
     @Resource
     private ObjectMapper objectMapper;
+
+    /** Spring 事件发布器（M8.1 任务终态时发布事件，触发大屏缓存失效） */
+    @Resource
+    private ApplicationEventPublisher applicationEventPublisher;
 
     // region 对外接口
 
@@ -248,6 +254,11 @@ public class TaskServiceImpl implements TaskService {
         ThrowUtils.throwIf(rows <= 0, ErrorCode.OPERATION_ERROR, "任务终止失败");
 
         log.info("任务终止成功: taskId={}", taskId);
+
+        // 6. 任务终止（终态）发布事件，触发大屏缓存失效（M8.1）
+        applicationEventPublisher.publishEvent(
+                new TaskTerminalEvent(this, taskId, task.getOrgId(),
+                        targetState.getValue(), task.getStatus()));
     }
 
     /**
@@ -411,6 +422,13 @@ public class TaskServiceImpl implements TaskService {
         ThrowUtils.throwIf(rows <= 0, ErrorCode.OPERATION_ERROR, "任务状态更新失败");
 
         log.info("任务状态更新成功: taskId={}, {} → {}", taskId, task.getStatus(), targetState.getValue());
+
+        // 5. 任务进入终态时发布事件，触发大屏缓存失效（M8.1）
+        if (TaskStateMachine.isTerminal(targetState)) {
+            applicationEventPublisher.publishEvent(
+                    new TaskTerminalEvent(this, taskId, task.getOrgId(),
+                            targetState.getValue(), task.getStatus()));
+        }
     }
 
     /**
