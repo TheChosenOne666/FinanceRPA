@@ -18,6 +18,9 @@ public interface TenantConstant {
     /** 请求属性 key：JwtAuthenticationFilter 解析 token 后将 orgId 存入 request attribute，供 TenantInterceptor 读取 */
     String ORG_ID_REQUEST_ATTR = "tenant.orgId";
 
+    /** 请求属性 key：JwtAuthenticationFilter 解析 token 后将 userId 存入 request attribute，供 TenantInterceptor 读取（M7.6 三维度 RBAC） */
+    String USER_ID_REQUEST_ATTR = "tenant.userId";
+
     /** 不参与租户过滤的表清单 */
     Set<String> IGNORED_TABLES = Set.of(
             // 组织表本身（无 org_id 字段）

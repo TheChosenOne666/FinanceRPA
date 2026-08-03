@@ -2,12 +2,15 @@ package com.finrpa.auth.service.impl;
 
 import com.finrpa.auth.entity.RoleEO;
 import com.finrpa.auth.entity.UserEO;
+import com.finrpa.auth.entity.UserRoleEO;
 import com.finrpa.auth.mapper.RoleMapper;
 import com.finrpa.auth.mapper.UserMapper;
+import com.finrpa.auth.mapper.UserRoleMapper;
 import com.finrpa.auth.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -26,6 +29,8 @@ public class PermissionServiceImpl implements PermissionService {
     private final UserMapper userMapper;
     /** 角色 Mapper */
     private final RoleMapper roleMapper;
+    /** 用户-角色关联 Mapper（M7.6 三维度 RBAC） */
+    private final UserRoleMapper userRoleMapper;
 
     /** 互斥角色集合：operator 与 approver 不可同时持有 */
     private static final Set<String> MUTUALLY_EXCLUSIVE_ROLES = Set.of("operator", "approver");
@@ -207,5 +212,86 @@ public class PermissionServiceImpl implements PermissionService {
         List<RoleEO> roles = roleMapper.selectByUserId(Long.parseLong(userId));
         return roles.stream()
                 .anyMatch(role -> role.getIsCrossOrgApprove() != null && role.getIsCrossOrgApprove() == 1);
+    }
+
+    /**
+     * 判断用户是否为组织管理员（org_admin 或 super_admin），可查看整个组织的数据
+     *
+     * @param userId 用户 ID
+     * @return 是否为组织管理员
+     */
+    @Override
+    public boolean isOrgAdmin(String userId) {
+        List<String> roleCodes = getUserRoles(userId);
+        return roleCodes.contains("super_admin") || roleCodes.contains("org_admin");
+    }
+
+    /**
+     * 获取用户关联的业务线 ID 集合（M7.6 三维度 RBAC）
+     *
+     * <p>从 sys_user_role 关联中提取该用户所有非 NULL 的 business_line_id。
+     * 若用户存在 business_line_id 为 NULL 的关联，表示不限业务线，返回 null 表示"全部可见"。</p>
+     *
+     * @param userId 用户 ID
+     * @return 业务线 ID 集合；null 表示全部可见（用户有不限业务线的关联）；空集合表示无任何关联
+     */
+    @Override
+    public Set<Long> getUserBusinessLineIds(String userId) {
+        List<UserRoleEO> relations = userRoleMapper.selectByUserId(Long.parseLong(userId));
+        if (relations.isEmpty()) {
+            return new HashSet<>();
+        }
+        // 1. 存在 business_line_id 为 NULL 的关联 → 不限业务线
+        boolean hasUnbounded = relations.stream().anyMatch(r -> r.getBusinessLineId() == null);
+        if (hasUnbounded) {
+            return null;
+        }
+        // 2. 收集所有非 NULL 的业务线 ID
+        return relations.stream()
+                .map(UserRoleEO::getBusinessLineId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * 获取用户关联的部门 ID 集合（M7.6 三维度 RBAC）
+     *
+     * <p>从 sys_user_role 关联中提取该用户所有非 NULL 的 department_id。
+     * 若用户存在 department_id 为 NULL 的关联，表示不限部门，返回 null 表示"全部可见"。</p>
+     *
+     * @param userId 用户 ID
+     * @return 部门 ID 集合；null 表示全部可见；空集合表示无任何关联
+     */
+    @Override
+    public Set<Long> getUserDepartmentIds(String userId) {
+        List<UserRoleEO> relations = userRoleMapper.selectByUserId(Long.parseLong(userId));
+        if (relations.isEmpty()) {
+            return new HashSet<>();
+        }
+        // 1. 存在 department_id 为 NULL 的关联 → 不限部门
+        boolean hasUnbounded = relations.stream().anyMatch(r -> r.getDepartmentId() == null);
+        if (hasUnbounded) {
+            return null;
+        }
+        // 2. 收集所有非 NULL 的部门 ID
+        return relations.stream()
+                .map(UserRoleEO::getDepartmentId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * 获取用户的主关联（用于任务触发时推断默认部门/业务线）
+     *
+     * <p>主关联定义：用户的第一条 sys_user_role 记录（按 id 升序）。
+     * 任务创建时若未显式传入 departmentId/businessLineId，则从此关联中推断。</p>
+     *
+     * @param userId 用户 ID
+     * @return 主关联实体；无关联时返回 null
+     */
+    @Override
+    public UserRoleEO getPrimaryUserRole(Long userId) {
+        List<UserRoleEO> relations = userRoleMapper.selectByUserId(userId);
+        return relations.isEmpty() ? null : relations.get(0);
     }
 }

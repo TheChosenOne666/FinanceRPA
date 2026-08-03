@@ -44,10 +44,6 @@ export function Pagination({
   // 2. 生成页号按钮（最多显示 7 个，当前页居中）
   const pageButtons = getPageButtons(current, totalPages)
 
-  // 3. 起止记录号（用于显示 "展示 1-10 / 共 87"）
-  const startIdx = total === 0 ? 0 : (current - 1) * pageSize + 1
-  const endIdx = Math.min(current * pageSize, total)
-
   /** 切换页号 */
   const goto = (page: number) => {
     if (disabled) return
@@ -65,23 +61,12 @@ export function Pagination({
 
   return (
     <div className="pagination">
-      {/* region 左侧：记录数信息 */}
-      <div className="pagination-info">
-        共 <strong>{total}</strong> 条 · 展示 {startIdx}-{endIdx}
-      </div>
+      {/* region 左侧：占位（让中间按钮组视觉居中，对齐原型 03-tasks.html） */}
+      <div className="pagination-side pagination-side-left" />
       {/* endregion */}
 
-      {/* region 中间：页号按钮 */}
+      {/* region 中间：页号按钮（居中） */}
       <div className="pagination-buttons">
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm pagination-btn"
-          onClick={() => goto(1)}
-          disabled={disabled || current <= 1}
-          aria-label="首页"
-        >
-          «
-        </button>
         <button
           type="button"
           className="btn btn-ghost btn-sm pagination-btn"
@@ -119,34 +104,27 @@ export function Pagination({
         >
           ›
         </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm pagination-btn"
-          onClick={() => goto(totalPages)}
-          disabled={disabled || current >= totalPages}
-          aria-label="末页"
-        >
-          »
-        </button>
       </div>
       {/* endregion */}
 
-      {/* region 右侧：页大小选择器 */}
-      <div className="pagination-size">
-        <span>每页</span>
-        <select
-          className="select pagination-select"
-          value={pageSize}
-          onChange={handlePageSizeChange}
-          disabled={disabled}
-        >
-          {pageSizeOptions.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
-        <span>条</span>
+      {/* region 右侧：分页信息 + 页大小选择器（对齐原型 .page-info 风格） */}
+      <div className="pagination-side pagination-side-right">
+        <span className="pagination-info">
+          共 <strong>{total}</strong> 条 · 每页
+          <select
+            className="select pagination-select"
+            value={pageSize}
+            onChange={handlePageSizeChange}
+            disabled={disabled}
+          >
+            {pageSizeOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+          条
+        </span>
       </div>
       {/* endregion */}
     </div>

@@ -864,10 +864,16 @@ a:hover {
 
 .tasks-toolbar {
   display: grid;
-  grid-template-columns: 1fr 200px;
+  /* 对齐原型 03-tasks.html .filter-bar 6 列网格：关键词 / 状态 / 业务线 / 风险等级 / 执行时间 / 重置 */
+  grid-template-columns: 2fr 1fr 1fr 1fr 1.6fr auto;
   gap: var(--space-md);
   padding: 14px 18px;
   align-items: end;
+}
+
+/* 关键词搜索字段（带搜索图标） */
+.toolbar-search-field {
+  position: relative;
 }
 
 .toolbar-search {
@@ -905,6 +911,50 @@ a:hover {
 
 .toolbar-select {
   width: 100%;
+}
+
+/* 日期范围筛选（对齐原型 .date-range） */
+.toolbar-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-date-input {
+  padding: 8px 10px;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbar-date-sep {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* 立即接管按钮（橙色高亮，对齐原型 03-tasks.html task 3） */
+.task-action-takeover {
+  background: linear-gradient(135deg, #F97316, #F97316);
+  color: #fff;
+  border-color: rgba(249, 115, 22, 0.3);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.28);
+}
+
+.task-action-takeover:hover {
+  background: linear-gradient(135deg, #ea580c, #ea580c);
+  border-color: rgba(249, 115, 22, 0.4);
+  color: #fff;
+}
+
+/* 响应式：窄屏下筛选栏改为 2 列（对齐原型 @media 1024px） */
+@media (max-width: 1024px) {
+  .tasks-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+  .toolbar-search-field {
+    grid-column: 1 / -1;
+  }
 }
 
 .tasks-table-wrapper {
@@ -1253,9 +1303,23 @@ a:hover {
   border-radius: var(--radius-md);
 }
 
+/* 左右两侧占位：让中间按钮组视觉居中（对齐原型 03-tasks.html .pagination justify-content: center） */
+.pagination-side {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.pagination-side-right {
+  justify-content: flex-end;
+}
+
 .pagination-info {
   font-size: 12px;
   color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .pagination-info strong {
@@ -1272,14 +1336,25 @@ a:hover {
 .pagination-btn {
   min-width: 32px;
   height: 32px;
-  padding: 0 8px;
-  font-size: 12px;
+  padding: 0 10px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  transition: all 0.2s var(--ease-out);
+}
+
+.pagination-btn:hover:not(:disabled):not(.pagination-btn-active) {
+  background: #fff;
+  color: var(--text-primary);
+  border-color: var(--glass-border-strong);
 }
 
 .pagination-btn-active {
   background: var(--finrpa-blue);
   color: #fff;
-  border-color: var(--finrpa-blue);
+  border-color: rgba(26, 58, 92, 0.3);
+  box-shadow: 0 2px 8px rgba(26, 58, 92, 0.3);
 }
 
 .pagination-btn-active:hover {
@@ -1288,24 +1363,22 @@ a:hover {
   color: #fff;
 }
 
+.pagination-btn:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
 .pagination-ellipsis {
   padding: 0 6px;
   color: var(--text-muted);
   font-size: 12px;
 }
 
-.pagination-size {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
 .pagination-select {
-  width: 70px;
-  padding: 6px 8px;
+  width: 60px;
+  padding: 4px 6px;
   font-size: 12px;
+  margin: 0 4px;
 }
 
 /* ---------- 16. 状态徽章 ---------- */
@@ -1335,6 +1408,13 @@ a:hover {
   height: 6px;
   border-radius: 50%;
   animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+/* Emoji 前缀（对齐原型 03-tasks.html 的 ✅ ⚡ ⚠ ⏳ ❌ 风格） */
+.status-badge-emoji {
+  font-size: 1em;
+  line-height: 1;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
 }
 
 @keyframes status-pulse {

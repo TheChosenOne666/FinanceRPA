@@ -41,6 +41,9 @@ export async function listTasks(query: TaskQueryRequest): Promise<IPage<TaskVO>>
       status: query.status || undefined,
       searchText: query.searchText || undefined,
       workflowId: query.workflowId || undefined,
+      // M7.6 三维度 RBAC：业务线 / 部门筛选
+      businessLineId: query.businessLineId || undefined,
+      departmentId: query.departmentId || undefined,
     },
   })
   return res.data.data

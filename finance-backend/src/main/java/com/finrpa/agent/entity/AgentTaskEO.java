@@ -55,6 +55,14 @@ public class AgentTaskEO implements Serializable {
     @TableField("workflow_id")
     private Long workflowId;
 
+    /** 部门业务 ID（M7.6 三维度 RBAC：任务触发时从用户关联中推断，关联 enterprise_department.dept_id） */
+    @TableField("department_id")
+    private Long departmentId;
+
+    /** 业务线业务 ID（M7.6 三维度 RBAC：任务触发时从请求参数或用户关联中获取，关联 enterprise_business_line.business_line_id） */
+    @TableField("business_line_id")
+    private Long businessLineId;
+
     /** 任务状态：PENDING / EXECUTING / SUCCESS / FAILED / NEEDS_HUMAN / ABORTED */
     @TableField("status")
     private String status;

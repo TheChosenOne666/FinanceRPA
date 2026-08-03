@@ -194,6 +194,16 @@ export interface TaskVO {
   userName?: string;
   /** 任务耗时（毫秒，仅终态任务计算） */
   durationMs?: number;
+  /** 风险等级（关联工作流模板：low / medium / high / critical） */
+  riskLevel?: string;
+  /** 部门业务 ID（M7.6 三维度 RBAC） */
+  departmentId?: string;
+  /** 部门名称（关联 enterprise_department.dept_name，前端展示用） */
+  departmentName?: string;
+  /** 业务线业务 ID（M7.6 三维度 RBAC） */
+  businessLineId?: string;
+  /** 业务线名称（关联 enterprise_business_line.business_line_name，前端展示用） */
+  businessLineName?: string;
   /** 创建时间（ISO 字符串） */
   createTime: string;
   /** 更新时间（ISO 字符串） */
@@ -264,6 +274,10 @@ export interface TaskQueryRequest {
   searchText?: string;
   /** 工作流模板 ID 筛选（用于查询某个工作流的执行历史） */
   workflowId?: string;
+  /** 业务线 ID 筛选（M7.6 三维度 RBAC，org_admin 全局可筛） */
+  businessLineId?: string;
+  /** 部门 ID 筛选（M7.6 三维度 RBAC） */
+  departmentId?: string;
 }
 
 /**
@@ -292,6 +306,10 @@ export interface TaskTriggerRequest {
   params?: Record<string, unknown>;
   /** 关联工作流模板 ID（可选） */
   workflowId?: string;
+  /** 业务线业务 ID（可选；M7.6 三维度 RBAC，不传则后端从用户主关联中推断） */
+  businessLineId?: string;
+  /** 部门业务 ID（可选；M7.6 三维度 RBAC，不传则后端从用户主关联中推断） */
+  departmentId?: string;
 }
 
 /**

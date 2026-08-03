@@ -55,6 +55,21 @@ public class TaskVO implements Serializable {
     /** 任务耗时（毫秒，仅终态任务计算；进行中任务为 null） */
     private Long durationMs;
 
+    /** 风险等级（关联工作流模板的 risk_level：low / medium / high / critical；无关联工作流时为 null） */
+    private String riskLevel;
+
+    /** 部门业务 ID（M7.6 三维度 RBAC） */
+    private Long departmentId;
+
+    /** 部门名称（关联 enterprise_department.dept_name，前端展示用） */
+    private String departmentName;
+
+    /** 业务线业务 ID（M7.6 三维度 RBAC） */
+    private Long businessLineId;
+
+    /** 业务线名称（关联 enterprise_business_line.business_line_name，前端展示用） */
+    private String businessLineName;
+
     /** 创建时间 */
     private Timestamp createTime;
 

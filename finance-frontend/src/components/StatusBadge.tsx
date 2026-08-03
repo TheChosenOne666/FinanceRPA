@@ -19,6 +19,8 @@ import type { SubTaskStatus, TaskStatus } from '@/api/types'
 interface StatusStyle {
   /** 中文标签 */
   label: string
+  /** Emoji 前缀（对齐原型 03-tasks.html 的状态徽章：✅ ⚡ ⚠ ⏳ ❌） */
+  emoji?: string
   /** 文字色（CSS 变量或具体色值） */
   color: string
   /** 背景色（带透明度） */
@@ -33,12 +35,14 @@ interface StatusStyle {
 const TASK_STATUS_STYLES: Record<TaskStatus, StatusStyle> = {
   PENDING: {
     label: '待执行',
+    emoji: '⏳',
     color: 'var(--status-queued)',
     bg: 'rgba(107, 114, 128, 0.10)',
     border: 'rgba(107, 114, 128, 0.28)',
   },
   EXECUTING: {
     label: '执行中',
+    emoji: '⚡',
     color: 'var(--status-running)',
     bg: 'rgba(59, 130, 246, 0.10)',
     border: 'rgba(59, 130, 246, 0.32)',
@@ -46,24 +50,28 @@ const TASK_STATUS_STYLES: Record<TaskStatus, StatusStyle> = {
   },
   SUCCESS: {
     label: '成功',
+    emoji: '✅',
     color: 'var(--status-completed)',
     bg: 'rgba(16, 185, 129, 0.10)',
     border: 'rgba(16, 185, 129, 0.30)',
   },
   FAILED: {
     label: '失败',
+    emoji: '❌',
     color: 'var(--status-failed)',
     bg: 'rgba(239, 68, 68, 0.10)',
     border: 'rgba(239, 68, 68, 0.30)',
   },
   NEEDS_HUMAN: {
     label: '需人工',
+    emoji: '⚠',
     color: 'var(--status-needs-human)',
     bg: 'rgba(249, 115, 22, 0.10)',
     border: 'rgba(249, 115, 22, 0.32)',
   },
   ABORTED: {
     label: '已终止',
+    emoji: '⛔',
     color: 'var(--status-timeout)',
     bg: 'rgba(220, 38, 38, 0.08)',
     border: 'rgba(220, 38, 38, 0.26)',
@@ -74,12 +82,14 @@ const TASK_STATUS_STYLES: Record<TaskStatus, StatusStyle> = {
 const SUBTASK_STATUS_STYLES: Record<SubTaskStatus, StatusStyle> = {
   PENDING: {
     label: '待执行',
+    emoji: '⏳',
     color: 'var(--status-queued)',
     bg: 'rgba(107, 114, 128, 0.10)',
     border: 'rgba(107, 114, 128, 0.28)',
   },
   RUNNING: {
     label: '执行中',
+    emoji: '⚡',
     color: 'var(--status-running)',
     bg: 'rgba(59, 130, 246, 0.10)',
     border: 'rgba(59, 130, 246, 0.32)',
@@ -87,24 +97,28 @@ const SUBTASK_STATUS_STYLES: Record<SubTaskStatus, StatusStyle> = {
   },
   COMPLETED: {
     label: '已完成',
+    emoji: '✅',
     color: 'var(--status-completed)',
     bg: 'rgba(16, 185, 129, 0.10)',
     border: 'rgba(16, 185, 129, 0.30)',
   },
   FAILED: {
     label: '失败',
+    emoji: '❌',
     color: 'var(--status-failed)',
     bg: 'rgba(239, 68, 68, 0.10)',
     border: 'rgba(239, 68, 68, 0.30)',
   },
   SKIPPED: {
     label: '已跳过',
+    emoji: '⏭',
     color: 'var(--status-paused)',
     bg: 'rgba(139, 92, 246, 0.08)',
     border: 'rgba(139, 92, 246, 0.26)',
   },
   REPLANNED: {
     label: '已重规划',
+    emoji: '🔄',
     color: 'var(--status-paused)',
     bg: 'rgba(139, 92, 246, 0.08)',
     border: 'rgba(139, 92, 246, 0.26)',
@@ -153,6 +167,7 @@ export function StatusBadge({ status, size = 'sm', subtask = false }: StatusBadg
       }}
     >
       {style.pulse && <span className="status-dot" style={{ background: style.color }} />}
+      {style.emoji && <span className="status-badge-emoji">{style.emoji}</span>}
       {style.label}
     </span>
   )

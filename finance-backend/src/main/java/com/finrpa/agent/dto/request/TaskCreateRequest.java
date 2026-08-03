@@ -28,4 +28,10 @@ public class TaskCreateRequest implements Serializable {
 
     /** 关联工作流模板 ID（可选） */
     private Long workflowId;
+
+    /** 业务线业务 ID（可选；M7.6 三维度 RBAC，不传则后端从用户主关联中推断） */
+    private Long businessLineId;
+
+    /** 部门业务 ID（可选；M7.6 三维度 RBAC，不传则后端从用户主关联中推断） */
+    private Long departmentId;
 }

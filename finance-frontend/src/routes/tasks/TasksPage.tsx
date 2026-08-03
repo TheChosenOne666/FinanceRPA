@@ -19,12 +19,16 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { taskApi } from '@/api/tasks'
-import type { TaskQueryRequest, TaskStatus, TaskVO } from '@/api/types'
+import type { TaskQueryRequest, TaskStatus, TaskVO, WorkflowRiskLevel } from '@/api/types'
 import { ApiError } from '@/api/AxiosClient'
+import { RISK_LEVEL_LABELS } from '@/api/workflows'
+import { tenantApi } from '@/api/tenant'
+import type { BusinessLineVO } from '@/api/tenant'
 import Pagination from '@/components/Pagination'
 import StatusBadge from '@/components/StatusBadge'
 import {
   IconAlert,
+  IconClock,
   IconPlay,
   IconRefresh,
   IconSearch,
@@ -35,6 +39,21 @@ import TriggerTaskModal from './TriggerTaskModal'
 /** 默认页大小 */
 const DEFAULT_PAGE_SIZE = 10
 
+/**
+ * 格式化耗时（毫秒 → "Xm Ys" / "Xs"）
+ *
+ * @param ms 耗时毫秒数
+ * @returns 格式化后的耗时字符串
+ */
+function formatDuration(ms?: number): string {
+  if (ms == null || ms < 0) return '-'
+  const totalSec = Math.floor(ms / 1000)
+  const min = Math.floor(totalSec / 60)
+  const sec = totalSec % 60
+  if (min > 0) return `${min}m ${String(sec).padStart(2, '0')}s`
+  return `${sec}s`
+}
+
 /** 状态筛选选项 */
 const STATUS_OPTIONS: Array<{ value: '' | TaskStatus; label: string }> = [
   { value: '', label: '全部状态' },
@@ -44,6 +63,15 @@ const STATUS_OPTIONS: Array<{ value: '' | TaskStatus; label: string }> = [
   { value: 'FAILED', label: '失败' },
   { value: 'NEEDS_HUMAN', label: '需人工' },
   { value: 'ABORTED', label: '已终止' },
+]
+
+/** 风险等级筛选选项（对齐原型 03-tasks.html：全部/低风险/中风险/高风险/极高风险） */
+const RISK_OPTIONS: Array<{ value: '' | WorkflowRiskLevel; label: string }> = [
+  { value: '', label: '全部' },
+  { value: 'low', label: '低风险' },
+  { value: 'medium', label: '中风险' },
+  { value: 'high', label: '高风险' },
+  { value: 'critical', label: '极高风险' },
 ]
 
 /**
@@ -126,13 +154,24 @@ function TasksPage() {
   const [current, setCurrent] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [status, setStatus] = useState<'' | TaskStatus>('')
+  const [riskLevel, setRiskLevel] = useState<'' | WorkflowRiskLevel>('')
+  const [businessLineId, setBusinessLineId] = useState<string>('')
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo] = useState<string>('')
   const [searchInput, setSearchInput] = useState('') // 输入框值（即时变化）
   const [searchText, setSearchText] = useState('') // 实际提交的搜索值（防抖后）
 
   // 2. 触发任务弹窗
   const [triggerOpen, setTriggerOpen] = useState(false)
 
-  // 3. 搜索防抖（输入停止 400ms 后触发查询）
+  // 3. 业务线列表（用于筛选下拉，对齐原型 03-tasks.html）
+  const { data: businessLines } = useQuery({
+    queryKey: ['tenant-business-lines'] as const,
+    queryFn: () => tenantApi.listBusinessLines(),
+    staleTime: 5 * 60 * 1000, // 5 分钟缓存
+  })
+
+  // 4. 搜索防抖（输入停止 400ms 后触发查询）
   useEffect(() => {
     const t = setTimeout(() => {
       setSearchText(searchInput.trim())
@@ -141,28 +180,38 @@ function TasksPage() {
     return () => clearTimeout(t)
   }, [searchInput])
 
-  // 4. 查询参数（useQuery 依赖项）
+  // 5. 查询参数（useQuery 依赖项）
   const queryKey = useMemo(
-    () => ['tasks', { current, pageSize, status, searchText }] as const,
-    [current, pageSize, status, searchText],
+    () =>
+      [
+        'tasks',
+        { current, pageSize, status, searchText, riskLevel, businessLineId, dateFrom, dateTo },
+      ] as const,
+    [current, pageSize, status, searchText, riskLevel, businessLineId, dateFrom, dateTo],
   )
 
-  // 5. 查询任务列表
+  // 6. 查询任务列表
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey,
-    queryFn: () =>
-      taskApi.listTasks({
+    queryFn: () => {
+      const req: TaskQueryRequest = {
         current,
         pageSize,
         status,
         searchText,
         sortField: 'createTime',
         sortOrder: 'desc',
-      } satisfies TaskQueryRequest),
+      }
+      // 6.1 业务线筛选（M7.6 三维度 RBAC）
+      if (businessLineId) {
+        req.businessLineId = businessLineId
+      }
+      return taskApi.listTasks(req)
+    },
     refetchOnWindowFocus: false,
   })
 
-  // 6. 自动轮询：列表中存在执行中 / 待执行任务时 5s 刷新，否则 30s
+  // 7. 自动轮询：列表中存在执行中 / 待执行任务时 5s 刷新，否则 30s
   const hasActiveTask = (data?.records ?? []).some(
     (t) => t.status === 'EXECUTING' || t.status === 'PENDING',
   )
@@ -180,6 +229,29 @@ function TasksPage() {
   /** 状态筛选变更 */
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setStatus(e.target.value as '' | TaskStatus)
+    setCurrent(1)
+  }
+
+  /** 风险等级筛选变更 */
+  const handleRiskChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setRiskLevel(e.target.value as '' | WorkflowRiskLevel)
+    setCurrent(1)
+  }
+
+  /** 业务线筛选变更 */
+  const handleBusinessLineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setBusinessLineId(e.target.value)
+    setCurrent(1)
+  }
+
+  /** 重置筛选条件 */
+  const handleReset = () => {
+    setSearchInput('')
+    setStatus('')
+    setRiskLevel('')
+    setBusinessLineId('')
+    setDateFrom('')
+    setDateTo('')
     setCurrent(1)
   }
 
@@ -203,18 +275,15 @@ function TasksPage() {
 
   const records: TaskVO[] = data?.records ?? []
   const total: number = data?.total ?? 0
+  const businessLineList: BusinessLineVO[] = businessLines ?? []
 
   return (
     <div className="tasks-page">
-      {/* region 页面标题 + 操作区 */}
+      {/* region 页面标题 + 操作区（对齐原型：标题 + 面包屑） */}
       <div className="tasks-header">
         <div>
-          <h1 className="page-title">
-            任务列表
-          </h1>
-          <p className="page-subtitle">
-            管理当前组织下的自动化任务，查看执行进度与历史结果
-          </p>
+          <h1 className="page-title">任务管理</h1>
+          <div className="breadcrumb">首页 / 自动化 / 任务管理</div>
         </div>
         <div className="tasks-header-actions">
           <button
@@ -239,16 +308,16 @@ function TasksPage() {
       </div>
       {/* endregion */}
 
-      {/* region 筛选栏（对齐原型 .filter-bar 网格布局） */}
+      {/* region 筛选栏（对齐原型 .filter-bar 6 列网格：关键词/状态/业务线/风险等级/执行时间/重置） */}
       <div className="tasks-toolbar glass-card-static">
-        <div className="toolbar-filter">
-          <label className="toolbar-filter-label">搜索任务</label>
+        <div className="toolbar-filter toolbar-search-field">
+          <label className="toolbar-filter-label">关键词</label>
           <div className="toolbar-search">
             <IconSearch size={14} className="toolbar-search-icon" />
             <input
               type="text"
               className="input toolbar-input"
-              placeholder="输入任务目标关键词（自动搜索）"
+              placeholder="搜索任务 ID / 名称…"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />
@@ -267,6 +336,73 @@ function TasksPage() {
               </option>
             ))}
           </select>
+        </div>
+        <div className="toolbar-filter">
+          <label className="toolbar-filter-label">业务线</label>
+          <select
+            className="select toolbar-select"
+            value={businessLineId}
+            onChange={handleBusinessLineChange}
+          >
+            <option value="">全部业务线</option>
+            {businessLineList.map((bl) => (
+              <option key={bl.businessLineId} value={bl.businessLineId}>
+                {bl.businessLineName}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="toolbar-filter">
+          <label className="toolbar-filter-label">风险等级</label>
+          <select
+            className="select toolbar-select"
+            value={riskLevel}
+            onChange={handleRiskChange}
+          >
+            {RISK_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="toolbar-filter">
+          <label className="toolbar-filter-label">执行时间</label>
+          <div className="toolbar-date-range">
+            <input
+              type="date"
+              className="input toolbar-date-input"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value)
+                setCurrent(1)
+              }}
+              aria-label="起始日期"
+            />
+            <span className="toolbar-date-sep">至</span>
+            <input
+              type="date"
+              className="input toolbar-date-input"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value)
+                setCurrent(1)
+              }}
+              aria-label="结束日期"
+            />
+          </div>
+        </div>
+        <div className="toolbar-filter">
+          <label className="toolbar-filter-label" style={{ visibility: 'hidden' }}>操作</label>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={handleReset}
+            title="重置筛选条件"
+          >
+            <IconRefresh size={14} />
+            重置
+          </button>
         </div>
       </div>
       {/* endregion */}
@@ -290,19 +426,34 @@ function TasksPage() {
             <IconTarget size={36} />
             <div className="tasks-empty-title">暂无任务</div>
             <div className="tasks-empty-desc">
-              {searchText || status
+              {searchText || status || businessLineId || riskLevel || dateFrom || dateTo
                 ? '当前筛选条件下没有匹配的任务'
                 : '点击右上角"触发任务"开始第一个自动化任务'}
             </div>
           </div>
         ) : (
-          records.map((task) => (
-            <TaskCard
-              key={task.taskId}
-              task={task}
-              onClick={() => navigate(`/tasks/${task.taskId}`)}
-            />
-          ))
+          records
+            .filter((t) => {
+              // 前端二次过滤：风险等级（依赖 TaskVO.riskLevel）+ 日期范围
+              // 后端 TaskQueryRequest 暂未支持 riskLevel/dateFrom/dateTo，前端兜底过滤
+              if (riskLevel && t.riskLevel !== riskLevel) return false
+              if (dateFrom) {
+                const created = dayjs(t.createTime)
+                if (!created.isAfter(dayjs(dateFrom).subtract(1, 'day'))) return false
+              }
+              if (dateTo) {
+                const created = dayjs(t.createTime)
+                if (!created.isBefore(dayjs(dateTo).add(1, 'day'))) return false
+              }
+              return true
+            })
+            .map((task) => (
+              <TaskCard
+                key={task.taskId}
+                task={task}
+                onClick={() => navigate(`/tasks/${task.taskId}`)}
+              />
+            ))
         )}
       </div>
       {/* endregion */}
@@ -356,6 +507,9 @@ function TaskCard({ task, onClick }: { task: TaskVO; onClick: () => void }) {
   // 3. 状态图标配置
   const iconConfig = STATUS_ICON_CONFIG[task.status]
 
+  // 4. 风险等级 badge（关联工作流模板）
+  const hasRisk = task.riskLevel && RISK_LEVEL_LABELS[task.riskLevel as keyof typeof RISK_LEVEL_LABELS]
+
   return (
     <div className="glass-card task-card" onClick={onClick}>
       {/* region 左侧状态图标 */}
@@ -366,26 +520,42 @@ function TaskCard({ task, onClick }: { task: TaskVO; onClick: () => void }) {
 
       {/* region 任务主体 */}
       <div className="task-body">
-        {/* 标题行：task-id 标签 + task-name */}
+        {/* 标题行：task-id 标签 + task-name + 风险 badge（对齐原型） */}
         <div className="task-title-row">
           <span className="task-id" title={task.taskId}>
             #{task.taskId.slice(-10)}
           </span>
           <span className="task-name">{task.goal}</span>
+          {hasRisk && (
+            <span className={`badge risk-${task.riskLevel}`}>
+              {RISK_LEVEL_LABELS[task.riskLevel as keyof typeof RISK_LEVEL_LABELS]}风险
+            </span>
+          )}
         </div>
 
-        {/* 元信息：创建时间 + 用户 ID */}
+        {/* 元信息：部门 · 操作人：xxx · 业务线（对齐原型 03-tasks.html task-meta 三段式） */}
         <div className="task-meta">
-          创建于 {createTime}
+          {task.departmentName || '未分配部门'}
           <span className="dot">·</span>
-          用户 {task.userId}
+          操作人：{task.userName || task.userId}
+          <span className="dot">·</span>
+          {task.businessLineName || '未分配业务线'}
         </div>
 
-        {/* 统计信息：状态徽章 + 步骤进度 + 错误信息 */}
+        {/* 统计信息：状态徽章 + 时间 + 耗时 + 错误信息（对齐原型 task-stats） */}
         <div className="task-stats">
           <span className="stat-item">
             <StatusBadge status={task.status} />
           </span>
+          <span className="stat-item">
+            <IconClock size={14} />
+            {createTime}
+          </span>
+          {task.durationMs != null && (
+            <span className="stat-item">
+              耗时 <span className="mono">{formatDuration(task.durationMs)}</span>
+            </span>
+          )}
           {hasProgress && (
             <span className="stat-item">
               步骤 <span className="mono">{task.currentStep}/{task.totalSteps}</span>
@@ -413,17 +583,84 @@ function TaskCard({ task, onClick }: { task: TaskVO; onClick: () => void }) {
       </div>
       {/* endregion */}
 
-      {/* region 操作按钮 */}
+      {/* region 操作按钮（对齐原型：按状态显示不同主按钮 + 日志/重试/详情 + 更多） */}
       <div className="task-actions">
+        {/* 需人工：立即接管（橙色高亮） */}
+        {task.status === 'NEEDS_HUMAN' && (
+          <button
+            type="button"
+            className="btn btn-sm task-action-takeover"
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick()
+            }}
+          >
+            立即接管
+          </button>
+        )}
+        {/* 执行中：实时流 */}
+        {task.status === 'EXECUTING' && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick()
+            }}
+          >
+            实时流
+          </button>
+        )}
+        {/* 失败/已终止：重试 */}
+        {(task.status === 'FAILED' || task.status === 'ABORTED') && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick()
+            }}
+          >
+            重试
+          </button>
+        )}
+        {/* 成功/待执行：查看详情 */}
+        {(task.status === 'SUCCESS' || task.status === 'PENDING') && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick()
+            }}
+          >
+            查看详情
+          </button>
+        )}
+        {/* 日志按钮：终态任务（成功/失败/已终止/需人工）可查看日志 */}
+        {['SUCCESS', 'FAILED', 'ABORTED', 'NEEDS_HUMAN'].includes(task.status) && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick()
+            }}
+          >
+            日志
+          </button>
+        )}
         <button
           type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={(e) => {
-            e.stopPropagation()
-            onClick()
-          }}
+          className="btn btn-ghost btn-sm btn-icon"
+          title="更多操作"
+          onClick={(e) => e.stopPropagation()}
         >
-          查看详情
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="5" r="1" />
+            <circle cx="12" cy="12" r="1" />
+            <circle cx="12" cy="19" r="1" />
+          </svg>
         </button>
       </div>
       {/* endregion */}

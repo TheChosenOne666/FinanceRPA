@@ -69,6 +69,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // 5. 暂存 userId 到 request attribute，供 Controller 读取（M2.3 任务创建需要）
                 if (StringUtils.hasText(userId)) {
                     request.setAttribute(AgentConstant.USER_ID_REQUEST_ATTR, userId);
+                    // 5.1 M7.6 三维度 RBAC：同时存入 tenant attribute，供 TenantInterceptor 注入 TenantContext
+                    request.setAttribute(TenantConstant.USER_ID_REQUEST_ATTR, userId);
                 }
 
                 // 6. 设置 SecurityContext

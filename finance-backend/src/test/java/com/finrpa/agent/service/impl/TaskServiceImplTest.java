@@ -22,9 +22,14 @@ import com.finrpa.agent.mapper.AgentTaskMapper;
 import com.finrpa.agent.mapper.CoordinationStateMapper;
 import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskResumeRequest;
+import com.finrpa.auth.entity.UserRoleEO;
 import com.finrpa.auth.mapper.UserMapper;
+import com.finrpa.auth.service.PermissionService;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.tenant.context.TenantContext;
+import com.finrpa.tenant.mapper.BusinessLineMapper;
+import com.finrpa.tenant.mapper.DepartmentMapper;
+import com.finrpa.workflows.mapper.WorkflowTemplateMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -87,6 +92,22 @@ class TaskServiceImplTest {
     /** 用户 Mapper（M7.5 引入：填充触发用户姓名） */
     @Mock
     private UserMapper userMapper;
+
+    /** 工作流模板 Mapper（UI 对齐：填充任务风险等级） */
+    @Mock
+    private WorkflowTemplateMapper workflowTemplateMapper;
+
+    /** 权限服务（M7.6 三维度 RBAC） */
+    @Mock
+    private PermissionService permissionService;
+
+    /** 部门 Mapper（M7.6：填充任务部门名称） */
+    @Mock
+    private DepartmentMapper departmentMapper;
+
+    /** 业务线 Mapper（M7.6：填充任务业务线名称） */
+    @Mock
+    private BusinessLineMapper businessLineMapper;
 
     @InjectMocks
     private TaskServiceImpl taskService;
@@ -212,6 +233,50 @@ class TaskServiceImplTest {
         assertThatThrownBy(() -> taskService.createTask(TEST_ORG_ID, TEST_USER_ID, request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("任务创建失败");
+    }
+
+    @Test
+    @DisplayName("createTask - M7.6 未传业务线/部门时从用户主关联推断")
+    void createTask_InferBizLineAndDept_FromPrimaryUserRole() {
+        // 1. 构建请求（不传 businessLineId / departmentId）
+        TaskCreateRequest request = new TaskCreateRequest();
+        request.setGoal("下载银行流水");
+
+        // 2. mock 用户主关联：dept=1001, bizLine=2001
+        UserRoleEO primary = new UserRoleEO();
+        primary.setUserId(TEST_USER_ID);
+        primary.setDepartmentId(1001L);
+        primary.setBusinessLineId(2001L);
+        when(permissionService.getPrimaryUserRole(TEST_USER_ID)).thenReturn(primary);
+        when(agentTaskMapper.insert(any(AgentTaskEO.class))).thenReturn(1);
+
+        // 3. 调用
+        AgentTaskEO result = taskService.createTask(TEST_ORG_ID, TEST_USER_ID, request);
+
+        // 4. 验证：部门/业务线已从主关联推断
+        assertThat(result.getDepartmentId()).isEqualTo(1001L);
+        assertThat(result.getBusinessLineId()).isEqualTo(2001L);
+    }
+
+    @Test
+    @DisplayName("createTask - M7.6 显式传业务线/部门时优先使用请求值")
+    void createTask_UseRequestBizLineAndDept_WhenProvided() {
+        // 1. 构建请求（显式传入 businessLineId / departmentId）
+        TaskCreateRequest request = new TaskCreateRequest();
+        request.setGoal("下载银行流水");
+        request.setBusinessLineId(9999L);
+        request.setDepartmentId(8888L);
+
+        // 2. mock 主关联（不应被调用，因为请求已显式传值）
+        when(agentTaskMapper.insert(any(AgentTaskEO.class))).thenReturn(1);
+
+        // 3. 调用
+        AgentTaskEO result = taskService.createTask(TEST_ORG_ID, TEST_USER_ID, request);
+
+        // 4. 验证：使用请求传入的值，不调用主关联推断
+        assertThat(result.getBusinessLineId()).isEqualTo(9999L);
+        assertThat(result.getDepartmentId()).isEqualTo(8888L);
+        verify(permissionService, never()).getPrimaryUserRole(any());
     }
 
     // endregion
@@ -918,6 +983,149 @@ class TaskServiceImplTest {
 
         // 4. 验证回滚：agentTaskMapper.update 被调用 2 次（一次 EXECUTING + 一次回滚 FAILED）
         verify(agentTaskMapper, times(2)).update(any(), any());
+    }
+
+    // endregion
+
+    // region listTasks（M7.6 三维度 RBAC 过滤）
+
+    @Test
+    @DisplayName("listTasks - M7.6 org_admin 全组织可见，不追加业务线范围约束")
+    void listTasks_OrgAdmin_NoBizLineFilter() {
+        // 1. 设置租户上下文（含 userId）
+        TenantContext.setOrgId(TEST_ORG_ID.toString());
+        TenantContext.setUserId(TEST_USER_ID.toString());
+
+        // 2. mock：用户是 org_admin
+        when(permissionService.isOrgAdmin(TEST_USER_ID.toString())).thenReturn(true);
+
+        // 3. mock 分页查询返回空页（验证调用链不抛异常即可）
+        Page<AgentTaskEO> emptyPage = new Page<>(1, 10, 0);
+        when(agentTaskMapper.selectPage(any(), any())).thenReturn(emptyPage);
+
+        // 4. 调用
+        TaskQueryRequest request = new TaskQueryRequest();
+        request.setCurrent(1);
+        request.setPageSize(10);
+        IPage<TaskVO> result = taskService.listTasks(request);
+
+        // 5. 验证：org_admin 不调用 getUserBusinessLineIds（不加业务线范围约束）
+        assertThat(result).isNotNull();
+        assertThat(result.getRecords()).isEmpty();
+        verify(permissionService, never()).getUserBusinessLineIds(any());
+    }
+
+    @Test
+    @DisplayName("listTasks - M7.6 普通用户有不限业务线关联时不加范围约束")
+    void listTasks_NormalUser_UnboundedBizLine_NoFilter() {
+        // 1. 设置租户上下文
+        TenantContext.setOrgId(TEST_ORG_ID.toString());
+        TenantContext.setUserId(TEST_USER_ID.toString());
+
+        // 2. mock：非 org_admin + 业务线关联返回 null（不限业务线）
+        when(permissionService.isOrgAdmin(TEST_USER_ID.toString())).thenReturn(false);
+        when(permissionService.getUserBusinessLineIds(TEST_USER_ID.toString())).thenReturn(null);
+
+        // 3. mock 分页查询返回空页
+        Page<AgentTaskEO> emptyPage = new Page<>(1, 10, 0);
+        when(agentTaskMapper.selectPage(any(), any())).thenReturn(emptyPage);
+
+        // 4. 调用
+        TaskQueryRequest request = new TaskQueryRequest();
+        request.setCurrent(1);
+        request.setPageSize(10);
+        IPage<TaskVO> result = taskService.listTasks(request);
+
+        // 5. 验证：返回 null 表示不限业务线，不追加 IN 约束
+        assertThat(result).isNotNull();
+        assertThat(result.getRecords()).isEmpty();
+        verify(permissionService, times(1)).getUserBusinessLineIds(TEST_USER_ID.toString());
+    }
+
+    @Test
+    @DisplayName("listTasks - M7.6 普通用户关联特定业务线时按 IN 范围过滤")
+    void listTasks_NormalUser_BoundedBizLine_FilterApplied() {
+        // 1. 设置租户上下文
+        TenantContext.setOrgId(TEST_ORG_ID.toString());
+        TenantContext.setUserId(TEST_USER_ID.toString());
+
+        // 2. mock：非 org_admin + 关联业务线 [2001L, 2002L]
+        when(permissionService.isOrgAdmin(TEST_USER_ID.toString())).thenReturn(false);
+        when(permissionService.getUserBusinessLineIds(TEST_USER_ID.toString()))
+                .thenReturn(java.util.Set.of(2001L, 2002L));
+
+        // 3. mock 分页查询返回空页
+        Page<AgentTaskEO> emptyPage = new Page<>(1, 10, 0);
+        when(agentTaskMapper.selectPage(any(), any())).thenReturn(emptyPage);
+
+        // 4. 调用
+        TaskQueryRequest request = new TaskQueryRequest();
+        request.setCurrent(1);
+        request.setPageSize(10);
+        IPage<TaskVO> result = taskService.listTasks(request);
+
+        // 5. 验证：调用链正常执行（IN 过滤条件已追加到 wrapper）
+        assertThat(result).isNotNull();
+        assertThat(result.getRecords()).isEmpty();
+        verify(permissionService, times(1)).getUserBusinessLineIds(TEST_USER_ID.toString());
+    }
+
+    @Test
+    @DisplayName("listTasks - M7.6 按 businessLineId 筛选 + 批量填充部门/业务线名称")
+    void listTasks_FilterByBizLine_FillDeptAndBizLineNames() {
+        // 1. 设置租户上下文
+        TenantContext.setOrgId(TEST_ORG_ID.toString());
+        TenantContext.setUserId(TEST_USER_ID.toString());
+
+        // 2. mock：org_admin
+        when(permissionService.isOrgAdmin(TEST_USER_ID.toString())).thenReturn(true);
+
+        // 3. 构建一条带 departmentId/businessLineId 的任务
+        AgentTaskEO task = createTask(TEST_TASK_ID, TEST_ORG_ID, TaskStateEnum.SUCCESS);
+        task.setDepartmentId(1001L);
+        task.setBusinessLineId(2001L);
+        task.setUserId(TEST_USER_ID);
+        task.setCreateTime(java.sql.Timestamp.valueOf("2026-08-01 10:00:00"));
+        task.setUpdateTime(java.sql.Timestamp.valueOf("2026-08-01 10:05:00"));
+
+        Page<AgentTaskEO> page = new Page<>(1, 10, 1);
+        page.setRecords(List.of(task));
+        when(agentTaskMapper.selectPage(any(), any())).thenReturn(page);
+
+        // 4. mock 用户姓名
+        com.finrpa.auth.entity.UserEO user = new com.finrpa.auth.entity.UserEO();
+        user.setUserId(TEST_USER_ID);
+        user.setRealName("张三");
+        when(userMapper.selectByUserIds(any())).thenReturn(List.of(user));
+
+        // 5. mock 部门名称
+        com.finrpa.tenant.entity.DepartmentEO dept = new com.finrpa.tenant.entity.DepartmentEO();
+        dept.setDeptId(1001L);
+        dept.setDeptName("财务部");
+        when(departmentMapper.selectBatchIds(any())).thenReturn(List.of(dept));
+
+        // 6. mock 业务线名称
+        com.finrpa.tenant.entity.BusinessLineEO bizLine = new com.finrpa.tenant.entity.BusinessLineEO();
+        bizLine.setBusinessLineId(2001L);
+        bizLine.setBusinessLineName("证券交易");
+        when(businessLineMapper.selectBatchIds(any())).thenReturn(List.of(bizLine));
+
+        // 7. 调用：按 businessLineId 筛选
+        TaskQueryRequest request = new TaskQueryRequest();
+        request.setCurrent(1);
+        request.setPageSize(10);
+        request.setBusinessLineId(2001L);
+        IPage<TaskVO> result = taskService.listTasks(request);
+
+        // 8. 验证：VO 已填充部门/业务线名称
+        assertThat(result).isNotNull();
+        assertThat(result.getRecords()).hasSize(1);
+        TaskVO vo = result.getRecords().get(0);
+        assertThat(vo.getDepartmentId()).isEqualTo(1001L);
+        assertThat(vo.getDepartmentName()).isEqualTo("财务部");
+        assertThat(vo.getBusinessLineId()).isEqualTo(2001L);
+        assertThat(vo.getBusinessLineName()).isEqualTo("证券交易");
+        assertThat(vo.getUserName()).isEqualTo("张三");
     }
 
     // endregion

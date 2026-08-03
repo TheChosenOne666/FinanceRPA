@@ -28,4 +28,10 @@ public class TaskQueryRequest extends PageRequest {
 
     /** 工作流模板 ID 筛选（可选，用于查询某个工作流的执行历史） */
     private Long workflowId;
+
+    /** 业务线 ID 筛选（可选；M7.6 三维度 RBAC，普通用户自动限制为本人关联业务线，org_admin 全局可筛） */
+    private Long businessLineId;
+
+    /** 部门 ID 筛选（可选；M7.6 三维度 RBAC） */
+    private Long departmentId;
 }

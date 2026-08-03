@@ -27,11 +27,19 @@ import com.finrpa.ai.client.dto.TaskResumeRequest;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.agent.service.TaskStateMachine;
 import com.finrpa.auth.entity.UserEO;
+import com.finrpa.auth.entity.UserRoleEO;
 import com.finrpa.auth.mapper.UserMapper;
+import com.finrpa.auth.service.PermissionService;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
 import com.finrpa.tenant.context.TenantContext;
+import com.finrpa.tenant.entity.BusinessLineEO;
+import com.finrpa.tenant.entity.DepartmentEO;
+import com.finrpa.tenant.mapper.BusinessLineMapper;
+import com.finrpa.tenant.mapper.DepartmentMapper;
+import com.finrpa.workflows.entity.WorkflowTemplateEO;
+import com.finrpa.workflows.mapper.WorkflowTemplateMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -42,6 +50,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -82,6 +91,22 @@ public class TaskServiceImpl implements TaskService {
     @Resource
     private UserMapper userMapper;
 
+    /** 工作流模板 Mapper（用于填充任务风险等级） */
+    @Resource
+    private WorkflowTemplateMapper workflowTemplateMapper;
+
+    /** 权限服务（M7.6 三维度 RBAC：任务列表按业务线范围过滤 + 推断默认部门/业务线） */
+    @Resource
+    private PermissionService permissionService;
+
+    /** 部门 Mapper（M7.6：批量填充任务部门名称） */
+    @Resource
+    private DepartmentMapper departmentMapper;
+
+    /** 业务线 Mapper（M7.6：批量填充任务业务线名称） */
+    @Resource
+    private BusinessLineMapper businessLineMapper;
+
     // region 对外接口
 
     /**
@@ -109,6 +134,23 @@ public class TaskServiceImpl implements TaskService {
         task.setCurrentStep(0);
         task.setTotalSteps(0);
         task.setMessage("任务已创建，等待执行");
+
+        // 2.1 M7.6 三维度 RBAC：填充部门/业务线（前端传则用，不传则从用户主关联推断）
+        Long businessLineId = request.getBusinessLineId();
+        Long departmentId = request.getDepartmentId();
+        if (businessLineId == null || departmentId == null) {
+            UserRoleEO primary = permissionService.getPrimaryUserRole(userId);
+            if (primary != null) {
+                if (businessLineId == null) {
+                    businessLineId = primary.getBusinessLineId();
+                }
+                if (departmentId == null) {
+                    departmentId = primary.getDepartmentId();
+                }
+            }
+        }
+        task.setBusinessLineId(businessLineId);
+        task.setDepartmentId(departmentId);
 
         // 3. 序列化参数为 JSON
         if (request.getParams() != null && !request.getParams().isEmpty()) {
@@ -160,6 +202,31 @@ public class TaskServiceImpl implements TaskService {
             wrapper.eq(AgentTaskEO::getWorkflowId, queryRequest.getWorkflowId());
         }
 
+        // 5.1 M7.6 三维度 RBAC：业务线/部门筛选
+        if (queryRequest.getBusinessLineId() != null) {
+            wrapper.eq(AgentTaskEO::getBusinessLineId, queryRequest.getBusinessLineId());
+        }
+        if (queryRequest.getDepartmentId() != null) {
+            wrapper.eq(AgentTaskEO::getDepartmentId, queryRequest.getDepartmentId());
+        }
+
+        // 5.2 M7.6 三维度 RBAC：普通用户仅看本人关联的业务线/部门范围，org_admin 全组织可见
+        String userIdStr = TenantContext.getUserId();
+        if (userIdStr != null && !permissionService.isOrgAdmin(userIdStr)) {
+            // 5.2.1 业务线范围：用户关联为 null（不限）则不加约束；否则限制 IN 范围
+            Set<Long> bizLineIds = permissionService.getUserBusinessLineIds(userIdStr);
+            if (bizLineIds != null) {
+                if (bizLineIds.isEmpty()) {
+                    // 无任何关联 → 仅能看到 business_line_id 为 NULL 的任务（兼容旧数据）
+                    wrapper.isNull(AgentTaskEO::getBusinessLineId);
+                } else {
+                    // 包含 NULL（用户有不限业务线关联）已在 bizLineIds==null 分支处理，此处仅 IN
+                    wrapper.in(AgentTaskEO::getBusinessLineId, bizLineIds)
+                            .or().isNull(AgentTaskEO::getBusinessLineId);
+                }
+            }
+        }
+
         // 6. 排序（默认按创建时间倒序）
         wrapper.orderByDesc(AgentTaskEO::getCreateTime);
 
@@ -179,14 +246,44 @@ public class TaskServiceImpl implements TaskService {
                 .collect(Collectors.toList());
         Map<Long, String> userNameMap = batchResolveUserNames(userIds);
 
-        // 9. 转换为 VO（填充 userName 和 durationMs）
+        // 9. 批量查询关联工作流模板的风险等级（避免 N+1）
+        List<Long> workflowIds = taskPage.getRecords().stream()
+                .map(AgentTaskEO::getWorkflowId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> riskLevelMap = batchResolveRiskLevels(workflowIds);
+
+        // 9.1 M7.6 批量查询部门名称（避免 N+1）
+        List<Long> deptIds = taskPage.getRecords().stream()
+                .map(AgentTaskEO::getDepartmentId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> deptNameMap = batchResolveDepartmentNames(deptIds);
+
+        // 9.2 M7.6 批量查询业务线名称（避免 N+1）
+        List<Long> bizLineIds = taskPage.getRecords().stream()
+                .map(AgentTaskEO::getBusinessLineId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> bizLineNameMap = batchResolveBusinessLineNames(bizLineIds);
+
+        // 10. 转换为 VO（填充 userName / durationMs / riskLevel / departmentName / businessLineName）
         IPage<TaskVO> voPage = taskPage.convert(task -> {
             TaskVO vo = new TaskVO();
             BeanUtils.copyProperties(task, vo);
-            // 9.1 填充触发用户姓名
+            // 10.1 填充触发用户姓名
             vo.setUserName(userNameMap.get(task.getUserId()));
-            // 9.2 计算耗时（仅终态任务）
+            // 10.2 计算耗时（仅终态任务）
             vo.setDurationMs(calculateDurationMs(task));
+            // 10.3 填充风险等级（关联工作流模板）
+            vo.setRiskLevel(task.getWorkflowId() != null ? riskLevelMap.get(task.getWorkflowId()) : null);
+            // 10.4 M7.6 填充部门名称
+            vo.setDepartmentName(task.getDepartmentId() != null ? deptNameMap.get(task.getDepartmentId()) : null);
+            // 10.5 M7.6 填充业务线名称
+            vo.setBusinessLineName(task.getBusinessLineId() != null ? bizLineNameMap.get(task.getBusinessLineId()) : null);
             return vo;
         });
 
@@ -229,6 +326,14 @@ public class TaskServiceImpl implements TaskService {
 
         // 4.2 计算耗时（仅终态任务）
         detailVO.setDurationMs(calculateDurationMs(task));
+
+        // 4.3 填充风险等级（关联工作流模板）
+        if (task.getWorkflowId() != null) {
+            WorkflowTemplateEO workflow = workflowTemplateMapper.selectById(task.getWorkflowId());
+            if (workflow != null) {
+                detailVO.setRiskLevel(workflow.getRiskLevel());
+            }
+        }
 
         // 5. 查询子任务列表
         LambdaQueryWrapper<AgentSubTaskEO> subtaskWrapper = new LambdaQueryWrapper<>();
@@ -661,6 +766,66 @@ public class TaskServiceImpl implements TaskService {
             return null;
         }
         return task.getUpdateTime().getTime() - task.getCreateTime().getTime();
+    }
+
+    /**
+     * 批量查询工作流模板风险等级（避免 N+1）
+     *
+     * @param workflowIds 工作流模板 ID 列表
+     * @return Map: workflowId → riskLevel
+     */
+    private Map<Long, String> batchResolveRiskLevels(List<Long> workflowIds) {
+        if (workflowIds == null || workflowIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        List<WorkflowTemplateEO> workflows = workflowTemplateMapper.selectBatchIds(workflowIds);
+        Map<Long, String> map = new HashMap<>();
+        if (workflows != null) {
+            for (WorkflowTemplateEO wf : workflows) {
+                map.put(wf.getWorkflowId(), wf.getRiskLevel());
+            }
+        }
+        return map;
+    }
+
+    /**
+     * M7.6 批量查询部门名称（避免 N+1）
+     *
+     * @param deptIds 部门业务 ID 列表
+     * @return Map: deptId → deptName
+     */
+    private Map<Long, String> batchResolveDepartmentNames(List<Long> deptIds) {
+        if (deptIds == null || deptIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        List<DepartmentEO> departments = departmentMapper.selectBatchIds(deptIds);
+        Map<Long, String> map = new HashMap<>();
+        if (departments != null) {
+            for (DepartmentEO dept : departments) {
+                map.put(dept.getDeptId(), dept.getDeptName());
+            }
+        }
+        return map;
+    }
+
+    /**
+     * M7.6 批量查询业务线名称（避免 N+1）
+     *
+     * @param businessLineIds 业务线业务 ID 列表
+     * @return Map: businessLineId → businessLineName
+     */
+    private Map<Long, String> batchResolveBusinessLineNames(List<Long> businessLineIds) {
+        if (businessLineIds == null || businessLineIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        List<BusinessLineEO> businessLines = businessLineMapper.selectBatchIds(businessLineIds);
+        Map<Long, String> map = new HashMap<>();
+        if (businessLines != null) {
+            for (BusinessLineEO bl : businessLines) {
+                map.put(bl.getBusinessLineId(), bl.getBusinessLineName());
+            }
+        }
+        return map;
     }
 
     // endregion

@@ -59,6 +59,14 @@ interface MockTask {
   errorMessage?: string
   params?: string
   workflowId?: string
+  userName?: string
+  durationMs?: number
+  riskLevel?: 'low' | 'medium' | 'high' | 'critical'
+  // M7.6 三维度 RBAC：部门/业务线（可选，未指定时 listTasks 返回默认值）
+  departmentId?: string
+  departmentName?: string
+  businessLineId?: string
+  businessLineName?: string
   createTime: string
   updateTime: string
   subtasks: Array<{
@@ -486,6 +494,14 @@ export function mockServerPlugin(): Plugin {
                 decodeURIComponent(workflowDetailMatch[1]),
               )
             }
+            // 部门列表：/api/v1/tenant/departments（M7.6 三维度 RBAC：任务列表筛选）
+            if (pathname === '/api/v1/tenant/departments' && method === 'GET') {
+              return handleListDepartments(res)
+            }
+            // 业务线列表：/api/v1/tenant/business-lines（M7.6 三维度 RBAC：任务列表筛选）
+            if (pathname === '/api/v1/tenant/business-lines' && method === 'GET') {
+              return handleListBusinessLines(res)
+            }
 
             // 3. 未匹配的 /api/ 请求 → 放行到 proxy（实际会失败，但便于发现遗漏）
             return next()
@@ -645,6 +661,9 @@ function handleListTasks(req: IncomingMessage, res: ServerResponse): void {
   const status = q.status || ''
   const searchText = (q.searchText || '').toLowerCase()
   const workflowId = q.workflowId || ''
+  // M7.6 三维度 RBAC：业务线 / 部门筛选参数
+  const businessLineId = q.businessLineId || ''
+  const departmentId = q.departmentId || ''
 
   // 1. 过滤
   let filtered = mockTasks.filter((t) => t.orgId === MOCK_USER.orgId)
@@ -657,6 +676,16 @@ function handleListTasks(req: IncomingMessage, res: ServerResponse): void {
   if (workflowId) {
     // 工作流执行历史：按 workflowId 筛选（mock task 无 workflowId 则被过滤）
     filtered = filtered.filter((t) => t.workflowId === workflowId)
+  }
+  if (businessLineId) {
+    // M7.6：业务线筛选（mock 数据未指定时默认返回 2001-证券交易，按默认值匹配）
+    filtered = filtered.filter(
+      (t) => (t.businessLineId ?? '2001') === businessLineId,
+    )
+  }
+  if (departmentId) {
+    // M7.6：部门筛选
+    filtered = filtered.filter((t) => (t.departmentId ?? '1001') === departmentId)
   }
 
   // 2. 排序（按创建时间倒序）
@@ -671,19 +700,38 @@ function handleListTasks(req: IncomingMessage, res: ServerResponse): void {
   sendJson(res, 200, {
     code: 0,
     data: {
-      records: records.map((t) => ({
-        taskId: t.taskId,
-        orgId: t.orgId,
-        userId: t.userId,
-        goal: t.goal,
-        status: t.status,
-        currentStep: t.currentStep,
-        totalSteps: t.totalSteps,
-        message: t.message,
-        errorMessage: t.errorMessage,
-        createTime: t.createTime,
-        updateTime: t.updateTime,
-      })),
+      records: records.map((t) => {
+        // 4.1 关联工作流模板获取风险等级
+        const workflow = t.workflowId
+          ? mockWorkflows.find((w) => w.workflowId === t.workflowId)
+          : undefined
+        // 4.2 计算耗时（仅终态任务）
+        const isTerminal = ['SUCCESS', 'FAILED', 'ABORTED', 'NEEDS_HUMAN'].includes(t.status)
+        const durationMs = isTerminal
+          ? new Date(t.updateTime).getTime() - new Date(t.createTime).getTime()
+          : undefined
+        return {
+          taskId: t.taskId,
+          orgId: t.orgId,
+          userId: t.userId,
+          goal: t.goal,
+          status: t.status,
+          currentStep: t.currentStep,
+          totalSteps: t.totalSteps,
+          message: t.message,
+          errorMessage: t.errorMessage,
+          userName: MOCK_USER.realName,
+          durationMs,
+          riskLevel: workflow?.riskLevel,
+          // M7.6 三维度 RBAC：部门/业务线（mock 数据：未指定时统一返回"财务部 / 证券交易"）
+          departmentId: t.departmentId ?? '1001',
+          departmentName: t.departmentName ?? '财务部',
+          businessLineId: t.businessLineId ?? '2001',
+          businessLineName: t.businessLineName ?? '证券交易',
+          createTime: t.createTime,
+          updateTime: t.updateTime,
+        }
+      }),
       current,
       size: pageSize,
       total,
@@ -2509,6 +2557,48 @@ async function handleRunWorkflow(
       workflowId,
       state: 'PENDING',
     },
+    message: 'ok',
+  })
+}
+
+// ============================================================
+// 租户接口（M7.6 三维度 RBAC：部门 / 业务线列表，用于任务列表筛选）
+// ============================================================
+
+/** Mock 部门列表（对齐原型 03-tasks.html 筛选栏：对公信贷部 / 个人金融部 / 保险业务部 / 资金运营部 / 同业业务部） */
+const MOCK_DEPARTMENTS = [
+  { deptId: '1001', deptName: '财务部', deptCode: 'FIN', parentId: '0', sortOrder: 1 },
+  { deptId: '1002', deptName: '对公信贷部', deptCode: 'CORP', parentId: '0', sortOrder: 2 },
+  { deptId: '1003', deptName: '个人金融部', deptCode: 'RETAIL', parentId: '0', sortOrder: 3 },
+  { deptId: '1004', deptName: '保险业务部', deptCode: 'INS', parentId: '0', sortOrder: 4 },
+  { deptId: '1005', deptName: '资金运营部', deptCode: 'TREASURY', parentId: '0', sortOrder: 5 },
+  { deptId: '1006', deptName: '同业业务部', deptCode: 'IB', parentId: '0', sortOrder: 6 },
+]
+
+/** Mock 业务线列表（对齐原型 03-tasks.html 筛选栏：对公信贷 / 个人金融 / 保险业务 / 同业业务 / 资金运营） */
+const MOCK_BUSINESS_LINES = [
+  { businessLineId: '2001', businessLineName: '证券交易', businessLineCode: 'SEC', sortOrder: 1 },
+  { businessLineId: '2002', businessLineName: '对公信贷', businessLineCode: 'CORP_LOAN', sortOrder: 2 },
+  { businessLineId: '2003', businessLineName: '个人金融', businessLineCode: 'RETAIL_FIN', sortOrder: 3 },
+  { businessLineId: '2004', businessLineName: '保险业务', businessLineCode: 'INSURANCE', sortOrder: 4 },
+  { businessLineId: '2005', businessLineName: '同业业务', businessLineCode: 'INTERBANK', sortOrder: 5 },
+  { businessLineId: '2006', businessLineName: '资金运营', businessLineCode: 'TREASURY_OP', sortOrder: 6 },
+]
+
+/** GET /api/v1/tenant/departments */
+function handleListDepartments(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: MOCK_DEPARTMENTS,
+    message: 'ok',
+  })
+}
+
+/** GET /api/v1/tenant/business-lines */
+function handleListBusinessLines(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: MOCK_BUSINESS_LINES,
     message: 'ok',
   })
 }

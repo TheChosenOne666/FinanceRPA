@@ -41,6 +41,12 @@ public class TenantInterceptor implements HandlerInterceptor {
             // 3. 未携带 orgId 时记录调试日志（如登录、健康检查等放行接口）
             log.debug("当前请求未携带 orgId，TenantContext 未设置");
         }
+
+        // 4. M7.6 三维度 RBAC：从 request attribute 读取 userId 注入 TenantContext
+        Object userIdObj = request.getAttribute(TenantConstant.USER_ID_REQUEST_ATTR);
+        if (userIdObj instanceof String userId && !userId.isEmpty()) {
+            TenantContext.setUserId(userId);
+        }
         return true;
     }
 

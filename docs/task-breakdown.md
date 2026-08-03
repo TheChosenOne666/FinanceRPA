@@ -993,6 +993,21 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **验收标准** | 任务列表正确展示；详情页时间线实时更新；浏览器流可见；触发任务后能看到执行过程 |
 | **状态** | ✅ 已完成（2026-07-29）。新增 9 个文件（4 个页面/组件路由 + 4 个通用组件 + 2 个 API 封装），修改 3 个文件（types.ts 扩展任务相关类型 / router.tsx 注册路由 / RootLayout.tsx 顶部导航 / main.tsx 注入 QueryClientProvider / glass.css 追加 M2.5 任务管理样式约 720 行）。TypeScript 严格模式编译通过（167 modules），Vite 生产构建通过（347.80 kB gzipped 113.57 kB）。未引入新依赖（复用 @tanstack/react-query + dayjs + react-router-dom + axios）。SSE 端点 `/ai/sse/**` 已在 SecurityConfig 放行，EventSource 直接连接无需 token。 |
 
+> **UI 原型对齐优化（2026-08-04，含 M7.6 三维度 RBAC 任务业务线字段）**：按 `prototypes/03-tasks.html` 原型逐项对比，补齐 5 项缺失布局/交互，并落地三维度 RBAC（部门 × 业务线 × 角色）数据通路。
+>
+> | 改动点 | 后端 | 前端 |
+> |--------|------|------|
+> | 三维度 RBAC 数据通路 | V19 迁移：`sys_user_role` 加 `department_id`/`business_line_id`，唯一约束改为四元组；`rpa_agent_task` 加 `department_id`/`business_line_id`。`UserRoleEO`/`AgentTaskEO` 同步字段。`PermissionService` 新增 `isOrgAdmin`/`getUserBusinessLineIds`/`getUserDepartmentIds`/`getPrimaryUserRole`。`TaskServiceImpl` 创建任务时按用户主关联推断部门/业务线，listTasks 按权限过滤（org_admin 全局，普通用户仅可见自己业务线 + 无业务线任务） | `TaskVO`/`TaskQueryRequest`/`TaskTriggerRequest` 加 `departmentId`/`businessLineId`；`tasks.ts` listTasks 传递新参数 |
+> | 筛选栏 6 列布局 | — | `TasksPage.tsx` 筛选栏改为 6 列网格（关键词/状态/业务线/风险等级/执行时间/重置），新增 `RISK_OPTIONS`、`tenantApi.listBusinessLines` 数据源；`glass.css` 加 `.toolbar-date-range`/`.task-action-takeover` 等 |
+> | 元信息三段式 | `TaskVO` 加 `departmentName`/`businessLineName`（批量查名避免 N+1） | `TasksPage.tsx` TaskCard 元信息改为「部门 · 操作人：xxx · 业务线」 |
+> | 状态徽章 emoji | — | `StatusBadge.tsx` `StatusStyle` 加 `emoji` 字段（✅ ⚡ ⚠ ⏳ ❌ ⛔ ⏭ 🔄），渲染 `.status-badge-emoji` span；`glass.css` 加 emoji 字体回退栈 |
+> | 操作按钮状态化 | — | `TasksPage.tsx` TaskCard 按状态显示主按钮：NEEDS_HUMAN→立即接管（橙色）/ EXECUTING→实时流 / FAILED·ABORTED→重试 / SUCCESS·PENDING→查看详情；终态任务追加「日志」按钮 |
+> | 分页居中布局 | — | `Pagination.tsx` 改为三栏（左占位 + 中按钮 + 右信息），移除首页/末页按钮和未用变量；`glass.css` `.pagination-btn` 用原型风格（白底 + 边框 + active 深蓝带阴影） |
+> | Mock 数据补全 | — | `mockServer.ts` 加 `MOCK_DEPARTMENTS`/`MOCK_BUSINESS_LINES` + `handleListDepartments`/`handleListBusinessLines`；`handleListTasks` 支持 `businessLineId`/`departmentId` 过滤；任务默认返回「财务部 / 证券交易」 |
+> | 部门/业务线 API | — | 新建 `api/tenant.ts`（`tenantApi.listDepartments`/`listBusinessLines`，对齐 `DepartmentVO`/`BusinessLineVO`） |
+>
+> **验证**：后端 `mvnw test` 52 个测试通过（含 6 个新增三维度 RBAC 用例）；前端 `tsc --noEmit` 通过；内置浏览器验证 6 项全部 PASS（筛选栏 6 列、元信息三段式、状态徽章 emoji、操作按钮状态化、分页居中、业务线筛选+重置功能正常）。
+
 #### M2.6 端到端联调
 
 | 项 | 内容 |

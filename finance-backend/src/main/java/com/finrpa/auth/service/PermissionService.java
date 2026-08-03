@@ -62,4 +62,45 @@ public interface PermissionService {
      * @return 是否允许跨组织审批
      */
     boolean isCrossOrgApproveAllowed(String userId);
+
+    /**
+     * 判断用户是否为组织管理员（org_admin 或 super_admin），可查看整个组织的数据
+     *
+     * @param userId 用户 ID
+     * @return 是否为组织管理员
+     */
+    boolean isOrgAdmin(String userId);
+
+    /**
+     * 获取用户关联的业务线 ID 集合（M7.6 三维度 RBAC）
+     *
+     * <p>从 sys_user_role 关联中提取该用户所有非 NULL 的 business_line_id。
+     * 若用户存在 business_line_id 为 NULL 的关联，表示不限业务线，返回 null 表示"全部可见"。</p>
+     *
+     * @param userId 用户 ID
+     * @return 业务线 ID 集合；null 表示全部可见（用户有不限业务线的关联）；空集合表示无任何关联
+     */
+    java.util.Set<Long> getUserBusinessLineIds(String userId);
+
+    /**
+     * 获取用户关联的部门 ID 集合（M7.6 三维度 RBAC）
+     *
+     * <p>从 sys_user_role 关联中提取该用户所有非 NULL 的 department_id。
+     * 若用户存在 department_id 为 NULL 的关联，表示不限部门，返回 null 表示"全部可见"。</p>
+     *
+     * @param userId 用户 ID
+     * @return 部门 ID 集合；null 表示全部可见；空集合表示无任何关联
+     */
+    java.util.Set<Long> getUserDepartmentIds(String userId);
+
+    /**
+     * 获取用户的主关联（用于任务触发时推断默认部门/业务线）
+     *
+     * <p>主关联定义：用户的第一条 sys_user_role 记录（按 id 升序）。
+     * 任务创建时若未显式传入 departmentId/businessLineId，则从此关联中推断。</p>
+     *
+     * @param userId 用户 ID
+     * @return 主关联实体；无关联时返回 null
+     */
+    com.finrpa.auth.entity.UserRoleEO getPrimaryUserRole(Long userId);
 }
