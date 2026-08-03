@@ -1899,3 +1899,64 @@ M{里程碑号}.{任务序号}
 | v1.2 | 2026-07-28 | - | 更新 M1.2 任务状态为已完成；补充 M1.2 详细产出物描述（TenantContext/TenantInterceptor/TenantLineHandlerImpl/TenantConstant/Entity/Mapper/DTO/Service/Controller/Flyway V6/MyBatisPlusConfig 修改/JwtAuthenticationFilter 修改）；补充验收标准验证结果（91 个单元测试通过）；同步 system-design.md 6.2 节实现说明（字段名 org_id 偏差、ThreadLocal 选择、Filter+Interceptor 分层） |
 | v1.3 | 2026-07-28 | - | 更新 M1.3 任务状态为已完成；补充 M1.3 详细产出物描述（AxiosClient/auth.ts/types.ts/AuthStore/AuthGuard/LoginPage/Forbidden/RootLayout/router/styles）；补充验收标准验证结果（browser 自动化 11 项 PASS）；新增"前后端联调测试步骤"小节；同步 system-design.md 4.4 节实现说明（后端 controller 路径偏差 /api/v1、vite proxy rewrite、M1.5 范围最小化、i18n 暂不实现、2FA 暂不实现、RootLayout 占位、refresh 失败强制跳转） |
 | v1.4 | 2026-07-29 | - | 更新 M2.1 任务状态为已完成；补充 M2.1 实际产出文件清单（agent/skills/clients/api/schemas/demo_seed 14 个新增 + config/main/pyproject/Dockerfile 4 个更新）；记录 20 个单元测试全部通过；记录 Skyvern 源码暂未引入的落地偏差（M2.1 fallback 模式不需要，M3 实际浏览器操作时引入）；同步 system-design.md 4.3 节 M2.1 落地偏差实现说明 |
+| v1.5 | 2026-08-04 | - | 新增第 10 章"前端 UI 原型对齐追踪"（8 个原型页面对齐进度表 + 建议优先级）；记录工作流页面（M3.6）+ 任务列表页（M2.5）已完成对齐 |
+
+---
+
+## 10. 前端 UI 原型对齐追踪
+
+> **目的**：追踪 `prototypes/*.html` 8 个原型页面与 `finance-frontend/src/routes/` 已实现页面的 UI 对齐进度。新会话可从此章节快速了解当前进度与下一步工作。
+
+### 10.1 对齐进度总览
+
+| # | 原型文件 | 前端页面 | 状态 | 完成日期 | 说明 |
+|---|---------|---------|------|----------|------|
+| 1 | `01-auth-and-layout.html` | [LoginPage.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/auth/LoginPage.tsx) / [RootLayout.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/RootLayout.tsx) | ✅ 已完成 | 2026-07-28 | 登录页 + 顶部导航 + 侧边栏骨架（M1.3/M1.5） |
+| 2 | `02-dashboard.html` | [Dashboard.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Dashboard.tsx) | ⬜ 未对齐 | — | M8.1 后端统计 API + Redis 缓存已就绪，前端布局/图表样式待对照原型 |
+| 3 | `03-tasks.html` | [TasksPage.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/tasks/TasksPage.tsx) | ✅ 已完成 | 2026-08-04 | 筛选栏 6 列、元信息三段式、状态徽章 emoji、操作按钮状态化、分页居中（含 M7.6 三维度 RBAC） |
+| 4 | `04-workflows.html` | [Workflows.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/workflows/Workflows.tsx) | ✅ 已完成 | 2026-08-04 | 行业 Tab、卡片统计行、详情配置网格、日期参数选择器、执行历史（含后端字段补充） |
+| 5 | `05-approval-center.html` | [ApprovalCenter.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/ApprovalCenter.tsx) | ⬜ 未对齐 | — | M6.3/M6.4 后端审批流程 + 超时检测已就绪，前端待对照原型 |
+| 6 | `06-audit-logs.html` | [AuditLogs.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/AuditLogs.tsx) | ⬜ 未对齐 | — | M7.5 已实现列表/时间线双视图 + CSV 导出，样式待对照原型 |
+| 7 | `07-ai-monitoring.html` | [LlmMonitor.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/LlmMonitor.tsx) / [NeedsHuman.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/NeedsHuman.tsx) | ⬜ 未对齐 | — | M5.4/M5.6 后端 LLM 统计 + NEEDS_HUMAN 队列已就绪，前端待对照原型 |
+| 8 | `08-settings.html` | 无 | ⬜ 未实现 | — | 系统设置页（组织/用户/角色/部门/业务线/Skill 元数据/工作流模板等管理）后端部分已就绪，前端页面未创建 |
+
+**汇总**：已完成 3 / 8 ｜ 未对齐 4 / 8 ｜ 未实现 1 / 8
+
+### 10.2 建议优先级
+
+| 优先级 | 页面 | 原因 |
+|--------|------|------|
+| P0 | **dashboard**（02） | 首页，用户第一眼看到，影响最大 |
+| P1 | **audit-logs**（06） | M7.5 刚完成后端，趁热打铁对齐前端 |
+| P2 | **approval-center**（05） | M6.3/M6.4 已完成，对齐后可形成完整审批闭环演示 |
+| P3 | **ai-monitoring**（07） | M5 系列已完成，对齐后可展示 AI 治理能力 |
+| P4 | **settings**（08） | 工作量最大（需新建页面），放最后 |
+
+### 10.3 已完成页面改动摘要
+
+#### 10.3.1 03-tasks.html → TasksPage.tsx（2026-08-04）
+
+详见 [M2.5 章节](#m25-任务列表页与详情页) 末尾"UI 原型对齐优化（2026-08-04）"小节。
+
+**核心改动**：
+- 后端：V19 迁移 + 三维度 RBAC（部门×业务线×角色）数据通路
+- 前端：筛选栏 6 列网格 / 元信息三段式 / 状态徽章 emoji / 操作按钮状态化 / 分页居中
+- 验证：52 个后端测试 + tsc 通过 + 浏览器 6 项 PASS
+
+#### 10.3.2 04-workflows.html → Workflows.tsx（2026-08-04）
+
+详见 [M3.6 章节](#m36-工作流模板管理) 末尾"UI 原型对齐优化（2026-08-04）"小节。
+
+**核心改动**：
+- 后端：WorkflowVO 加 `createUser`/`runCount`；TaskVO 加 `userName`/`durationMs`；V18 迁移
+- 前端：卡片统计行 / 详情配置网格 / 日期参数选择器 / 执行历史
+- 验证：mvnw test + tsc 通过 + UI 元素确认
+
+### 10.4 下一步
+
+按优先级从 P0（dashboard）开始推进，每完成一个页面：
+1. 对照 `prototypes/0X-xxx.html` 逐项比对
+2. 修改前端代码 + 必要时补充后端字段
+3. tsc 检查 + 浏览器截图验证
+4. 更新本章节状态（✅ + 完成日期 + 改动摘要）
+5. git commit（`feat: XXX 页面 UI 原型对齐优化`）
