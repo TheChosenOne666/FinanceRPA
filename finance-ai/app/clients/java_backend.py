@@ -257,87 +257,88 @@ class JavaBackendClient:
 
     async def upload_screenshot(
         self,
+        org_id: str,
         task_id: str,
-        step: int,
+        step_index: int,
+        phase: str,
         image_data: bytes,
     ) -> str | None:
-        """上传截图到 Java 后端。
+        """上传截图到 Java 后端（M7.2 转发 MinIO）。
 
+        对齐 Java InternalScreenshotController 参数：
+        multipart/form-data，file + orgId + taskId + stepIndex + phase。
+
+        @param org_id: 组织 ID（决定 bucket 名 finrpa-audit-{org_id}）
         @param task_id: 任务 ID
-        @param step: 步骤序号
-        @param image_data: 图片二进制数据
-        @return: 截图 URL，失败返回 None
+        @param step_index: 步骤序号
+        @param phase: 阶段（before / after）
+        @param image_data: PNG 二进制数据
+        @return: 预签名 URL，失败返回 None
         """
         logger.info(
-            "JavaBackendClient: 上传截图 [task=%s, step=%d, size=%d bytes]",
-            task_id, step, len(image_data),
+            "JavaBackendClient: 上传截图 [org=%s, task=%s, step=%d, phase=%s, size=%d bytes]",
+            org_id, task_id, step_index, phase, len(image_data),
         )
         resp = await self._request_with_retry(
             "POST",
             "/api/internal/screenshots",
-            files={"file": (f"{task_id}_step{step}.png", image_data, "image/png")},
-            data={"task_id": task_id, "step": str(step)},
+            files={"file": (f"{task_id}_step{step_index}_{phase}.png", image_data, "image/png")},
+            data={
+                "orgId": org_id,
+                "taskId": task_id,
+                "stepIndex": str(step_index),
+                "phase": phase,
+            },
         )
         if resp is None:
             logger.error(
-                "JavaBackendClient: 上传截图失败 [task=%s, step=%d]", task_id, step,
+                "JavaBackendClient: 上传截图失败 [task=%s, step=%d, phase=%s]",
+                task_id, step_index, phase,
             )
             return None
         data = resp.json()
-        url = data.get("url") or data.get("data", {}).get("url")
+        # Java BaseResponse 封装：{ code: 0, data: { objectPath, presignUrl } }
+        inner = data.get("data") or {}
+        url = inner.get("presignUrl") or data.get("presignUrl")
         logger.info(
-            "JavaBackendClient: 上传截图成功 [task=%s, step=%d, url=%s]",
-            task_id, step, url,
+            "JavaBackendClient: 上传截图成功 [task=%s, step=%d, phase=%s, url=%s]",
+            task_id, step_index, phase, url,
         )
         return url
 
-    async def report_audit_log(
-        self,
-        task_id: str,
-        org_id: str,
-        action_type: str,
-        target_element: str | None = None,
-        page_url: str | None = None,
-        execution_result: str = "success",
-        error_message: str | None = None,
-    ) -> bool:
-        """上报审计日志。
+    async def report_audit_log(self, payload) -> bool:
+        """上报审计日志（M7.3，对齐 Java AuditLogCreateRequest 完整结构）。
 
-        @param task_id: 任务 ID
-        @param org_id: 组织 ID
-        @param action_type: 动作类型（NAVIGATE/CLICK/INPUT_TEXT 等）
-        @param target_element: 目标元素
-        @param page_url: 页面 URL
-        @param execution_result: 执行结果（success/failed）
-        @param error_message: 错误信息
+        接受 AuditLogPayload 或 dict，统一序列化为 Java 侧期望的 JSON。
+
+        @param payload: AuditLogPayload 对象或 dict（含完整审计字段）
         @return: 是否成功
         """
-        payload = {
-            "taskId": task_id,
-            "orgId": org_id,
-            "actionType": action_type,
-            "executionResult": execution_result,
-        }
-        if target_element:
-            payload["targetElement"] = target_element
-        if page_url:
-            payload["pageUrl"] = page_url
-        if error_message:
-            payload["errorMessage"] = error_message
+        # 统一转为 dict（AuditLogPayload → by_alias 序列化）
+        if hasattr(payload, "model_dump"):
+            data = payload.model_dump(by_alias=True, exclude_none=True)
+        else:
+            data = dict(payload)
 
+        task_id = data.get("taskId", "unknown")
+        action_type = data.get("actionType", "unknown")
         logger.info(
-            "JavaBackendClient: 上报审计日志 [task=%s, org=%s, action=%s, result=%s]",
-            task_id, org_id, action_type, execution_result,
+            "JavaBackendClient: 上报审计日志 [task=%s, action=%s, result=%s]",
+            task_id, action_type, data.get("executionResult", "success"),
         )
         resp = await self._request_with_retry(
-            "POST", "/api/internal/audit/logs", json=payload,
+            "POST", "/api/internal/audit/logs", json=data,
         )
         if resp is None:
             logger.error(
-                "JavaBackendClient: 上报审计日志失败 [task=%s]", task_id,
+                "JavaBackendClient: 上报审计日志失败 [task=%s, action=%s]",
+                task_id, action_type,
             )
             return False
-        logger.info("JavaBackendClient: 上报审计日志成功 [task=%s]", task_id)
+        logger.info(
+            "JavaBackendClient: 上报审计日志成功 [task=%s, action=%s]",
+            task_id, action_type,
+        )
         return True
 
     async def report_llm_call(self, record: dict) -> bool:

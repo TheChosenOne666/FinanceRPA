@@ -152,24 +152,30 @@ async def test_update_subtask_with_error():
 
 @pytest.mark.asyncio
 async def test_upload_screenshot_success():
-    """成功上传截图应返回 URL。"""
+    """成功上传截图应返回预签名 URL（M7.2 对齐）。"""
     client = JavaBackendClient(base_url="http://localhost:8080", internal_token="test-token")
 
     mock_resp = MagicMock()
     mock_resp.raise_for_status = MagicMock()
-    mock_resp.json.return_value = {"data": {"url": "http://minio/screenshot.png"}}
+    # Java BaseResponse 封装：{ code: 0, data: { objectPath, presignUrl } }
+    mock_resp.json.return_value = {
+        "code": 0,
+        "data": {"objectPath": "2026-08-03/123/1_before.png", "presignUrl": "http://minio/presigned"},
+    }
     mock_http = MagicMock()
     mock_http.is_closed = False
     _make_mock_client(mock_http, mock_resp)
     client._client = mock_http
 
     url = await client.upload_screenshot(
+        org_id="org-1",
         task_id="123",
-        step=1,
+        step_index=1,
+        phase="before",
         image_data=b"fake-png-data",
     )
 
-    assert url == "http://minio/screenshot.png"
+    assert url == "http://minio/presigned"
     call_args = mock_http.request.call_args
     assert call_args[0][0] == "POST"
     assert "/api/internal/screenshots" in call_args[0][1]
@@ -192,8 +198,10 @@ async def test_upload_screenshot_failure():
 
     try:
         url = await client.upload_screenshot(
+            org_id="org-1",
             task_id="123",
-            step=1,
+            step_index=1,
+            phase="before",
             image_data=b"fake-png-data",
         )
     finally:
@@ -204,7 +212,7 @@ async def test_upload_screenshot_failure():
 
 @pytest.mark.asyncio
 async def test_report_audit_log_success():
-    """成功上报审计日志应返回 True。"""
+    """成功上报审计日志应返回 True（M7.3 支持AuditLogPayload/dict）。"""
     client = JavaBackendClient(base_url="http://localhost:8080", internal_token="test-token")
 
     mock_resp = MagicMock()
@@ -214,13 +222,17 @@ async def test_report_audit_log_success():
     _make_mock_client(mock_http, mock_resp)
     client._client = mock_http
 
-    result = await client.report_audit_log(
-        task_id="123",
-        org_id="org-1",
-        action_type="CLICK",
-        page_url="https://example.com",
-        execution_result="success",
+    # M7.3：传 AuditLogPayload 对象
+    from app.audit.schemas import AuditLogPayload
+    payload = AuditLogPayload(
+        taskId="123",
+        orgId="org-1",
+        actionType="CLICK",
+        pageUrl="https://example.com",
+        executionResult="success",
     )
+
+    result = await client.report_audit_log(payload)
 
     assert result is True
     call_args = mock_http.request.call_args

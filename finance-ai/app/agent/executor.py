@@ -239,14 +239,19 @@ class ExecutorAgent:
                     "ExecutorAgent: 上报审计日志 [task=%s, org=%s, action=EXECUTE, result=%s]",
                     self.task_id, self.org_id, "success" if result.success else "failed",
                 )
-                await self.java_client.report_audit_log(
-                    task_id=self.task_id,
-                    org_id=self.org_id,
-                    action_type="EXECUTE",
-                    page_url=result.page_url,
-                    execution_result="success" if result.success else "failed",
-                    error_message=result.error_message,
+                # M7.3：改用 AuditLogPayload 完整字段上报
+                from app.audit.schemas import AuditLogPayload
+                audit_payload = AuditLogPayload(
+                    taskId=self.task_id,
+                    orgId=self.org_id,
+                    actionType="EXECUTE",
+                    pageUrl=result.page_url,
+                    executionResult="success" if result.success else "failed",
+                    errorMessage=result.error_message,
+                    durationMs=result.duration_ms,
+                    completedAt=subtask.completed_at,
                 )
+                await self.java_client.report_audit_log(audit_payload)
 
         # 发布 SSE 事件
         if self.event_bus and self.task_id:

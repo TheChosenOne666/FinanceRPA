@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # 内部鉴权（服务间通信）
     internal_api_token: str = "finrpa-internal-secret"
 
+    # 审计模块配置（M7.3）
+    # 失败请求本地缓存目录（Java 不可用时持久化，恢复后批量上报）
+    audit_cache_dir: str = "/tmp/finrpa-audit-cache"
+
 
 @lru_cache
 def get_settings() -> Settings:
