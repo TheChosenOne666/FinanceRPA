@@ -17,11 +17,12 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * 审计日志对外控制器单元测试（M7.1）
+ * 审计日志对外控制器单元测试（M7.1，M7.4 扩展）
+ *
+ * <p>M7.4 新增覆盖：CSV 导出端点。</p>
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
@@ -86,6 +87,81 @@ class AuditControllerTest {
         mockMvc.perform(get("/v1/audit/logs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
+    }
+
+    @Test
+    @DisplayName("审计日志列表 - 携带 sortField/sortOrder 参数正常透传")
+    void listAuditLogs_WithSortParams() throws Exception {
+        TenantContext.setOrgId(TEST_ORG_ID);
+
+        Page<AuditLogVO> emptyPage = new Page<>(1, 10);
+        when(auditLogService.listAuditLogs(any(AuditLogQueryRequest.class))).thenReturn(emptyPage);
+
+        mockMvc.perform(get("/v1/audit/logs")
+                        .param("sortField", "startedAt")
+                        .param("sortOrder", "descend"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 验证排序参数被透传到 service
+        verify(auditLogService, times(1)).listAuditLogs(argThat(req ->
+                "startedAt".equals(req.getSortField())
+                        && "descend".equals(req.getSortOrder())));
+    }
+
+    @Test
+    @DisplayName("CSV 导出 - 成功返回 text/csv + Content-Disposition + 表头 + 数据")
+    void exportAuditLogs_Success() throws Exception {
+        // 1. 模拟登录态
+        TenantContext.setOrgId(TEST_ORG_ID);
+
+        // 2. mock service 返回测试数据
+        AuditLogVO vo = new AuditLogVO();
+        vo.setAuditId(1001L);
+        vo.setActionType("LOGIN");
+        vo.setExecutionResult("success");
+        when(auditLogService.exportAuditLogs(any(AuditLogQueryRequest.class))).thenReturn(List.of(vo));
+
+        // 3. 执行并验证
+        mockMvc.perform(get("/v1/audit/logs/export")
+                        .param("taskId", "2082333099000000099"))
+                .andExpect(status().isOk())
+                // Content-Type 应为 text/csv
+                .andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString("text/csv")))
+                // Content-Disposition 应含 attachment + 文件名
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("audit_logs_")))
+                // 响应体应含表头 + 数据（BOM 头在 CsvExporterTest 已覆盖）
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("审计ID")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("LOGIN")));
+
+        // 4. 验证 orgId 被填充
+        verify(auditLogService, times(1)).exportAuditLogs(argThat(req ->
+                TEST_ORG_ID.equals(String.valueOf(req.getOrgId()))));
+    }
+
+    @Test
+    @DisplayName("CSV 导出 - 空结果仅含表头")
+    void exportAuditLogs_EmptyResult() throws Exception {
+        TenantContext.setOrgId(TEST_ORG_ID);
+
+        when(auditLogService.exportAuditLogs(any(AuditLogQueryRequest.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/v1/audit/logs/export"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString("text/csv")))
+                // 即使空数据也含表头
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("审计ID")));
+    }
+
+    @Test
+    @DisplayName("CSV 导出 - 无登录态时仍可导出（orgId 不填充）")
+    void exportAuditLogs_NoTenantContext() throws Exception {
+        when(auditLogService.exportAuditLogs(any(AuditLogQueryRequest.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/v1/audit/logs/export"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("审计ID")));
     }
 
     @Test

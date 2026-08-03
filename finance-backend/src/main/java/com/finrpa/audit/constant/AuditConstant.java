@@ -56,4 +56,49 @@ public interface AuditConstant {
     String SCREENSHOT_CLEANUP_LOCK_AT_LEAST = "PT10S";
 
     // endregion
+
+    // region CSV 导出（M7.4）
+
+    /** CSV 导出单次最大条数（防止 OOM，超过部分忽略） */
+    int EXPORT_MAX_ROWS = 10000;
+
+    /** CSV 导出默认文件名前缀 */
+    String EXPORT_FILE_NAME_PREFIX = "audit_logs_";
+
+    /** CSV 导出 Content-Type */
+    String EXPORT_CONTENT_TYPE = "text/csv; charset=UTF-8";
+
+    // endregion
+
+    // region 检索排序字段白名单（M7.4）
+
+    /** 排序字段：审计 ID */
+    String SORT_FIELD_AUDIT_ID = "auditId";
+
+    /** 排序字段：任务 ID */
+    String SORT_FIELD_TASK_ID = "taskId";
+
+    /** 排序字段：风险等级 */
+    String SORT_FIELD_RISK_LEVEL = "riskLevel";
+
+    /** 排序字段：开始时间 */
+    String SORT_FIELD_STARTED_AT = "startedAt";
+
+    /** 排序字段：耗时 */
+    String SORT_FIELD_DURATION_MS = "durationMs";
+
+    /** 排序字段：创建时间 */
+    String SORT_FIELD_CREATE_TIME = "createTime";
+
+    /** 排序字段白名单（防止 SQL 注入，仅允许这些字段排序） */
+    java.util.Set<String> ALLOWED_SORT_FIELDS = java.util.Set.of(
+            SORT_FIELD_AUDIT_ID,
+            SORT_FIELD_TASK_ID,
+            SORT_FIELD_RISK_LEVEL,
+            SORT_FIELD_STARTED_AT,
+            SORT_FIELD_DURATION_MS,
+            SORT_FIELD_CREATE_TIME
+    );
+
+    // endregion
 }

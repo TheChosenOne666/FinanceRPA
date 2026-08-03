@@ -18,6 +18,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,7 +26,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
- * 审计日志服务实现单元测试（M7.1）
+ * 审计日志服务实现单元测试（M7.1，M7.4 扩展）
+ *
+ * <p>M7.4 新增覆盖：动态排序 + exportAuditLogs 不分页查询。</p>
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
@@ -226,6 +229,140 @@ class AuditLogServiceImplTest {
 
         assertEquals(0, result.getTotal());
         assertTrue(result.getRecords().isEmpty());
+    }
+
+    @Test
+    @DisplayName("多维检索 - 指定 sortField=startedAt + sortOrder=ascend 时正常调用")
+    @SuppressWarnings("unchecked")
+    void listAuditLogs_WithSort_Success() {
+        // 1. 构建查询请求（白名单内字段）
+        AuditLogQueryRequest queryRequest = new AuditLogQueryRequest();
+        queryRequest.setOrgId(TEST_ORG_ID);
+        queryRequest.setSortField("startedAt");
+        queryRequest.setSortOrder("ascend");
+
+        // 2. mock
+        Page<AuditLogEO> emptyPage = new Page<>(1, 10);
+        when(auditLogMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(emptyPage);
+
+        // 3. 执行（不抛异常即通过）
+        IPage<AuditLogVO> result = auditLogService.listAuditLogs(queryRequest);
+        assertNotNull(result);
+        verify(auditLogMapper, times(1)).selectPage(any(Page.class), any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    @DisplayName("多维检索 - sortField 非法时回退默认排序（不抛异常）")
+    @SuppressWarnings("unchecked")
+    void listAuditLogs_InvalidSortField_FallbackDefault() {
+        // 1. 构建查询请求（非法字段 + 尝试 SQL 注入）
+        AuditLogQueryRequest queryRequest = new AuditLogQueryRequest();
+        queryRequest.setOrgId(TEST_ORG_ID);
+        queryRequest.setSortField("; DROP TABLE rpa_audit_log; --");
+        queryRequest.setSortOrder("descend");
+
+        // 2. mock
+        Page<AuditLogEO> emptyPage = new Page<>(1, 10);
+        when(auditLogMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(emptyPage);
+
+        // 3. 执行（非法字段回退默认排序，不抛异常）
+        IPage<AuditLogVO> result = auditLogService.listAuditLogs(queryRequest);
+        assertNotNull(result);
+        verify(auditLogMapper, times(1)).selectPage(any(Page.class), any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    @DisplayName("多维检索 - sortOrder 为 null 时按降序处理")
+    @SuppressWarnings("unchecked")
+    void listAuditLogs_NullSortOrder_DefaultDesc() {
+        AuditLogQueryRequest queryRequest = new AuditLogQueryRequest();
+        queryRequest.setOrgId(TEST_ORG_ID);
+        queryRequest.setSortField("durationMs");
+        queryRequest.setSortOrder(null);
+
+        Page<AuditLogEO> emptyPage = new Page<>(1, 10);
+        when(auditLogMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(emptyPage);
+
+        IPage<AuditLogVO> result = auditLogService.listAuditLogs(queryRequest);
+        assertNotNull(result);
+    }
+
+    // endregion
+
+    // region exportAuditLogs 导出查询（M7.4）
+
+    @Test
+    @DisplayName("导出 - 全量查询返回 VO 列表")
+    void exportAuditLogs_Success() {
+        // 1. 构建查询请求
+        AuditLogQueryRequest queryRequest = new AuditLogQueryRequest();
+        queryRequest.setOrgId(TEST_ORG_ID);
+        queryRequest.setTaskId(TEST_TASK_ID);
+
+        // 2. mock
+        AuditLogEO eo1 = new AuditLogEO();
+        eo1.setAuditId(1L);
+        eo1.setTaskId(TEST_TASK_ID);
+        eo1.setOrgId(TEST_ORG_ID);
+        eo1.setActionType("CLICK");
+        AuditLogEO eo2 = new AuditLogEO();
+        eo2.setAuditId(2L);
+        eo2.setTaskId(TEST_TASK_ID);
+        eo2.setOrgId(TEST_ORG_ID);
+        eo2.setActionType("INPUT_TEXT");
+        when(auditLogMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(eo1, eo2));
+
+        // 3. 执行
+        List<AuditLogVO> result = auditLogService.exportAuditLogs(queryRequest);
+
+        // 4. 验证
+        assertEquals(2, result.size());
+        assertEquals(1L, result.get(0).getAuditId());
+        assertEquals("CLICK", result.get(0).getActionType());
+        assertEquals(2L, result.get(1).getAuditId());
+        verify(auditLogMapper, times(1)).selectList(any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    @DisplayName("导出 - 空结果返回空列表")
+    void exportAuditLogs_EmptyResult() {
+        AuditLogQueryRequest queryRequest = new AuditLogQueryRequest();
+        queryRequest.setOrgId(TEST_ORG_ID);
+
+        when(auditLogMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+
+        List<AuditLogVO> result = auditLogService.exportAuditLogs(queryRequest);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("导出 - selectList 返回 null 时返回空列表")
+    void exportAuditLogs_NullResult() {
+        AuditLogQueryRequest queryRequest = new AuditLogQueryRequest();
+        queryRequest.setOrgId(TEST_ORG_ID);
+
+        when(auditLogMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(null);
+
+        List<AuditLogVO> result = auditLogService.exportAuditLogs(queryRequest);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("导出 - 带 sortField 时正常查询")
+    void exportAuditLogs_WithSort() {
+        AuditLogQueryRequest queryRequest = new AuditLogQueryRequest();
+        queryRequest.setOrgId(TEST_ORG_ID);
+        queryRequest.setSortField("startedAt");
+        queryRequest.setSortOrder("descend");
+
+        AuditLogEO eo = new AuditLogEO();
+        eo.setAuditId(1L);
+        eo.setActionType("LOGIN");
+        when(auditLogMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(eo));
+
+        List<AuditLogVO> result = auditLogService.exportAuditLogs(queryRequest);
+        assertEquals(1, result.size());
+        assertEquals("LOGIN", result.get(0).getActionType());
     }
 
     // endregion
