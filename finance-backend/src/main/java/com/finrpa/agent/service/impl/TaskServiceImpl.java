@@ -26,6 +26,8 @@ import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskResumeRequest;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.agent.service.TaskStateMachine;
+import com.finrpa.auth.entity.UserEO;
+import com.finrpa.auth.mapper.UserMapper;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
@@ -37,7 +39,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 任务服务实现
@@ -72,6 +77,10 @@ public class TaskServiceImpl implements TaskService {
     /** Spring 事件发布器（M8.1 任务终态时发布事件，触发大屏缓存失效） */
     @Resource
     private ApplicationEventPublisher applicationEventPublisher;
+
+    /** 用户 Mapper（用于填充任务触发人姓名） */
+    @Resource
+    private UserMapper userMapper;
 
     // region 对外接口
 
@@ -162,10 +171,22 @@ public class TaskServiceImpl implements TaskService {
         Page<AgentTaskEO> page = new Page<>(current, size);
         IPage<AgentTaskEO> taskPage = agentTaskMapper.selectPage(page, wrapper);
 
-        // 8. 转换为 VO
+        // 8. 批量查询触发用户姓名（避免 N+1）
+        List<Long> userIds = taskPage.getRecords().stream()
+                .map(AgentTaskEO::getUserId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> userNameMap = batchResolveUserNames(userIds);
+
+        // 9. 转换为 VO（填充 userName 和 durationMs）
         IPage<TaskVO> voPage = taskPage.convert(task -> {
             TaskVO vo = new TaskVO();
             BeanUtils.copyProperties(task, vo);
+            // 9.1 填充触发用户姓名
+            vo.setUserName(userNameMap.get(task.getUserId()));
+            // 9.2 计算耗时（仅终态任务）
+            vo.setDurationMs(calculateDurationMs(task));
             return vo;
         });
 
@@ -197,6 +218,17 @@ public class TaskServiceImpl implements TaskService {
         // 4. 转换为详情 VO
         TaskDetailVO detailVO = new TaskDetailVO();
         BeanUtils.copyProperties(task, detailVO);
+
+        // 4.1 填充触发用户姓名
+        if (task.getUserId() != null) {
+            UserEO user = userMapper.selectByUserId(task.getUserId());
+            if (user != null) {
+                detailVO.setUserName(user.getRealName());
+            }
+        }
+
+        // 4.2 计算耗时（仅终态任务）
+        detailVO.setDurationMs(calculateDurationMs(task));
 
         // 5. 查询子任务列表
         LambdaQueryWrapper<AgentSubTaskEO> subtaskWrapper = new LambdaQueryWrapper<>();
@@ -588,6 +620,47 @@ public class TaskServiceImpl implements TaskService {
             ThrowUtils.throwIf(rows <= 0, ErrorCode.OPERATION_ERROR, "协调状态更新失败");
             log.info("协调状态更新成功: taskId={}, status={}", taskId, request.getStatus());
         }
+    }
+
+    // endregion
+
+    // region 辅助方法
+
+    /**
+     * 批量查询用户姓名（避免 N+1）
+     *
+     * @param userIds 用户业务 ID 列表
+     * @return Map: userId → 用户姓名
+     */
+    private Map<Long, String> batchResolveUserNames(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        List<UserEO> users = userMapper.selectByUserIds(userIds);
+        Map<Long, String> map = new HashMap<>();
+        if (users != null) {
+            for (UserEO user : users) {
+                map.put(user.getUserId(), user.getRealName());
+            }
+        }
+        return map;
+    }
+
+    /**
+     * 计算任务耗时（仅终态任务计算，进行中任务返回 null）
+     *
+     * @param task 任务实体
+     * @return 耗时毫秒数；非终态任务返回 null
+     */
+    private Long calculateDurationMs(AgentTaskEO task) {
+        if (task == null || task.getStatus() == null || task.getCreateTime() == null || task.getUpdateTime() == null) {
+            return null;
+        }
+        TaskStateEnum state = TaskStateEnum.getEnumByValue(task.getStatus());
+        if (state == null || !TaskStateMachine.isTerminal(state)) {
+            return null;
+        }
+        return task.getUpdateTime().getTime() - task.getCreateTime().getTime();
     }
 
     // endregion

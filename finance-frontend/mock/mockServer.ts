@@ -86,6 +86,7 @@ const mockTasks: MockTask[] = [
     orgId: MOCK_USER.orgId,
     userId: MOCK_USER.userId,
     goal: '下载工商银行 2026 年 6 月银行流水',
+    workflowId: '300000000000000001',
     status: 'SUCCESS',
     currentStep: 3,
     totalSteps: 3,
@@ -171,6 +172,7 @@ const mockTasks: MockTask[] = [
     orgId: MOCK_USER.orgId,
     userId: MOCK_USER.userId,
     goal: '下载建设银行 2026 年 Q2 季度对账单',
+    workflowId: '300000000000000001',
     status: 'EXECUTING',
     currentStep: 2,
     totalSteps: 4,
@@ -418,6 +420,29 @@ export function mockServerPlugin(): Plugin {
             if (pathname === '/api/llm/calls/stats' && method === 'GET') {
               return handleGetLlmStats(res)
             }
+            // 运营大屏：/api/v1/dashboard/*（M8.2）
+            if (pathname === '/api/v1/dashboard/overview' && method === 'GET') {
+              return handleGetDashboardOverview(res)
+            }
+            if (pathname === '/api/v1/dashboard/trends' && method === 'GET') {
+              return handleGetDashboardTrends(req, res)
+            }
+            if (pathname === '/api/v1/dashboard/business-lines' && method === 'GET') {
+              return handleGetDashboardBusinessLines(res)
+            }
+            if (pathname === '/api/v1/dashboard/errors' && method === 'GET') {
+              return handleGetDashboardErrors(res)
+            }
+            if (pathname === '/api/v1/dashboard/costs' && method === 'GET') {
+              return handleGetDashboardCosts(res)
+            }
+            if (pathname === '/api/v1/dashboard/approvals' && method === 'GET') {
+              return handleGetDashboardApprovals(res)
+            }
+            // 审批列表：/api/approvals（M6.5，Dashboard 最近审批表格用）
+            if (pathname === '/api/approvals' && method === 'GET') {
+              return handleListApprovals(req, res)
+            }
             // 审计日志导出：/api/v1/audit/logs/export（M7.5，必须在 :auditId 之前匹配）
             if (pathname === '/api/v1/audit/logs/export' && method === 'GET') {
               return handleExportAuditLogs(req, res)
@@ -434,6 +459,31 @@ export function mockServerPlugin(): Plugin {
               return handleGetAuditLogDetail(
                 res,
                 decodeURIComponent(auditDetailMatch[1]),
+              )
+            }
+            // 工作流列表：/api/workflows（M3.6）
+            if (pathname === '/api/workflows' && method === 'GET') {
+              return handleListWorkflows(req, res)
+            }
+            // 工作流触发执行：/api/workflows/:workflowId/run（必须在 :workflowId 之前匹配）
+            const workflowRunMatch = pathname.match(
+              /^\/api\/workflows\/([^/]+)\/run$/,
+            )
+            if (workflowRunMatch && method === 'POST') {
+              return handleRunWorkflow(
+                req,
+                res,
+                decodeURIComponent(workflowRunMatch[1]),
+              )
+            }
+            // 工作流详情：/api/workflows/:workflowId（M3.6）
+            const workflowDetailMatch = pathname.match(
+              /^\/api\/workflows\/([^/]+)$/,
+            )
+            if (workflowDetailMatch && method === 'GET') {
+              return handleGetWorkflowDetail(
+                res,
+                decodeURIComponent(workflowDetailMatch[1]),
               )
             }
 
@@ -594,6 +644,7 @@ function handleListTasks(req: IncomingMessage, res: ServerResponse): void {
   const pageSize = Number(q.pageSize) || 10
   const status = q.status || ''
   const searchText = (q.searchText || '').toLowerCase()
+  const workflowId = q.workflowId || ''
 
   // 1. 过滤
   let filtered = mockTasks.filter((t) => t.orgId === MOCK_USER.orgId)
@@ -602,6 +653,10 @@ function handleListTasks(req: IncomingMessage, res: ServerResponse): void {
   }
   if (searchText) {
     filtered = filtered.filter((t) => t.goal.toLowerCase().includes(searchText))
+  }
+  if (workflowId) {
+    // 工作流执行历史：按 workflowId 筛选（mock task 无 workflowId 则被过滤）
+    filtered = filtered.filter((t) => t.workflowId === workflowId)
   }
 
   // 2. 排序（按创建时间倒序）
@@ -1924,6 +1979,538 @@ function handleExportAuditLogs(
     `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
   )
   res.end(Buffer.from(csv, 'utf-8'))
+}
+
+// ============================================================
+// 运营大屏接口（M8.2）
+// 对齐 com.finrpa.dashboard.controller.DashboardController
+// ============================================================
+
+/** GET /api/v1/dashboard/overview */
+function handleGetDashboardOverview(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      totalTasks: '100',
+      successTasks: '85',
+      failedTasks: '10',
+      runningTasks: '5',
+      successRate: 0.85,
+      avgDurationMs: 124500,
+      p95DurationMs: '312000',
+      llmCallCount: '156',
+      llmTotalCost: 2.8473,
+      llmCacheHitRate: 0.2436,
+      humanTakeoverQueueSize: '3',
+      avgResolveDurationMs: 185000,
+      riskLevelDistribution: [
+        { riskLevel: 'low', count: '60' },
+        { riskLevel: 'medium', count: '30' },
+        { riskLevel: 'high', count: '8' },
+        { riskLevel: 'critical', count: '2' },
+      ],
+    },
+    message: 'ok',
+  })
+}
+
+/** GET /api/v1/dashboard/trends?days=7 */
+function handleGetDashboardTrends(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  // 1. 解析 days 参数（默认 7，最大 90）
+  const query = parseQuery(req.url || '')
+  const days = Math.min(Math.max(Number(query.days) || 7, 1), 90)
+  // 2. 生成最近 N 天的趋势数据（含周末波动）
+  const points: Array<{
+    date: string
+    taskCount: string
+    successCount: string
+    failedCount: string
+    cost: number
+  }> = []
+  const now = new Date()
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now)
+    d.setDate(now.getDate() - i)
+    const dateStr = d.toISOString().slice(0, 10)
+    // 模拟波动：工作日任务多，周末任务少
+    const dayOfWeek = d.getDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    const base = isWeekend ? 6 : 14
+    const taskCount = base + Math.floor(Math.random() * 8)
+    const failedCount = Math.floor(taskCount * 0.12)
+    const successCount = taskCount - failedCount
+    const cost = Number((taskCount * 0.18 + Math.random() * 0.5).toFixed(4))
+    points.push({
+      date: dateStr,
+      taskCount: String(taskCount),
+      successCount: String(successCount),
+      failedCount: String(failedCount),
+      cost,
+    })
+  }
+  sendJson(res, 200, { code: 0, data: { points }, message: 'ok' })
+}
+
+/** GET /api/v1/dashboard/business-lines */
+function handleGetDashboardBusinessLines(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: [
+      {
+        businessLineId: '1',
+        businessLineName: '银行流水下载',
+        taskCount: '42',
+        successCount: '38',
+        successRate: 0.9048,
+      },
+      {
+        businessLineId: '2',
+        businessLineName: '保险理赔录入',
+        taskCount: '28',
+        successCount: '24',
+        successRate: 0.8571,
+      },
+      {
+        businessLineId: '3',
+        businessLineName: '证券对账',
+        taskCount: '18',
+        successCount: '15',
+        successRate: 0.8333,
+      },
+      {
+        businessLineId: '4',
+        businessLineName: '税务申报',
+        taskCount: '12',
+        successCount: '8',
+        successRate: 0.6667,
+      },
+    ],
+    message: 'ok',
+  })
+}
+
+/** GET /api/v1/dashboard/errors */
+function handleGetDashboardErrors(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: [
+      { errorType: 'LOGIN', count: '12' },
+      { errorType: 'CLICK', count: '8' },
+      { errorType: 'INPUT_TEXT', count: '6' },
+      { errorType: 'FILE_DOWNLOAD', count: '4' },
+      { errorType: 'NAVIGATE', count: '3' },
+      { errorType: 'FORM_FILL', count: '2' },
+      { errorType: 'WAIT', count: '1' },
+    ],
+    message: 'ok',
+  })
+}
+
+/** GET /api/v1/dashboard/costs */
+function handleGetDashboardCosts(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      totalCalls: '156',
+      totalCost: 2.8473,
+      totalTokens: '380000',
+      cacheHitRate: 0.2436,
+      modelCosts: [
+        {
+          model: 'gpt-4o-mini',
+          calls: '85',
+          cost: 0.18,
+          tokens: '120000',
+        },
+        {
+          model: 'gpt-4o',
+          calls: '52',
+          cost: 1.35,
+          tokens: '180000',
+        },
+        {
+          model: 'gpt-4o-2024-08-06',
+          calls: '19',
+          cost: 1.3173,
+          tokens: '80000',
+        },
+      ],
+    },
+    message: 'ok',
+  })
+}
+
+/** GET /api/v1/dashboard/approvals */
+function handleGetDashboardApprovals(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      totalApprovals: '42',
+      approvedCount: '32',
+      rejectedCount: '6',
+      timeoutCount: '2',
+      pendingCount: '2',
+      avgResponseMinutes: 18.5,
+    },
+    message: 'ok',
+  })
+}
+
+/** GET /api/approvals — 审批列表（Dashboard 最近审批表格用） */
+function handleListApprovals(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  const query = parseQuery(req.url || '')
+  const status = query.status as string | undefined
+  const current = Math.max(Number(query.current) || 1, 1)
+  const pageSize = Math.max(Number(query.pageSize) || 10, 1)
+
+  // 模拟审批数据（对齐原型 02-dashboard.html 最近审批表格）
+  const allApprovals = [
+    {
+      approvalId: '1900000000000000001',
+      taskId: 'TASK-A0215',
+      orgId: 'org-001',
+      userId: 'wangmgr',
+      riskLevel: 'critical',
+      approvalRoute: 'compliance',
+      status: 'PENDING',
+      requestPayload: JSON.stringify({ goal: '大额转账审批' }),
+      timeoutAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      createTime: new Date(Date.now() - 55 * 60 * 1000).toISOString(),
+    },
+    {
+      approvalId: '1900000000000000002',
+      taskId: 'TASK-A0218',
+      orgId: 'org-001',
+      userId: 'limgr',
+      riskLevel: 'high',
+      approvalRoute: 'department',
+      status: 'PENDING',
+      requestPayload: JSON.stringify({ goal: '信用卡大额授权' }),
+      timeoutAt: new Date(Date.now() + 12 * 60 * 1000).toISOString(),
+      createTime: new Date(Date.now() - 48 * 60 * 1000).toISOString(),
+    },
+    {
+      approvalId: '1900000000000000003',
+      taskId: 'TASK-A0223',
+      orgId: 'org-001',
+      userId: 'zhaosup',
+      riskLevel: 'high',
+      approvalRoute: 'department',
+      status: 'PENDING',
+      requestPayload: JSON.stringify({ goal: '跨境汇款审核' }),
+      timeoutAt: new Date(Date.now() + 25 * 60 * 1000).toISOString(),
+      createTime: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+    },
+    {
+      approvalId: '1900000000000000004',
+      taskId: 'TASK-A0231',
+      orgId: 'org-001',
+      userId: 'qianspec',
+      riskLevel: 'medium',
+      approvalRoute: 'department',
+      status: 'PENDING',
+      requestPayload: JSON.stringify({ goal: '批量代发复核' }),
+      timeoutAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      createTime: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+    },
+  ]
+
+  // 按状态筛选
+  const filtered = status && status !== ''
+    ? allApprovals.filter((a) => a.status === status)
+    : allApprovals
+
+  // 分页
+  const start = (current - 1) * pageSize
+  const records = filtered.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      records,
+      current,
+      size: pageSize,
+      total: filtered.length,
+      pages: Math.ceil(filtered.length / pageSize),
+    },
+    message: 'ok',
+  })
+}
+
+// ============================================================
+// Workflow 接口（M3.6，对齐原型 04-workflows.html 的 6 个工作流）
+// ============================================================
+
+/** Mock 工作流模板（对齐 WorkflowVO，params/steps 为 JSON 字符串） */
+const mockWorkflows: Array<{
+  workflowId: string
+  name: string
+  description: string
+  industry: 'banking' | 'insurance' | 'securities'
+  riskLevel: 'low' | 'medium' | 'high' | 'critical'
+  params: string
+  steps: string
+  version: string
+  enabled: number
+  createTime: string
+  updateTime: string
+}> = [
+  {
+    workflowId: '300000000000000001',
+    name: '银行流水下载',
+    description:
+      '自动登录主流商业银行企业网银，按指定账号与日期范围下载交易流水明细，并导出为 Excel 文件供后续对账使用。',
+    industry: 'banking',
+    riskLevel: 'medium',
+    params: JSON.stringify([
+      { name: 'account', type: 'string', required: true, encrypted: true, description: '银行账号' },
+      { name: 'startDate', type: 'date', required: true, encrypted: false, description: '起始日期' },
+      { name: 'endDate', type: 'date', required: false, encrypted: false, description: '结束日期' },
+    ]),
+    steps: JSON.stringify([
+      { skill: 'browser_start', params_mapping: { browser_type: 'chromium', headless: 'false', profile: 'icbc_session' } },
+      { skill: 'bank_login', params_mapping: { bank: 'icbc', account: '{{account}}', password: '****', mfa: 'true' } },
+      { skill: 'transaction_query', params_mapping: { date_range: '{{startDate}}:{{endDate}}', account: '{{account}}', type: 'enterprise' } },
+      { skill: 'data_extract', params_mapping: { format: 'xlsx', fields: 'date,amount,balance,counterparty' } },
+      { skill: 'browser_close', params_mapping: { save_session: 'true', clear_cache: 'false' } },
+    ]),
+    version: 'v1.2.0',
+    enabled: 1,
+    createTime: '2024-12-15T09:00:00.000Z',
+    updateTime: '2025-07-20T10:30:00.000Z',
+  },
+  {
+    workflowId: '300000000000000002',
+    name: '跨行转账核对',
+    description:
+      '跨行转账后自动登录收款行网银核对到账情况，比对转账金额、收款人、时间，异常时触发人工审批。',
+    industry: 'banking',
+    riskLevel: 'high',
+    params: JSON.stringify([
+      { name: 'transferAmount', type: 'number', required: true, encrypted: false, description: '转账金额' },
+      { name: 'payeeName', type: 'string', required: true, encrypted: false, description: '收款人名称' },
+      { name: 'payeeAccount', type: 'string', required: true, encrypted: true, description: '收款账号' },
+    ]),
+    steps: JSON.stringify([
+      { skill: 'browser_start', params_mapping: { browser_type: 'chromium', headless: 'false' } },
+      { skill: 'bank_login', params_mapping: { bank: 'cmb', account: '{{payeeAccount}}' } },
+      { skill: 'transfer_query', params_mapping: { amount: '{{transferAmount}}', payee: '{{payeeName}}' } },
+      { skill: 'reconcile_check', params_mapping: { mode: 'strict', tolerance: '0.01' } },
+      { skill: 'alert_notify', params_mapping: { channel: 'email', escalate: 'true' } },
+      { skill: 'browser_close', params_mapping: { save_session: 'true' } },
+    ]),
+    version: 'v1.0.3',
+    enabled: 1,
+    createTime: '2025-01-08T14:20:00.000Z',
+    updateTime: '2025-07-18T16:00:00.000Z',
+  },
+  {
+    workflowId: '300000000000000003',
+    name: '对公贷款放款',
+    description:
+      '对公贷款放款全流程自动化：合同信息核对 → 放款指令录入 → 授权人审批 → 放款执行 → 回单归档。极高风险，需合规审计部审批。',
+    industry: 'banking',
+    riskLevel: 'critical',
+    params: JSON.stringify([
+      { name: 'loanContractNo', type: 'string', required: true, encrypted: false, description: '贷款合同号' },
+      { name: 'loanAmount', type: 'number', required: true, encrypted: false, description: '放款金额' },
+      { name: 'borrowerAccount', type: 'string', required: true, encrypted: true, description: '借款人账号' },
+      { name: 'approver', type: 'string', required: true, encrypted: false, description: '授权审批人' },
+    ]),
+    steps: JSON.stringify([
+      { skill: 'browser_start', params_mapping: { browser_type: 'chromium' } },
+      { skill: 'bank_login', params_mapping: { bank: 'icbc', profile: 'corp_loan_session' } },
+      { skill: 'contract_verify', params_mapping: { contract_no: '{{loanContractNo}}' } },
+      { skill: 'disbursement_input', params_mapping: { amount: '{{loanAmount}}', account: '{{borrowerAccount}}' } },
+      { skill: 'approval_request', params_mapping: { approver: '{{approver}}', level: 'compliance' } },
+      { skill: 'disbursement_execute', params_mapping: { confirm: 'true' } },
+      { skill: 'receipt_archive', params_mapping: { format: 'pdf', storage: 'oss' } },
+      { skill: 'browser_close', params_mapping: { save_session: 'true' } },
+    ]),
+    version: 'v2.0.1',
+    enabled: 1,
+    createTime: '2025-02-20T09:30:00.000Z',
+    updateTime: '2025-07-25T11:15:00.000Z',
+  },
+  {
+    workflowId: '300000000000000004',
+    name: '保单申请填写',
+    description:
+      '自动登录保险公司核心系统，按客户信息填写保单申请表，校验字段完整性后提交，支持多险种模板。',
+    industry: 'insurance',
+    riskLevel: 'high',
+    params: JSON.stringify([
+      { name: 'applicantName', type: 'string', required: true, encrypted: false, description: '投保人姓名' },
+      { name: 'applicantId', type: 'string', required: true, encrypted: true, description: '投保人身份证号' },
+      { name: 'insuranceType', type: 'string', required: true, encrypted: false, description: '险种' },
+      { name: 'sumInsured', type: 'number', required: true, encrypted: false, description: '保额' },
+    ]),
+    steps: JSON.stringify([
+      { skill: 'browser_start', params_mapping: { browser_type: 'chromium' } },
+      { skill: 'insurance_login', params_mapping: { platform: 'pingan' } },
+      { skill: 'form_fill', params_mapping: { applicant: '{{applicantName}}', id_no: '{{applicantId}}' } },
+      { skill: 'product_select', params_mapping: { type: '{{insuranceType}}', sum_insured: '{{sumInsured}}' } },
+      { skill: 'form_validate', params_mapping: { rules: 'strict' } },
+      { skill: 'form_submit', params_mapping: { confirm: 'true' } },
+      { skill: 'browser_close', params_mapping: { save_session: 'true' } },
+    ]),
+    version: 'v1.1.0',
+    enabled: 1,
+    createTime: '2025-03-10T10:00:00.000Z',
+    updateTime: '2025-07-22T14:45:00.000Z',
+  },
+  {
+    workflowId: '300000000000000005',
+    name: '理赔审核提交',
+    description:
+      '理赔材料自动录入与初审：OCR 识别凭证 → 信息录入理赔系统 → 规则引擎初审 → 生成审核报告并提交。',
+    industry: 'insurance',
+    riskLevel: 'high',
+    params: JSON.stringify([
+      { name: 'claimNo', type: 'string', required: true, encrypted: false, description: '理赔编号' },
+      { name: 'claimAmount', type: 'number', required: true, encrypted: false, description: '理赔金额' },
+      { name: 'incidentDate', type: 'date', required: true, encrypted: false, description: '出险日期' },
+    ]),
+    steps: JSON.stringify([
+      { skill: 'browser_start', params_mapping: { browser_type: 'chromium' } },
+      { skill: 'insurance_login', params_mapping: { platform: 'pingan' } },
+      { skill: 'ocr_recognize', params_mapping: { doc_type: 'invoice', language: 'zh' } },
+      { skill: 'claim_input', params_mapping: { claim_no: '{{claimNo}}', amount: '{{claimAmount}}' } },
+      { skill: 'rule_engine_check', params_mapping: { ruleset: 'claim_v2' } },
+      { skill: 'report_generate', params_mapping: { format: 'pdf' } },
+      { skill: 'claim_submit', params_mapping: { confirm: 'true' } },
+      { skill: 'browser_close', params_mapping: { save_session: 'true' } },
+    ]),
+    version: 'v1.0.5',
+    enabled: 1,
+    createTime: '2025-03-25T13:30:00.000Z',
+    updateTime: '2025-07-19T09:20:00.000Z',
+  },
+  {
+    workflowId: '300000000000000006',
+    name: '委托下单',
+    description:
+      '证券委托下单自动化：登录交易终端 → 录入委托指令 → 风控校验 → 提交委托 → 回报确认。高风险，需部门审批。',
+    industry: 'securities',
+    riskLevel: 'high',
+    params: JSON.stringify([
+      { name: 'stockCode', type: 'string', required: true, encrypted: false, description: '股票代码' },
+      { name: 'orderSide', type: 'string', required: true, encrypted: false, description: '买卖方向' },
+      { name: 'orderPrice', type: 'number', required: true, encrypted: false, description: '委托价格' },
+      { name: 'orderQty', type: 'number', required: true, encrypted: false, description: '委托数量' },
+    ]),
+    steps: JSON.stringify([
+      { skill: 'browser_start', params_mapping: { browser_type: 'chromium' } },
+      { skill: 'trader_login', params_mapping: { terminal: 'cts' } },
+      { skill: 'order_input', params_mapping: { code: '{{stockCode}}', side: '{{orderSide}}' } },
+      { skill: 'price_qty_fill', params_mapping: { price: '{{orderPrice}}', qty: '{{orderQty}}' } },
+      { skill: 'risk_check', params_mapping: { ruleset: 'securities_v3' } },
+      { skill: 'order_submit', params_mapping: { confirm: 'true' } },
+      { skill: 'browser_close', params_mapping: { save_session: 'true' } },
+    ]),
+    version: 'v1.3.2',
+    enabled: 1,
+    createTime: '2025-04-05T15:00:00.000Z',
+    updateTime: '2025-07-26T10:10:00.000Z',
+  },
+]
+
+/** GET /api/workflows */
+function handleListWorkflows(req: IncomingMessage, res: ServerResponse): void {
+  const q = parseQuery(req.url || '')
+  const current = Number(q.current) || 1
+  const pageSize = Number(q.pageSize) || 12
+  const name = (q.name || '').toLowerCase()
+  const industry = q.industry || ''
+  const riskLevel = q.riskLevel || ''
+  // enabled：未传(undefined)或空串表示不筛选，'0'/'1' 表示筛选禁用/启用
+  const enabled = q.enabled ?? ''
+
+  // 1. 过滤
+  let filtered = [...mockWorkflows]
+  if (name) {
+    filtered = filtered.filter((w) => w.name.toLowerCase().includes(name))
+  }
+  if (industry) {
+    filtered = filtered.filter((w) => w.industry === industry)
+  }
+  if (riskLevel) {
+    filtered = filtered.filter((w) => w.riskLevel === riskLevel)
+  }
+  if (enabled !== '') {
+    filtered = filtered.filter((w) => String(w.enabled) === enabled)
+  }
+
+  // 2. 分页
+  const total = filtered.length
+  const start = (current - 1) * pageSize
+  const records = filtered.slice(start, start + pageSize)
+
+  // 3. 返回 IPage 结构
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      records,
+      current,
+      size: pageSize,
+      total,
+      pages: Math.ceil(total / pageSize),
+    },
+    message: 'ok',
+  })
+}
+
+/** GET /api/workflows/:workflowId */
+function handleGetWorkflowDetail(
+  res: ServerResponse,
+  workflowId: string,
+): void {
+  const workflow = mockWorkflows.find((w) => w.workflowId === workflowId)
+  if (!workflow) {
+    return sendJson(res, 200, {
+      code: 40400,
+      data: null,
+      message: `工作流 ${workflowId} 不存在`,
+    })
+  }
+  sendJson(res, 200, { code: 0, data: workflow, message: 'ok' })
+}
+
+/** POST /api/workflows/:workflowId/run */
+async function handleRunWorkflow(
+  req: IncomingMessage,
+  res: ServerResponse,
+  workflowId: string,
+): Promise<void> {
+  const body = await readBody(req)
+  console.log('[mock] 触发工作流执行:', workflowId, body)
+
+  const workflow = mockWorkflows.find((w) => w.workflowId === workflowId)
+  if (!workflow) {
+    return sendJson(res, 200, {
+      code: 40400,
+      data: null,
+      message: `工作流 ${workflowId} 不存在`,
+    })
+  }
+
+  // 生成新任务 ID（对齐 WorkflowRunVO）
+  const taskId = genId()
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      taskId,
+      workflowId,
+      state: 'PENDING',
+    },
+    message: 'ok',
+  })
 }
 
 export default mockServerPlugin

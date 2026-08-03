@@ -132,7 +132,6 @@ function WorkflowRunsPage() {
         </button>
         <div className="workflow-runs-title">
           <h1 className="page-title">
-            <IconClock size={20} />
             执行历史
             {workflow && <span className="workflow-runs-name"> · {workflow.name}</span>}
           </h1>

@@ -70,6 +70,10 @@ public class WorkflowTemplateEO implements Serializable {
     @TableField("enabled")
     private Integer enabled;
 
+    /** 创建人用户 ID（关联 sys_user.user_id，内置模板为 NULL 表示系统创建） */
+    @TableField("create_user_id")
+    private Long createUserId;
+
     /** 逻辑删除标识（0-未删除 1-已删除） */
     @TableLogic
     @TableField("deleted")

@@ -6,7 +6,7 @@
  * - 状态筛选（全部 / PENDING / EXECUTING / SUCCESS / FAILED / NEEDS_HUMAN / ABORTED）
  * - 关键词搜索（匹配 goal）
  * - 触发新任务入口（弹窗表单）
- * - 点击行跳转任务详情页
+ * - 点击卡片跳转任务详情页
  * - 自动轮询刷新（执行中任务存在时刷新间隔更短）
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
@@ -44,6 +45,78 @@ const STATUS_OPTIONS: Array<{ value: '' | TaskStatus; label: string }> = [
   { value: 'NEEDS_HUMAN', label: '需人工' },
   { value: 'ABORTED', label: '已终止' },
 ]
+
+/**
+ * 任务状态图标配置
+ *
+ * 映射任务状态到状态图标的样式类名 + SVG 图标。
+ * 对齐原型 03-tasks.html 的 .task-status-icon 五种颜色变体：
+ * - SUCCESS        → success（绿色勾选）
+ * - EXECUTING      → running（蓝色闪电）
+ * - NEEDS_HUMAN    → takeover（橙色警告）
+ * - PENDING        → pending（灰色沙漏）
+ * - FAILED/ABORTED → failed（红色 X）
+ */
+const STATUS_ICON_CONFIG: Record<TaskStatus, { iconClass: string; icon: ReactNode }> = {
+  SUCCESS: {
+    iconClass: 'success',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+    ),
+  },
+  EXECUTING: {
+    iconClass: 'running',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+      </svg>
+    ),
+  },
+  NEEDS_HUMAN: {
+    iconClass: 'takeover',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+    ),
+  },
+  PENDING: {
+    iconClass: 'pending',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 22h14" />
+        <path d="M5 2h14" />
+        <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
+        <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
+      </svg>
+    ),
+  },
+  FAILED: {
+    iconClass: 'failed',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+      </svg>
+    ),
+  },
+  ABORTED: {
+    iconClass: 'failed',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+      </svg>
+    ),
+  },
+}
 
 /** 任务列表页 */
 function TasksPage() {
@@ -137,7 +210,7 @@ function TasksPage() {
       <div className="tasks-header">
         <div>
           <h1 className="page-title">
-            <IconTarget size={22} /> 任务列表
+            任务列表
           </h1>
           <p className="page-subtitle">
             管理当前组织下的自动化任务，查看执行进度与历史结果
@@ -166,17 +239,20 @@ function TasksPage() {
       </div>
       {/* endregion */}
 
-      {/* region 筛选栏 */}
+      {/* region 筛选栏（对齐原型 .filter-bar 网格布局） */}
       <div className="tasks-toolbar glass-card-static">
-        <div className="toolbar-search">
-          <IconSearch size={14} className="toolbar-search-icon" />
-          <input
-            type="text"
-            className="input toolbar-input"
-            placeholder="搜索任务目标（输入后自动搜索）"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
+        <div className="toolbar-filter">
+          <label className="toolbar-filter-label">搜索任务</label>
+          <div className="toolbar-search">
+            <IconSearch size={14} className="toolbar-search-icon" />
+            <input
+              type="text"
+              className="input toolbar-input"
+              placeholder="输入任务目标关键词（自动搜索）"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
         </div>
         <div className="toolbar-filter">
           <label className="toolbar-filter-label">状态</label>
@@ -205,12 +281,12 @@ function TasksPage() {
       )}
       {/* endregion */}
 
-      {/* region 任务表格 */}
-      <div className="tasks-table-wrapper glass-card-static">
+      {/* region 任务卡片列表 */}
+      <div className="tasks-card-list">
         {isLoading ? (
-          <div className="tasks-empty">加载中…</div>
+          <div className="tasks-empty glass-card-static">加载中…</div>
         ) : records.length === 0 ? (
-          <div className="tasks-empty">
+          <div className="tasks-empty glass-card-static">
             <IconTarget size={36} />
             <div className="tasks-empty-title">暂无任务</div>
             <div className="tasks-empty-desc">
@@ -220,27 +296,13 @@ function TasksPage() {
             </div>
           </div>
         ) : (
-          <table className="tasks-table">
-            <thead>
-              <tr>
-                <th style={{ width: '12%' }}>任务 ID</th>
-                <th>任务目标</th>
-                <th style={{ width: '11%' }}>状态</th>
-                <th style={{ width: '14%' }}>进度</th>
-                <th style={{ width: '15%' }}>创建时间</th>
-                <th style={{ width: '10%' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((task) => (
-                <TaskRow
-                  key={task.taskId}
-                  task={task}
-                  onClick={() => navigate(`/tasks/${task.taskId}`)}
-                />
-              ))}
-            </tbody>
-          </table>
+          records.map((task) => (
+            <TaskCard
+              key={task.taskId}
+              task={task}
+              onClick={() => navigate(`/tasks/${task.taskId}`)}
+            />
+          ))
         )}
       </div>
       {/* endregion */}
@@ -273,58 +335,86 @@ function TasksPage() {
 }
 
 /**
- * 任务行
+ * 任务卡片
  *
- * @param task  任务对象
- * @param onClick 点击行回调
+ * 对齐原型 03-tasks.html 的 .task-card 结构：
+ * 左侧状态图标 + 中间任务主体（标题 / 元信息 / 统计 / 进度）+ 右侧操作按钮。
+ *
+ * @param task    任务对象
+ * @param onClick 点击卡片回调（跳转详情页）
  */
-function TaskRow({ task, onClick }: { task: TaskVO; onClick: () => void }) {
+function TaskCard({ task, onClick }: { task: TaskVO; onClick: () => void }) {
   // 1. 时间格式化
   const createTime = dayjs(task.createTime).format('YYYY-MM-DD HH:mm:ss')
 
-  // 2. 进度展示
+  // 2. 进度展示（仅当 totalSteps > 0 时显示进度条）
   const hasProgress = task.totalSteps > 0
   const progressPct = hasProgress
     ? Math.min(100, Math.round((task.currentStep / task.totalSteps) * 100))
     : 0
 
+  // 3. 状态图标配置
+  const iconConfig = STATUS_ICON_CONFIG[task.status]
+
   return (
-    <tr className="task-row" onClick={onClick}>
-      <td className="cell-mono">
-        <span className="task-id-chip" title={task.taskId}>
-          #{task.taskId.slice(-10)}
-        </span>
-      </td>
-      <td className="cell-goal">
-        <div className="task-goal-text">{task.goal}</div>
-        {task.errorMessage && (
-          <div className="task-error-text" title={task.errorMessage}>
-            {task.errorMessage}
-          </div>
-        )}
-      </td>
-      <td>
-        <StatusBadge status={task.status} />
-      </td>
-      <td>
-        {hasProgress ? (
-          <div className="task-progress">
-            <div className="task-progress-bar">
+    <div className="glass-card task-card" onClick={onClick}>
+      {/* region 左侧状态图标 */}
+      <div className={`task-status-icon ${iconConfig.iconClass}`}>
+        {iconConfig.icon}
+      </div>
+      {/* endregion */}
+
+      {/* region 任务主体 */}
+      <div className="task-body">
+        {/* 标题行：task-id 标签 + task-name */}
+        <div className="task-title-row">
+          <span className="task-id" title={task.taskId}>
+            #{task.taskId.slice(-10)}
+          </span>
+          <span className="task-name">{task.goal}</span>
+        </div>
+
+        {/* 元信息：创建时间 + 用户 ID */}
+        <div className="task-meta">
+          创建于 {createTime}
+          <span className="dot">·</span>
+          用户 {task.userId}
+        </div>
+
+        {/* 统计信息：状态徽章 + 步骤进度 + 错误信息 */}
+        <div className="task-stats">
+          <span className="stat-item">
+            <StatusBadge status={task.status} />
+          </span>
+          {hasProgress && (
+            <span className="stat-item">
+              步骤 <span className="mono">{task.currentStep}/{task.totalSteps}</span>
+            </span>
+          )}
+          {task.errorMessage && (
+            <span className="stat-item task-stat-error" title={task.errorMessage}>
+              错误：{task.errorMessage}
+            </span>
+          )}
+        </div>
+
+        {/* 进度条（仅当 totalSteps > 0 时显示） */}
+        {hasProgress && (
+          <div className="task-progress-wrap">
+            <div className="progress">
               <div
-                className="task-progress-fill"
+                className="progress-bar"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
-            <span className="task-progress-text">
-              {task.currentStep}/{task.totalSteps}
-            </span>
+            <span className="pct">{progressPct}%</span>
           </div>
-        ) : (
-          <span className="task-progress-text-muted">—</span>
         )}
-      </td>
-      <td className="cell-mono cell-time">{createTime}</td>
-      <td>
+      </div>
+      {/* endregion */}
+
+      {/* region 操作按钮 */}
+      <div className="task-actions">
         <button
           type="button"
           className="btn btn-ghost btn-sm"
@@ -333,10 +423,11 @@ function TaskRow({ task, onClick }: { task: TaskVO; onClick: () => void }) {
             onClick()
           }}
         >
-          详情
+          查看详情
         </button>
-      </td>
-    </tr>
+      </div>
+      {/* endregion */}
+    </div>
   )
 }
 

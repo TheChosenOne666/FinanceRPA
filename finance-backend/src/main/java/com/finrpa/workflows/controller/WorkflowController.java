@@ -93,13 +93,18 @@ public class WorkflowController {
     /**
      * 创建工作流模板
      *
-     * @param request 创建请求
+     * @param request     创建请求
+     * @param httpRequest HTTP 请求（用于获取当前用户 ID）
      * @return 创建后的模板视图
      */
     @Operation(summary = "创建工作流模板")
     @PostMapping
-    public BaseResponse<WorkflowVO> createWorkflow(@RequestBody WorkflowAddRequest request) {
-        return ResultUtils.success(workflowService.createWorkflow(request));
+    public BaseResponse<WorkflowVO> createWorkflow(@RequestBody WorkflowAddRequest request,
+                                                    HttpServletRequest httpRequest) {
+        // 1. 从 JWT 上下文获取当前用户 ID
+        String userIdStr = (String) httpRequest.getAttribute(AgentConstant.USER_ID_REQUEST_ATTR);
+        Long userId = userIdStr != null ? Long.parseLong(userIdStr) : null;
+        return ResultUtils.success(workflowService.createWorkflow(request, userId));
     }
 
     /**

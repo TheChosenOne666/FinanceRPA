@@ -343,7 +343,7 @@ function AuditLogs() {
       <div className="tasks-header">
         <div>
           <h1 className="page-title">
-            <IconShield size={22} /> 审计日志
+            审计日志
           </h1>
           <p className="page-subtitle">
             全链路操作审计 · 多维检索 · 截图对比 · CSV 导出

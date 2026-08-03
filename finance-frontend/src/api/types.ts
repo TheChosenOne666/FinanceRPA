@@ -188,6 +188,12 @@ export interface TaskVO {
   message?: string;
   /** 错误信息 */
   errorMessage?: string;
+  /** Skyvern 任务 ID（M3.8 引入） */
+  skyvernTaskId?: string;
+  /** 触发用户姓名（关联 sys_user.real_name） */
+  userName?: string;
+  /** 任务耗时（毫秒，仅终态任务计算） */
+  durationMs?: number;
   /** 创建时间（ISO 字符串） */
   createTime: string;
   /** 更新时间（ISO 字符串） */
@@ -397,6 +403,10 @@ export interface WorkflowVO {
   version?: string;
   /** 启用状态：0-禁用 1-启用 */
   enabled: number;
+  /** 创建人姓名（null 表示系统创建） */
+  createUser?: string;
+  /** 执行次数（统计 rpa_agent_task 表中 workflow_id = 此模板的记录数） */
+  runCount?: number;
   /** 创建时间（ISO 字符串） */
   createTime: string;
   /** 更新时间（ISO 字符串） */
@@ -409,7 +419,7 @@ export interface WorkflowVO {
 export interface WorkflowParam {
   /** 参数名（用于 params_mapping 中的 {{name}} 引用） */
   name: string;
-  /** 参数类型：string / number / boolean 等 */
+  /** 参数类型：string / number / boolean / date 等 */
   type: string;
   /** 是否必填 */
   required: boolean;
@@ -893,4 +903,152 @@ export interface AuditLogQueryRequest {
   startTime?: string;
   /** 截止时间（包含，ISO 字符串，对应 java.sql.Timestamp） */
   endTime?: string;
+}
+
+// ============================================================
+// 运营大屏（M8.2）
+// 对齐 com.finrpa.dashboard.dto.response
+// ============================================================
+
+/**
+ * 风险等级统计 VO（对齐 com.finrpa.dashboard.dto.response.RiskLevelStatVO）
+ */
+export interface RiskLevelStatVO {
+  /** 风险等级：low / medium / high / critical */
+  riskLevel: WorkflowRiskLevel;
+  /** 该风险等级的任务数 */
+  count: string | number;
+}
+
+/**
+ * 大屏概览 VO（对齐 com.finrpa.dashboard.dto.response.OverviewVO）
+ *
+ * 说明：后端 JsonConfig 将 Long 字段序列化为 String（防 JS 精度丢失），
+ * 数值字段类型声明为 string | number 兼容，使用时通过 Number() 转换。
+ */
+export interface OverviewVO {
+  /** 任务总数 */
+  totalTasks: string | number;
+  /** 成功任务数 */
+  successTasks: string | number;
+  /** 失败任务数 */
+  failedTasks: string | number;
+  /** 进行中任务数（EXECUTING + PENDING + NEEDS_HUMAN） */
+  runningTasks: string | number;
+  /** 任务成功率（0-1） */
+  successRate: number;
+  /** 平均执行时长（毫秒） */
+  avgDurationMs: number;
+  /** P95 执行时长（毫秒） */
+  p95DurationMs: string | number;
+  /** LLM 调用总次数 */
+  llmCallCount: string | number;
+  /** LLM 总成本（美元） */
+  llmTotalCost: number;
+  /** Action 缓存命中率（0-1） */
+  llmCacheHitRate: number;
+  /** 接管队列长度（PENDING 待处置数） */
+  humanTakeoverQueueSize: string | number;
+  /** 平均处置时长（毫秒） */
+  avgResolveDurationMs: number;
+  /** 风险等级分布 */
+  riskLevelDistribution: RiskLevelStatVO[];
+}
+
+/**
+ * 趋势数据点（对齐 TrendsVO.TrendPointVO）
+ */
+export interface TrendPointVO {
+  /** 日期（yyyy-MM-dd） */
+  date: string;
+  /** 当日任务总数 */
+  taskCount: string | number;
+  /** 当日成功任务数 */
+  successCount: string | number;
+  /** 当日失败任务数 */
+  failedCount: string | number;
+  /** 当日 LLM 成本（美元） */
+  cost: number;
+}
+
+/**
+ * 大屏趋势 VO（对齐 com.finrpa.dashboard.dto.response.TrendsVO）
+ */
+export interface TrendsVO {
+  /** 趋势数据点列表（按日期升序） */
+  points: TrendPointVO[];
+}
+
+/**
+ * 业务线统计 VO（对齐 com.finrpa.dashboard.dto.response.BusinessLineStatVO）
+ */
+export interface BusinessLineStatVO {
+  /** 业务线 ID */
+  businessLineId: string;
+  /** 业务线名称 */
+  businessLineName: string;
+  /** 任务总数 */
+  taskCount: string | number;
+  /** 成功任务数 */
+  successCount: string | number;
+  /** 成功率（0-1） */
+  successRate: number;
+}
+
+/**
+ * 错误类型统计 VO（对齐 com.finrpa.dashboard.dto.response.ErrorTypeStatVO）
+ */
+export interface ErrorTypeStatVO {
+  /** 错误类型（失败操作类型） */
+  errorType: string;
+  /** 出现次数 */
+  count: string | number;
+}
+
+/**
+ * 单模型成本统计（对齐 CostStatVO.ModelCostStatVO）
+ */
+export interface ModelCostStatVO {
+  /** 模型名称 */
+  model: string;
+  /** 调用次数 */
+  calls: string | number;
+  /** 成本（美元） */
+  cost: number;
+  /** token 总数 */
+  tokens: string | number;
+}
+
+/**
+ * LLM 成本统计 VO（对齐 com.finrpa.dashboard.dto.response.CostStatVO）
+ */
+export interface CostStatVO {
+  /** LLM 调用总次数 */
+  totalCalls: string | number;
+  /** LLM 总成本（美元） */
+  totalCost: number;
+  /** 总 token 数 */
+  totalTokens: string | number;
+  /** Action 缓存命中率（0-1） */
+  cacheHitRate: number;
+  /** 按模型维度的成本统计列表 */
+  modelCosts: ModelCostStatVO[];
+}
+
+/**
+ * 审批统计 VO（对齐 com.finrpa.dashboard.dto.response.ApprovalStatVO）
+ */
+export interface ApprovalStatVO {
+  /** 审批单总数 */
+  totalApprovals: string | number;
+  /** 已通过数 */
+  approvedCount: string | number;
+  /** 已拒绝数 */
+  rejectedCount: string | number;
+  /** 超时数 */
+  timeoutCount: string | number;
+  /** 待处理数（PENDING） */
+  pendingCount: string | number;
+  /** 平均响应时长（分钟） */
+  avgResponseMinutes: number;
 }

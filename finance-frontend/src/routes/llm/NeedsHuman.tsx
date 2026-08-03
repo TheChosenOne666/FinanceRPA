@@ -135,7 +135,7 @@ function NeedsHumanPage() {
       <div className="tasks-header">
         <div>
           <h1 className="page-title">
-            <IconShield size={22} /> 人工接管队列
+            人工接管队列
           </h1>
           <p className="page-subtitle">
             LLM 调用重试耗尽后的事件队列，操作员查看详情并处置（跳过 / 人工处理 / 终止）

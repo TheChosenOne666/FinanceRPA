@@ -12,6 +12,8 @@ import com.finrpa.workflows.dto.response.WorkflowVO;
 import com.finrpa.workflows.entity.WorkflowTemplateEO;
 import com.finrpa.workflows.mapper.WorkflowTemplateMapper;
 import com.finrpa.workflows.validator.WorkflowValidator;
+import com.finrpa.agent.mapper.AgentTaskMapper;
+import com.finrpa.auth.mapper.UserMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +48,14 @@ class WorkflowServiceImplTest {
     @Mock
     private WorkflowValidator workflowValidator;
 
+    /** Agent 任务 Mapper（M7.5 引入：查询工作流执行次数） */
+    @Mock
+    private AgentTaskMapper agentTaskMapper;
+
+    /** 用户 Mapper（M7.5 引入：查询创建人姓名） */
+    @Mock
+    private UserMapper userMapper;
+
     @InjectMocks
     private WorkflowServiceImpl workflowService;
 
@@ -60,7 +70,7 @@ class WorkflowServiceImplTest {
         when(workflowTemplateMapper.insert(any(WorkflowTemplateEO.class))).thenReturn(1);
 
         WorkflowAddRequest request = buildAddRequest("银行流水下载", "banking", "medium");
-        WorkflowVO result = workflowService.createWorkflow(request);
+        WorkflowVO result = workflowService.createWorkflow(request, null);
 
         assertThat(result.getName()).isEqualTo("银行流水下载");
         assertThat(result.getIndustry()).isEqualTo("banking");
@@ -78,7 +88,7 @@ class WorkflowServiceImplTest {
         when(workflowTemplateMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
 
         WorkflowAddRequest request = buildAddRequest("银行流水下载", "banking", "medium");
-        assertThatThrownBy(() -> workflowService.createWorkflow(request))
+        assertThatThrownBy(() -> workflowService.createWorkflow(request, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("工作流模板已存在");
         // 2. 不应再调用 insert
@@ -92,7 +102,7 @@ class WorkflowServiceImplTest {
         when(workflowTemplateMapper.insert(any(WorkflowTemplateEO.class))).thenReturn(1);
 
         WorkflowAddRequest request = buildAddRequest("测试模板", "banking", null);
-        WorkflowVO result = workflowService.createWorkflow(request);
+        WorkflowVO result = workflowService.createWorkflow(request, null);
 
         assertThat(result.getRiskLevel()).isEqualTo("medium");
     }
@@ -105,7 +115,7 @@ class WorkflowServiceImplTest {
 
         WorkflowAddRequest request = buildAddRequest("测试模板", "banking", "low");
         request.setParams(null);
-        WorkflowVO result = workflowService.createWorkflow(request);
+        WorkflowVO result = workflowService.createWorkflow(request, null);
 
         assertThat(result.getParams()).isEqualTo("[]");
     }
@@ -117,7 +127,7 @@ class WorkflowServiceImplTest {
         when(workflowTemplateMapper.insert(any(WorkflowTemplateEO.class))).thenReturn(0);
 
         WorkflowAddRequest request = buildAddRequest("测试模板", "banking", "low");
-        assertThatThrownBy(() -> workflowService.createWorkflow(request))
+        assertThatThrownBy(() -> workflowService.createWorkflow(request, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("工作流模板创建失败");
     }

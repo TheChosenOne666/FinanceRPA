@@ -1,18 +1,17 @@
 /**
  * 工作流模板详情页
  *
- * 功能（M3.6）：
- * - 基本信息：名称 / 描述 / 行业 / 风险 / 版本 / 启用状态 / 创建时间
- * - 参数表单：按 params JSON schema 动态生成（string / number 类型 + required + encrypted）
- * - Skill 步骤可视化：横向流程图，每个节点显示 skill 名 + 参数映射预览（脱敏加密参数）
+ * 功能（M3.6，UI 对齐原型 04-workflows.html）：
+ * - detail-header：返回 + 标题（含风险 badge）+ 面包屑 + 运行按钮
+ * - grid-2 左侧：工作流配置（config-grid）+ 执行步骤（workflow-steps）+ 执行历史（history-list）
+ * - grid-2 右侧：触发运行表单（trigger-form + risk-notice）
  * - 触发执行：填写参数表单 → POST /workflows/{id}/run → 跳转任务详情页
- * - 查看执行历史：跳转 /workflows/{id}/runs
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
  */
 
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
@@ -23,16 +22,14 @@ import {
   parseWorkflowParams,
   parseWorkflowSteps,
 } from '@/api/workflows'
+import { taskApi } from '@/api/tasks'
 import { ApiError } from '@/api/AxiosClient'
-import type { WorkflowParam } from '@/api/types'
+import type { TaskVO, WorkflowParam, WorkflowStep } from '@/api/types'
 import {
   IconAlert,
   IconArrowLeft,
-  IconClock,
-  IconExternal,
   IconPlay,
   IconRefresh,
-  IconWorkflow,
 } from '@/components/Icons'
 
 /** 参数表单值（key 为参数 name，value 为用户输入） */
@@ -47,6 +44,7 @@ interface FieldErrors {
 function WorkflowDetail() {
   const navigate = useNavigate()
   const { workflowId } = useParams<{ workflowId: string }>()
+  const triggerFormRef = useRef<HTMLDivElement>(null)
 
   // 1. 查询工作流详情
   const { data, isLoading, error, refetch, isFetching } = useQuery({
@@ -85,19 +83,30 @@ function WorkflowDetail() {
     )
   }
 
+  /** 滚动到触发表单 */
+  const handleScrollToForm = () => {
+    triggerFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
   return (
     <div className="workflow-detail">
-      {/* region 顶部：返回 + 标题 + 操作 */}
-      <div className="workflow-detail-header">
-        <BackButton onClick={() => navigate('/workflows')} />
-        <div className="workflow-detail-title">
-          <h1 className="page-title">
-            <IconWorkflow size={20} />
-            <span title={data.name}>{data.name}</span>
-          </h1>
-          <p className="workflow-detail-desc">{data.description || '暂无描述'}</p>
+      {/* region detail-header：返回 + 标题 + 风险 badge + 运行按钮（对齐原型） */}
+      <div className="detail-header">
+        <div className="detail-title-row">
+          <BackButton onClick={() => navigate('/workflows')} />
+          <div>
+            <h1 className="detail-title">
+              {data.name}
+              <span className={`badge risk-${data.riskLevel}`}>
+                {RISK_LEVEL_LABELS[data.riskLevel]}风险
+              </span>
+            </h1>
+            <div className="breadcrumb">
+              工作流 / {INDUSTRY_LABELS[data.industry]}业务 / {data.name}
+            </div>
+          </div>
         </div>
-        <div className="workflow-detail-actions">
+        <div className="detail-header-actions">
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -108,96 +117,90 @@ function WorkflowDetail() {
             <IconRefresh size={14} />
             {isFetching ? '刷新中…' : '刷新'}
           </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => navigate(`/workflows/${workflowId}/runs`)}
-            title="查看该工作流的执行历史"
-          >
-            <IconClock size={14} />
-            执行历史
-          </button>
+          {data.enabled === 1 && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleScrollToForm}
+              title="滚动到触发表单"
+            >
+              <IconPlay size={14} />
+              运行
+            </button>
+          )}
         </div>
       </div>
       {/* endregion */}
 
       <div className="workflow-detail-grid">
-        {/* region 左侧：基本信息 + 参数表单 */}
+        {/* region 左侧：工作流配置 + 执行步骤 + 执行历史（对齐原型 grid-2 左栏） */}
         <div className="workflow-detail-left">
-          {/* 基本信息 */}
+          {/* 工作流配置 */}
           <section className="glass-card-static detail-section">
-            <h2 className="section-title">
-              <IconWorkflow size={14} />
-              基本信息
-            </h2>
-            <div className="info-grid">
-              <InfoItem label="工作流 ID" value={data.workflowId} mono />
-              <InfoItem
-                label="行业"
-                value={
-                  <span className={`tag tag-industry tag-industry-${data.industry}`}>
-                    {INDUSTRY_LABELS[data.industry]}
+            <h2 className="section-title">工作流配置</h2>
+            <div className="config-grid">
+              <div className="config-item">
+                <div className="config-key">工作流 ID</div>
+                <div className="config-val cell-mono">{data.workflowId}</div>
+              </div>
+              <div className="config-item">
+                <div className="config-key">所属行业</div>
+                <div className="config-val">{INDUSTRY_LABELS[data.industry]}</div>
+              </div>
+              <div className="config-item">
+                <div className="config-key">创建人</div>
+                <div className="config-val">{data.createUser || '系统'}</div>
+              </div>
+              <div className="config-item">
+                <div className="config-key">创建时间</div>
+                <div className="config-val cell-mono">
+                  {dayjs(data.createTime).format('YYYY-MM-DD')}
+                </div>
+              </div>
+              <div className="config-item">
+                <div className="config-key">风险等级</div>
+                <div className="config-val">
+                  <span className={`badge risk-${data.riskLevel}`}>
+                    {RISK_LEVEL_LABELS[data.riskLevel]}
                   </span>
-                }
-              />
-              <InfoItem
-                label="风险等级"
-                value={
-                  <span className={`tag tag-risk tag-risk-${data.riskLevel}`}>
-                    {RISK_LEVEL_LABELS[data.riskLevel]}风险
-                  </span>
-                }
-              />
-              <InfoItem label="版本" value={data.version || '-'} mono />
-              <InfoItem
-                label="启用状态"
-                value={
-                  data.enabled === 1 ? (
-                    <span className="tag tag-enabled">启用</span>
-                  ) : (
-                    <span className="tag tag-disabled">禁用</span>
-                  )
-                }
-              />
-              <InfoItem
-                label="创建时间"
-                value={dayjs(data.createTime).format('YYYY-MM-DD HH:mm:ss')}
-                mono
-              />
+                </div>
+              </div>
+              <div className="config-item">
+                <div className="config-key">最近更新</div>
+                <div className="config-val cell-mono">
+                  {dayjs(data.updateTime).format('YYYY-MM-DD')}
+                </div>
+              </div>
+              <div className="config-desc">
+                <strong>描述：</strong>
+                {data.description || '暂无描述'}
+              </div>
             </div>
           </section>
 
-          {/* 参数表单（触发执行） */}
-          <WorkflowRunForm
-            workflowId={workflowId}
-            workflowName={data.name}
-            paramsJson={data.params}
-            enabled={data.enabled === 1}
-          />
+          {/* 执行步骤 */}
+          <section className="glass-card-static detail-section">
+            <h2 className="section-title">执行步骤</h2>
+            <WorkflowSteps stepsJson={data.steps} />
+          </section>
+
+          {/* 执行历史 */}
+          <section className="glass-card-static detail-section">
+            <h2 className="section-title">执行历史</h2>
+            <WorkflowHistory workflowId={data.workflowId} />
+          </section>
         </div>
         {/* endregion */}
 
-        {/* region 右侧：Skill 步骤可视化 */}
-        <div className="workflow-detail-right">
-          <section className="glass-card-static detail-section">
-            <h2 className="section-title">
-              <IconExternal size={14} />
-              Skill 步骤流程
-            </h2>
-            <SkillStepsVisualization
-              paramsJson={data.params}
-              stepsJson={data.steps}
-            />
-          </section>
-
-          {/* 参数定义详情 */}
-          <section className="glass-card-static detail-section">
-            <h2 className="section-title">
-              <IconClock size={14} />
-              参数定义
-            </h2>
-            <ParamsDefinition paramsJson={data.params} />
-          </section>
+        {/* region 右侧：触发运行表单（对齐原型 grid-2 右栏） */}
+        <div className="workflow-detail-right" ref={triggerFormRef}>
+          <WorkflowRunForm
+            workflowId={workflowId}
+            workflowName={data.name}
+            riskLevel={data.riskLevel}
+            paramsJson={data.params}
+            enabled={data.enabled === 1}
+          />
         </div>
         {/* endregion */}
       </div>
@@ -206,61 +209,160 @@ function WorkflowDetail() {
 }
 
 /**
- * 返回按钮
+ * 返回按钮（对齐原型 icon-btn 风格）
  *
  * @param onClick 点击回调
  */
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" className="btn btn-ghost btn-sm workflow-detail-back" onClick={onClick}>
-      <IconArrowLeft size={14} />
-      返回列表
+    <button
+      type="button"
+      className="icon-btn workflow-detail-back"
+      onClick={onClick}
+      title="返回列表"
+    >
+      <IconArrowLeft size={16} />
     </button>
   )
 }
 
 /**
- * 信息项
+ * 执行步骤列表（对齐原型 workflow-steps：有序列表 + 序号圆圈 + skill 名 + 参数）
  *
- * @param label  标签
- * @param value  值
- * @param mono   是否使用等宽字体
+ * @param stepsJson 步骤 JSON 字符串
  */
-function InfoItem({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string
-  value: React.ReactNode
-  mono?: boolean
-}) {
+function WorkflowSteps({ stepsJson }: { stepsJson: string }) {
+  const steps = useMemo(() => parseWorkflowSteps(stepsJson), [stepsJson])
+
+  if (steps.length === 0) {
+    return <div className="detail-empty">暂无步骤</div>
+  }
+
   return (
-    <div className="info-item">
-      <span className="info-label">{label}</span>
-      <span className={`info-value${mono ? ' info-value-mono' : ''}`}>{value}</span>
+    <ol className="workflow-steps">
+      {steps.map((step, idx) => (
+        <li key={idx}>
+          <div>
+            <div className="step-name">{step.skill}</div>
+            <div className="step-params">
+              {formatStepParams(step)}
+            </div>
+          </div>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+/**
+ * 格式化步骤参数为 key=value, key=value 字符串
+ *
+ * @param step 步骤定义
+ */
+function formatStepParams(step: WorkflowStep): string {
+  const entries = Object.entries(step.params_mapping || {})
+  if (entries.length === 0) return '-'
+  return entries
+    .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+    .join(', ')
+}
+
+/**
+ * 执行历史列表（对齐原型 history-list）
+ *
+ * 查询最近 5 条该工作流的任务记录
+ *
+ * @param workflowId 工作流 ID
+ */
+function WorkflowHistory({ workflowId }: { workflowId: string }) {
+  // 1. 查询最近 5 条该工作流的任务记录
+  const { data, isLoading } = useQuery({
+    queryKey: ['workflow-runs', workflowId],
+    queryFn: () =>
+      taskApi.listTasks({
+        current: 1,
+        pageSize: 5,
+        workflowId,
+      }),
+    refetchOnWindowFocus: false,
+  })
+
+  if (isLoading) {
+    return <div className="detail-empty">加载历史记录中…</div>
+  }
+
+  const records: TaskVO[] = data?.records ?? []
+  if (records.length === 0) {
+    return <div className="detail-empty">暂无执行历史</div>
+  }
+
+  return (
+    <div className="history-list">
+      {records.map((task) => (
+        <div
+          key={task.taskId}
+          className="history-item"
+          onClick={() => undefined}
+          role="button"
+          tabIndex={0}
+        >
+          <div className="history-left">
+            <div className="history-time">
+              {dayjs(task.createTime).format('YYYY-MM-DD HH:mm:ss')}
+            </div>
+            <div className="history-meta">
+              用户 {task.userId} · {task.currentStep}/{task.totalSteps} 步
+            </div>
+          </div>
+          <TaskStatusBadge status={task.status} />
+        </div>
+      ))}
     </div>
   )
 }
 
 /**
- * 工作流触发执行表单
+ * 任务状态 badge（对齐原型 badge-success / badge-danger）
+ *
+ * @param status 任务状态
+ */
+function TaskStatusBadge({ status }: { status: TaskVO['status'] }) {
+  const map: Record<
+    TaskVO['status'],
+    { label: string; className: string }
+  > = {
+    SUCCESS: { label: '成功', className: 'badge badge-success' },
+    FAILED: { label: '失败', className: 'badge badge-danger' },
+    EXECUTING: { label: '执行中', className: 'badge badge-info' },
+    PENDING: { label: '待执行', className: 'badge badge-warning' },
+    NEEDS_HUMAN: { label: '待人工', className: 'badge badge-warning' },
+    ABORTED: { label: '已终止', className: 'badge badge-danger' },
+  }
+  const cfg = map[status] || { label: status, className: 'badge' }
+  return <span className={cfg.className}>{cfg.label}</span>
+}
+
+/**
+ * 工作流触发执行表单（对齐原型 trigger-form + risk-notice）
  *
  * 按 params JSON schema 动态生成表单项，提交后调用 POST /workflows/{id}/run
  *
  * @param workflowId   工作流 ID
  * @param workflowName 工作流名称（用于提示）
+ * @param riskLevel    风险等级（用于风险提示）
  * @param paramsJson   参数定义 JSON 字符串
  * @param enabled      是否启用（禁用时禁止触发）
  */
 function WorkflowRunForm({
   workflowId,
   workflowName,
+  riskLevel,
   paramsJson,
   enabled,
 }: {
   workflowId: string
   workflowName: string
+  riskLevel: string
   paramsJson: string
   enabled: boolean
 }) {
@@ -271,10 +373,7 @@ function WorkflowRunForm({
   const [formError, setFormError] = useState<string | null>(null)
 
   // 1. 解析参数定义
-  const params = useMemo(
-    () => parseWorkflowParams(paramsJson),
-    [paramsJson],
-  )
+  const params = useMemo(() => parseWorkflowParams(paramsJson), [paramsJson])
 
   // 2. 客户端校验
   const validate = (): boolean => {
@@ -322,7 +421,6 @@ function WorkflowRunForm({
   // 4. 表单项值变更
   const handleFieldChange = (name: string, value: string) => {
     setFormValues((prev) => ({ ...prev, [name]: value }))
-    // 清除该字段错误
     if (errors[name]) {
       setErrors((prev) => {
         const next = { ...prev }
@@ -335,10 +433,7 @@ function WorkflowRunForm({
   if (!enabled) {
     return (
       <section className="glass-card-static detail-section">
-        <h2 className="section-title">
-          <IconPlay size={14} />
-          触发执行
-        </h2>
+        <h2 className="section-title">触发运行</h2>
         <div className="detail-empty">
           <IconAlert size={28} />
           <div>模板已禁用</div>
@@ -348,12 +443,12 @@ function WorkflowRunForm({
     )
   }
 
+  // 风险提示：high / critical 显示
+  const showRiskNotice = riskLevel === 'high' || riskLevel === 'critical'
+
   return (
     <section className="glass-card-static detail-section">
-      <h2 className="section-title">
-        <IconPlay size={14} />
-        触发执行 · {workflowName}
-      </h2>
+      <h2 className="section-title">触发运行 · {workflowName}</h2>
 
       {/* 服务端错误 */}
       {formError && <div className="form-error">{formError}</div>}
@@ -365,7 +460,7 @@ function WorkflowRunForm({
           <div className="detail-empty-desc">该工作流无运行参数，可直接触发执行</div>
         </div>
       ) : (
-        <form className="workflow-run-form" onSubmit={handleSubmit}>
+        <form className="trigger-form" onSubmit={handleSubmit}>
           {params.map((p) => (
             <ParamField
               key={p.name}
@@ -377,10 +472,30 @@ function WorkflowRunForm({
             />
           ))}
 
-          <div className="modal-actions">
+          {/* 风险提示（对齐原型 risk-notice） */}
+          {showRiskNotice && (
+            <div className="risk-notice">
+              <IconAlert size={14} />
+              <div>
+                该工作流风险等级为
+                <strong>{RISK_LEVEL_LABELS[riskLevel as keyof typeof RISK_LEVEL_LABELS] || riskLevel}</strong>
+                ，运行后将自动提交至审批中心，由审批人确认后执行。
+              </div>
+            </div>
+          )}
+
+          <div className="form-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => navigate('/workflows')}
+              disabled={submitting}
+            >
+              取消
+            </button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
               <IconPlay size={14} />
-              {submitting ? '触发中…' : '触发执行'}
+              {submitting ? '触发中…' : '确认运行'}
             </button>
           </div>
         </form>
@@ -390,7 +505,7 @@ function WorkflowRunForm({
 }
 
 /**
- * 参数表单项
+ * 参数表单项（对齐原型 form-group + label + input）
  *
  * @param param    参数定义
  * @param value    当前值
@@ -411,9 +526,9 @@ function ParamField({
   disabled: boolean
   onChange: (value: string) => void
 }) {
-  // 1. 加密参数使用 password 输入框
+  // 1. 加密参数使用 password 输入框；date 类型使用 date 输入框；其余 text
   const isEncrypted = param.encrypted
-  const inputType = isEncrypted ? 'password' : 'text'
+  const inputType = isEncrypted ? 'password' : param.type === 'date' ? 'date' : 'text'
 
   // 2. 字段 ID
   const fieldId = `param-${param.name}`
@@ -422,7 +537,7 @@ function ParamField({
     <div className="form-group">
       <label className="label" htmlFor={fieldId}>
         {param.description || param.name}
-        {param.required && <span style={{ color: 'var(--accent-danger)' }}> *</span>}
+        {param.required && <span className="required">*</span>}
         {isEncrypted && (
           <span className="param-encrypted-badge" title="该参数将加密存储">
             加密
@@ -433,7 +548,7 @@ function ParamField({
         id={fieldId}
         type={inputType}
         className={`input${error ? ' input-error' : ''}`}
-        placeholder={`${param.description || param.name}（${param.type}）`}
+        placeholder={inputType === 'date' ? undefined : `${param.description || param.name}（${param.type}）`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
@@ -446,168 +561,6 @@ function ParamField({
         </div>
       )}
       {error && <div className="field-error">{error}</div>}
-    </div>
-  )
-}
-
-/**
- * Skill 步骤可视化
- *
- * 横向流程图：每个节点显示 skill 名称，节点之间用箭头连接。
- * 节点下方显示参数映射预览（脱敏加密参数的值显示为 ***）
- *
- * @param paramsJson 参数定义 JSON 字符串
- * @param stepsJson  步骤 JSON 字符串
- */
-function SkillStepsVisualization({
-  paramsJson,
-  stepsJson,
-}: {
-  paramsJson: string
-  stepsJson: string
-}) {
-  // 1. 解析参数与步骤
-  const params = useMemo(() => parseWorkflowParams(paramsJson), [paramsJson])
-  const steps = useMemo(() => parseWorkflowSteps(stepsJson), [stepsJson])
-
-  // 2. 加密参数名集合（用于脱敏显示）
-  const encryptedParamNames = useMemo(
-    () => new Set(params.filter((p) => p.encrypted).map((p) => p.name)),
-    [params],
-  )
-
-  if (steps.length === 0) {
-    return (
-      <div className="detail-empty">
-        <IconWorkflow size={28} />
-        <div>暂无步骤</div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="skill-flow">
-      {steps.map((step, idx) => (
-        <div key={idx} className="skill-flow-node-wrapper">
-          {/* region 节点 */}
-          <div className="skill-flow-node">
-            <div className="skill-flow-node-index">{idx + 1}</div>
-            <div className="skill-flow-node-content">
-              <div className="skill-flow-node-title">{step.skill}</div>
-              <div className="skill-flow-node-params">
-                {Object.entries(step.params_mapping || {}).map(([key, value]) => (
-                  <div key={key} className="skill-flow-param">
-                    <span className="skill-flow-param-key">{key}:</span>
-                    <span className="skill-flow-param-value">
-                      {renderParamValue(value, encryptedParamNames)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          {/* endregion */}
-
-          {/* region 箭头连接线 */}
-          {idx < steps.length - 1 && (
-            <div className="skill-flow-arrow">
-              <svg width="20" height="14" viewBox="0 0 20 14" fill="none">
-                <path
-                  d="M2 7H17M17 7L11 2M17 7L11 12"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-          )}
-          {/* endregion */}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/**
- * 渲染参数值（脱敏加密参数引用的值）
- *
- * @param value                原始值
- * @param encryptedParamNames  加密参数名集合
- */
-function renderParamValue(
-  value: unknown,
-  encryptedParamNames: Set<string>,
-): string {
-  if (typeof value !== 'string') {
-    return JSON.stringify(value)
-  }
-  // 1. 模板变量 {{param_name}} → 若为加密参数则显示 {{param_name}}(加密)
-  const templateMatch = value.match(/^\{\{(\w+)\}\}$/)
-  if (templateMatch) {
-    const paramName = templateMatch[1]
-    if (encryptedParamNames.has(paramName)) {
-      return `{{${paramName}}} ***`
-    }
-    return `{{${paramName}}}`
-  }
-  // 2. 字面量值原样返回
-  return value
-}
-
-/**
- * 参数定义列表
- *
- * @param paramsJson 参数定义 JSON 字符串
- */
-function ParamsDefinition({ paramsJson }: { paramsJson: string }) {
-  const params = useMemo(() => parseWorkflowParams(paramsJson), [paramsJson])
-
-  if (params.length === 0) {
-    return (
-      <div className="detail-empty">
-        <IconClock size={28} />
-        <div>无参数定义</div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="params-definition">
-      <table className="params-table">
-        <thead>
-          <tr>
-            <th style={{ width: '24%' }}>参数名</th>
-            <th style={{ width: '14%' }}>类型</th>
-            <th style={{ width: '14%' }}>必填</th>
-            <th style={{ width: '14%' }}>加密</th>
-            <th>描述</th>
-          </tr>
-        </thead>
-        <tbody>
-          {params.map((p) => (
-            <tr key={p.name}>
-              <td className="cell-mono">{p.name}</td>
-              <td>{p.type}</td>
-              <td>
-                {p.required ? (
-                  <span className="tag tag-required">是</span>
-                ) : (
-                  <span className="tag tag-optional">否</span>
-                )}
-              </td>
-              <td>
-                {p.encrypted ? (
-                  <span className="tag tag-encrypted">加密</span>
-                ) : (
-                  <span style={{ color: 'var(--text-muted)' }}>-</span>
-                )}
-              </td>
-              <td>{p.description || '-'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   )
 }

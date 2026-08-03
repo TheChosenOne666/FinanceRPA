@@ -90,8 +90,8 @@ public interface WorkflowConstant {
             COMMON_LOGIN_PARAMS + """
                      ,
                       {"name":"account_number","type":"string","required":true,"encrypted":false,"description":"对公账户号"},
-                      {"name":"date_start","type":"string","required":true,"encrypted":false,"description":"流水开始日期 YYYY-MM-DD"},
-                      {"name":"date_end","type":"string","required":true,"encrypted":false,"description":"流水结束日期 YYYY-MM-DD"}
+                      {"name":"date_start","type":"date","required":true,"encrypted":false,"description":"流水开始日期 YYYY-MM-DD"},
+                      {"name":"date_end","type":"date","required":true,"encrypted":false,"description":"流水结束日期 YYYY-MM-DD"}
                     ]""",
             "[" + COMMON_LOGIN_STEP + "," + """
                   {"skill":"form_fill","params_mapping":{
@@ -112,7 +112,7 @@ public interface WorkflowConstant {
             "high",
             COMMON_LOGIN_PARAMS + """
                      ,
-                      {"name":"query_date","type":"string","required":true,"encrypted":false,"description":"核对日期 YYYY-MM-DD"}
+                      {"name":"query_date","type":"date","required":true,"encrypted":false,"description":"核对日期 YYYY-MM-DD"}
                     ]""",
             "[" + COMMON_LOGIN_STEP + "," + """
                   {"skill":"table_extract","params_mapping":{

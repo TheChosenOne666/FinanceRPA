@@ -49,6 +49,12 @@ public class TaskVO implements Serializable {
     /** Skyvern 任务 ID（M3.8 引入，关联 Skyvern 原生任务） */
     private String skyvernTaskId;
 
+    /** 触发用户姓名（关联 sys_user.real_name，前端展示用） */
+    private String userName;
+
+    /** 任务耗时（毫秒，仅终态任务计算；进行中任务为 null） */
+    private Long durationMs;
+
     /** 创建时间 */
     private Timestamp createTime;
 

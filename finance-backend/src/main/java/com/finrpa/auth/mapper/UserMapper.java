@@ -6,6 +6,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.List;
+
 /**
  * 用户表 Mapper 接口
  *
@@ -32,4 +34,19 @@ public interface UserMapper extends BaseMapper<UserEO> {
      */
     @Select("SELECT * FROM finrpa.sys_user WHERE user_id = #{userId} AND deleted = 0")
     UserEO selectByUserId(@Param("userId") Long userId);
+
+    /**
+     * 根据用户业务 ID 列表批量查询未删除的用户（用于批量填充 userName / createUser）
+     *
+     * @param userIds 用户业务 ID 列表
+     * @return 用户实体列表
+     */
+    @Select("<script>" +
+            "SELECT user_id, real_name FROM finrpa.sys_user " +
+            "WHERE deleted = 0 AND user_id IN " +
+            "<foreach item='id' collection='userIds' open='(' separator=',' close=')'>" +
+            "#{id}" +
+            "</foreach>" +
+            "</script>")
+    List<UserEO> selectByUserIds(@Param("userIds") List<Long> userIds);
 }

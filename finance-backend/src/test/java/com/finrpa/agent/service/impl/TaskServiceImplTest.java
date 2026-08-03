@@ -22,6 +22,7 @@ import com.finrpa.agent.mapper.AgentTaskMapper;
 import com.finrpa.agent.mapper.CoordinationStateMapper;
 import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskResumeRequest;
+import com.finrpa.auth.mapper.UserMapper;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.tenant.context.TenantContext;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.HashMap;
@@ -77,6 +79,14 @@ class TaskServiceImplTest {
 
     @Mock
     private AiServiceClient aiServiceClient;
+
+    /** Spring 事件发布器（M8.1 任务终态事件） */
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
+
+    /** 用户 Mapper（M7.5 引入：填充触发用户姓名） */
+    @Mock
+    private UserMapper userMapper;
 
     @InjectMocks
     private TaskServiceImpl taskService;

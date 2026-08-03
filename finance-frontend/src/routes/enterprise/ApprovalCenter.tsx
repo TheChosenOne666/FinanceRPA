@@ -222,7 +222,7 @@ function ApprovalCenter() {
       <div className="tasks-header">
         <div>
           <h1 className="page-title">
-            <IconApproval size={22} /> 审批中心
+            审批中心
           </h1>
           <p className="page-subtitle">
             审核高风险任务的执行申请，管理审批历史记录

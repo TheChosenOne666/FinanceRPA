@@ -21,9 +21,10 @@ public interface WorkflowService {
      * 创建工作流模板
      *
      * @param request 创建请求
+     * @param userId  创建人用户 ID（内置模板注册时传 null）
      * @return 创建后的模板视图
      */
-    WorkflowVO createWorkflow(WorkflowAddRequest request);
+    WorkflowVO createWorkflow(WorkflowAddRequest request, Long userId);
 
     /**
      * 更新工作流模板

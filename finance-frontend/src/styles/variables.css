@@ -37,6 +37,12 @@
   --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
   --glass-shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.13);
 
+  /* === 侧边栏（对齐原型 styles.css） === */
+  --sidebar-bg: rgba(255, 255, 255, 0.72);
+  --sidebar-shadow: 0 8px 32px rgba(26, 58, 92, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --sidebar-border: rgba(26, 58, 92, 0.10);
+  --sidebar-blur: 20px;
+
   /* === 状态色 === */
   --status-running: #3B82F6;
   --status-completed: #10B981;
@@ -46,6 +52,30 @@
   --status-paused: #8B5CF6;
   --status-queued: #6B7280;
   --status-timeout: #DC2626;
+
+  /* === 风险等级（对齐原型 styles.css） === */
+  --risk-low: #10B981;
+  --risk-medium: #F59E0B;
+  --risk-high: #EF4444;
+  --risk-critical: #991B1B;
+
+  /* === 图表六色（对齐原型 styles.css） === */
+  --chart-blue: #1A3A5C;
+  --chart-gold: #C9A84C;
+  --chart-green: #10B981;
+  --chart-red: #EF4444;
+  --chart-purple: #8B5CF6;
+  --chart-cyan: #06B6D4;
+
+  /* === 统计卡片图标背景色（M8.2 大屏概览） === */
+  --stat-icon-blue: rgba(59, 130, 246, 0.12);
+  --stat-icon-blue-fg: #3B82F6;
+  --stat-icon-green: rgba(16, 185, 129, 0.12);
+  --stat-icon-green-fg: #10B981;
+  --stat-icon-amber: rgba(201, 168, 76, 0.14);
+  --stat-icon-amber-fg: #A68A30;
+  --stat-icon-purple: rgba(139, 92, 246, 0.12);
+  --stat-icon-purple-fg: #8B5CF6;
 
   /* === 兼容旧变量名（组件用） === */
   --accent-primary: var(--finrpa-blue);

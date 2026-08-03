@@ -192,7 +192,7 @@ function NotificationCenter() {
       <div className="tasks-header">
         <div>
           <h1 className="page-title">
-            <IconBell size={22} /> 通知中心
+            通知中心
           </h1>
           <p className="page-subtitle">
             查看通知通道配置状态、重试队列统计，并触发测试发送验证 Webhook 连通性

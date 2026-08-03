@@ -134,7 +134,7 @@ class WorkflowControllerTest {
     @DisplayName("创建模板 - 成功")
     void createWorkflow_Success() throws Exception {
         WorkflowVO vo = buildVO("银行流水下载", "banking", "medium");
-        when(workflowService.createWorkflow(any(WorkflowAddRequest.class))).thenReturn(vo);
+        when(workflowService.createWorkflow(any(WorkflowAddRequest.class), any())).thenReturn(vo);
 
         WorkflowAddRequest request = new WorkflowAddRequest();
         request.setName("银行流水下载");
@@ -143,13 +143,14 @@ class WorkflowControllerTest {
         request.setSteps("[{\"skill\":\"login\"}]");
 
         mockMvc.perform(post("/workflows")
+                        .requestAttr(AgentConstant.USER_ID_REQUEST_ATTR, TEST_USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.name").value("银行流水下载"));
 
-        verify(workflowService, times(1)).createWorkflow(any(WorkflowAddRequest.class));
+        verify(workflowService, times(1)).createWorkflow(any(WorkflowAddRequest.class), any());
     }
 
     @Test

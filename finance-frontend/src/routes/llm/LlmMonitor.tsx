@@ -178,7 +178,7 @@ function LlmMonitorPage() {
       <div className="tasks-header">
         <div>
           <h1 className="page-title">
-            <IconChart size={22} /> LLM 调用监控
+            LLM 调用监控
           </h1>
           <p className="page-subtitle">
             监控 LLM 调用次数、成本、缓存命中率与模型分布

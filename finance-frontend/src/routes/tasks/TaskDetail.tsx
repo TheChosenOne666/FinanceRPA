@@ -33,11 +33,9 @@ import {
   IconArrowLeft,
   IconCheck,
   IconClock,
-  IconExternal,
   IconRefresh,
   IconResume,
   IconStop,
-  IconTarget,
   IconTerminal,
 } from '@/components/Icons'
 
@@ -148,70 +146,101 @@ function TaskDetail() {
     )
   }
 
+  // 7. 进度计算（对齐原型 detail-progress-row，仅 totalSteps > 0 时展示进度条）
+  const hasProgress = data.totalSteps > 0
+  const progressPct = hasProgress
+    ? Math.min(100, Math.round((data.currentStep / data.totalSteps) * 100))
+    : 0
+
   return (
     <div className="task-detail">
-      {/* region 顶部：返回 + 标题 + 操作 */}
-      <div className="task-detail-header">
-        <BackButton onClick={() => navigate('/tasks')} />
-        <div className="task-detail-title">
-          <h1 className="page-title">
-            <IconTarget size={20} />
-            <span className="task-id-chip" title={taskId}>
-              #{taskId.slice(-12)}
-            </span>
-            <StatusBadge status={data.status} size="md" />
-          </h1>
-          <p className="task-goal-display">{data.goal}</p>
-        </div>
-        <div className="task-detail-actions">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            title="刷新详情"
-          >
-            <IconRefresh size={14} />
-            {isFetching ? '刷新中…' : '刷新'}
-          </button>
-          {canResume && (
+      {/* region 顶部：返回 + 标题 + 进度 + 操作（卡片化，对齐原型 detail-header） */}
+      <div className="glass-card-static task-detail-header-card">
+        <div className="task-detail-header">
+          <BackButton onClick={() => navigate('/tasks')} />
+          <div className="task-detail-title">
+            <h1 className="page-title">
+              <span className="task-id-chip" title={taskId}>
+                #{taskId.slice(-12)}
+              </span>
+              <StatusBadge status={data.status} size="md" />
+            </h1>
+            <p className="task-goal-display">{data.goal}</p>
+            <div className="task-detail-meta">
+              创建于 {dayjs(data.createTime).format('YYYY-MM-DD HH:mm:ss')}
+              <span className="dot">·</span>
+              触发用户 {data.userId}
+              {data.workflowId && (
+                <>
+                  <span className="dot">·</span>
+                  工作流 #{data.workflowId.slice(-10)}
+                </>
+              )}
+            </div>
+            {hasProgress && (
+              <div className="task-detail-progress">
+                <div className="progress">
+                  <div
+                    className="progress-bar"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+                <span className="pct">
+                  {progressPct}%（{data.currentStep}/{data.totalSteps}）
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="task-detail-actions">
             <button
               type="button"
-              className="btn btn-sm"
-              style={{
-                background: 'rgba(16, 185, 129, 0.08)',
-                color: 'var(--status-completed)',
-                border: '1px solid rgba(16, 185, 129, 0.32)',
-              }}
-              onClick={handleResume}
-              disabled={resuming}
-              title="从断点续跑（跳过已完成子任务）"
+              className="btn btn-ghost btn-sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              title="刷新详情"
             >
-              <IconResume size={14} />
-              {resuming ? '续跑中…' : '断点续跑'}
+              <IconRefresh size={14} />
+              {isFetching ? '刷新中…' : '刷新'}
             </button>
-          )}
-          {!isTerminal && (
-            <button
-              type="button"
-              className="btn btn-sm"
-              style={{
-                background: 'rgba(239, 68, 68, 0.08)',
-                color: 'var(--accent-danger)',
-                border: '1px solid rgba(239, 68, 68, 0.32)',
-              }}
-              onClick={handleAbort}
-              disabled={aborting}
-            >
-              <IconStop size={14} />
-              {aborting ? '终止中…' : '终止任务'}
-            </button>
-          )}
+            {canResume && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  color: 'var(--status-completed)',
+                  border: '1px solid rgba(16, 185, 129, 0.32)',
+                }}
+                onClick={handleResume}
+                disabled={resuming}
+                title="从断点续跑（跳过已完成子任务）"
+              >
+                <IconResume size={14} />
+                {resuming ? '续跑中…' : '断点续跑'}
+              </button>
+            )}
+            {!isTerminal && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  color: 'var(--accent-danger)',
+                  border: '1px solid rgba(239, 68, 68, 0.32)',
+                }}
+                onClick={handleAbort}
+                disabled={aborting}
+              >
+                <IconStop size={14} />
+                {aborting ? '终止中…' : '终止任务'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {/* endregion */}
 
-      {/* region 终止 / 续跑错误提示 */}
+      {/* region 终止 / 续跑 / 任务错误提示 */}
       {abortError && (
         <div className="form-error" style={{ margin: '0 0 16px' }}>
           <IconAlert size={14} />
@@ -224,15 +253,85 @@ function TaskDetail() {
           {resumeError}
         </div>
       )}
+      {data.errorMessage && (
+        <div className="task-detail-alert task-detail-alert-danger">
+          <IconAlert size={14} />
+          <span><strong>错误信息：</strong>{data.errorMessage}</span>
+        </div>
+      )}
+      {data.message && (
+        <div className="task-detail-alert task-detail-alert-info">
+          <span><strong>状态消息：</strong>{data.message}</span>
+        </div>
+      )}
       {/* endregion */}
 
       <div className="task-detail-grid">
-        {/* region 左侧：基本信息 + 子任务时间线 */}
+        {/* region 左侧：浏览器实时流 + 操作日志（对齐原型 detail-grid 左栏） */}
         <div className="task-detail-left">
-          {/* 基本信息 */}
+          <section className="glass-card-static detail-section detail-stream-section">
+            <h2 className="section-title">
+              浏览器实时流
+            </h2>
+            {!isTerminal ? (
+              <BrowserStream
+                taskId={taskId}
+                initialStatus={data.status}
+                initialCurrentStep={data.currentStep}
+                initialTotalSteps={data.totalSteps}
+                onTerminal={handleStreamTerminal}
+              />
+            ) : (
+              <div className="detail-empty">
+                <IconCheck size={28} />
+                <div>任务已结束</div>
+                <div className="detail-empty-desc">
+                  终态：{data.status}
+                  {data.errorMessage ? ` · ${data.errorMessage}` : ''}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* 操作日志（M3 阶段接入审计日志 API） */}
           <section className="glass-card-static detail-section">
             <h2 className="section-title">
-              <IconTerminal size={14} />
+              操作日志
+            </h2>
+            <div className="detail-empty">
+              <IconTerminal size={28} />
+              <div>M3 阶段接入审计日志 API</div>
+              <div className="detail-empty-desc">
+                当前阶段可参考上方"浏览器实时流"中的事件日志
+              </div>
+            </div>
+          </section>
+        </div>
+        {/* endregion */}
+
+        {/* region 右侧：子任务时间线 + 基本信息（对齐原型 detail-grid 右栏） */}
+        <div className="task-detail-right">
+          {/* 子任务时间线（M4.4：Timeline 组件，含 replan 标记 + 可展开详情） */}
+          <section className="glass-card-static detail-section">
+            <h2 className="section-title">
+              子任务时间线
+            </h2>
+            {data.subtasks && data.subtasks.length > 0 ? (
+              <Timeline subtasks={data.subtasks} />
+            ) : (
+              <div className="detail-empty">
+                <IconClock size={28} />
+                <div>暂无子任务</div>
+                <div className="detail-empty-desc">
+                  {isTerminal ? '任务已结束，未生成子任务' : '等待 Planner 规划…'}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* 基本信息（扩展信息：更新时间 / 工作流 ID / 任务参数） */}
+          <section className="glass-card-static detail-section">
+            <h2 className="section-title">
               基本信息
             </h2>
             <div className="info-grid">
@@ -261,86 +360,10 @@ function TaskDetail() {
               )}
               <InfoItem label="触发用户" value={data.userId} mono />
             </div>
-            {data.message && (
-              <div className="info-message">
-                <strong>状态消息：</strong>
-                {data.message}
-              </div>
-            )}
-            {data.errorMessage && (
-              <div className="info-error">
-                <IconAlert size={14} />
-                <strong>错误信息：</strong>
-                {data.errorMessage}
-              </div>
-            )}
             {data.params && (
               <div className="info-params">
                 <div className="info-params-title">任务参数：</div>
                 <pre className="info-params-code">{formatJson(data.params)}</pre>
-              </div>
-            )}
-          </section>
-
-          {/* 子任务时间线（M4.4：Timeline 组件，含 replan 标记 + 可展开详情） */}
-          <section className="glass-card-static detail-section">
-            <h2 className="section-title">
-              <IconClock size={14} />
-              子任务时间线
-            </h2>
-            {data.subtasks && data.subtasks.length > 0 ? (
-              <Timeline subtasks={data.subtasks} />
-            ) : (
-              <div className="detail-empty">
-                <IconClock size={28} />
-                <div>暂无子任务</div>
-                <div className="detail-empty-desc">
-                  {isTerminal ? '任务已结束，未生成子任务' : '等待 Planner 规划…'}
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* 操作日志（M3 阶段接入审计日志 API） */}
-          <section className="glass-card-static detail-section">
-            <h2 className="section-title">
-              <IconTerminal size={14} />
-              操作日志
-            </h2>
-            <div className="detail-empty">
-              <IconTerminal size={28} />
-              <div>M3 阶段接入审计日志 API</div>
-              <div className="detail-empty-desc">
-                当前阶段可参考右侧"浏览器实时流"中的事件日志
-              </div>
-            </div>
-          </section>
-        </div>
-        {/* endregion */}
-
-        {/* region 右侧：浏览器实时流（仅执行中显示） */}
-        <div className="task-detail-right">
-          <section className="glass-card-static detail-section detail-stream-section">
-            <h2 className="section-title">
-              <IconExternal size={14} />
-              浏览器实时流
-            </h2>
-            {!isTerminal ? (
-              <BrowserStream
-                taskId={taskId}
-                initialStatus={data.status}
-                initialCurrentStep={data.currentStep}
-                initialTotalSteps={data.totalSteps}
-                onTerminal={handleStreamTerminal}
-              />
-            ) : (
-              <div className="detail-empty">
-                <IconCheck size={28} />
-                <div>任务已结束</div>
-                <div className="detail-empty-desc">
-                  终态：{data.status}
-                  {data.errorMessage ? ` · ${data.errorMessage}` : ''}
-                </div>
               </div>
             )}
           </section>

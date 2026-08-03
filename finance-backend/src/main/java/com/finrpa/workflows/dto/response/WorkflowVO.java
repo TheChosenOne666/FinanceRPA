@@ -46,6 +46,12 @@ public class WorkflowVO implements Serializable {
     /** 启用状态 */
     private Integer enabled;
 
+    /** 创建人姓名（内置模板为 NULL，前端显示"系统"） */
+    private String createUser;
+
+    /** 执行次数（统计 rpa_agent_task 表中 workflow_id = 此模板的记录数） */
+    private Long runCount;
+
     /** 创建时间 */
     private Timestamp createTime;
 

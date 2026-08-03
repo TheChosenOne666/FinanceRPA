@@ -1320,6 +1320,17 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **后端配套改动** | `TaskQueryRequest` 添加 `workflowId` 字段 + `TaskServiceImpl.listTasks` 支持按 workflowId 筛选（用于工作流执行历史查询） |
 | **测试覆盖** | 后端 TaskServiceImplTest 29 个测试通过（含新增 listTasks_WithWorkflowId_Success）；前端 `tsc -b && vite build` 通过（171 modules transformed） |
 
+> **UI 原型对齐优化（2026-08-04）**：按 `prototypes/04-workflows.html` 原型逐页对比，补齐 4 项缺失字段与交互。
+>
+> | 改动点 | 后端 | 前端 |
+> |--------|------|------|
+> | 执行次数统计 | `WorkflowVO.runCount`（批量查 `rpa_agent_task` 按 workflowId 计数，避免 N+1） | `Workflows.tsx` 卡片新增 `.workflow-card-stats` 行展示"已执行 X 次" |
+> | 创建人姓名 | `WorkflowTemplateEO.createUserId`（V18 迁移）+ `WorkflowVO.createUser`（批量查 `sys_user` 姓名） | `WorkflowDetail.tsx` 配置网格用 `createUser` 替换 version/enabled 字段 |
+> | 执行历史操作人/耗时 | `TaskVO.userName` + `TaskVO.durationMs`（批量查用户名 + 按 create/updateTime 计算耗时） | `types.ts` 同步字段 |
+> | 日期参数选择器 | `WorkflowConstant` 内置模板 params 已用 `type:"date"` | `WorkflowDetail.tsx` `ParamField` 按 `param.type==='date'` 渲染 `<input type="date">`；`mockServer.ts` 修正 startDate/endDate/incidentDate 类型 |
+>
+> **验证**：后端 `mvnw test` 全部通过；前端 `tsc --noEmit` 通过；内置浏览器验证列表页（已执行次数）、详情页（创建人字段 + date 输入框 type=date）均对齐原型。
+
 ---
 
 #### M3.7 Skyvern 集成 + 浏览器执行链路打通
@@ -1640,7 +1651,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **验收标准** | 统计数据准确；缓存命中率 > 80%；任务完成后缓存刷新 |
 | **完成情况** | 已完成。`DashboardConstant`（缓存 key/TTL/指标常量）、`DashboardStatsMapper`（11 类 SQL 聚合查询，按 org_id 手动租户隔离）、`DashboardService`/`DashboardServiceImpl`（Redisson 缓存读穿写回 + 8 类指标组装 + 趋势日期合并填零）、`DashboardController`（6 个 REST 端点）、`TaskTerminalEvent` + `DashboardCacheRefreshListener`（任务终态事件驱动按 orgId 模式批量失效缓存）、6 个响应 VO + 6 个内部统计 DTO 全部落地；`DashboardServiceImplTest` 11 个用例覆盖缓存命中/未命中、指标计算（成功率/命中率/P95）、空值归零、事件失效，全部通过；`TaskServiceImpl` 已在任务进入终态时发布 `TaskTerminalEvent`。 |
 
-#### M8.2 前端 Dashboard（ECharts）
+#### M8.2 前端 Dashboard（ECharts） ✅
 
 | 项 | 内容 |
 |----|------|
@@ -1649,6 +1660,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `routes/enterprise/Dashboard.tsx` |
 | **描述** | 1. 概览卡片：任务总数 / 成功率 / LLM 成本 / 接管队列<br>2. 趋势图：任务量趋势 / 成本趋势（ECharts 折线）<br>3. 分布图：业务线分布 / 错误类型分布（ECharts 饼图）<br>4. 实时刷新：定时拉取 + 手动刷新 |
 | **验收标准** | 图表数据准确；毛玻璃风格统一；刷新无卡顿 |
+| **完成情况** | 已完成。新增 `api/dashboard.ts`（6 个 API 封装）+ `api/types.ts` 增加 8 个 Dashboard 类型（OverviewVO/TrendsVO/BusinessLineStatVO/ErrorTypeStatVO/CostStatVO/ApprovalStatVO/RiskLevelStatVO/TrendPointVO）；`routes/enterprise/Dashboard.tsx` 落地：4 个概览卡片（任务总数 100 / 成功率 85% / LLM 成本 $2.8473 / 接管队列 3）、6 个 ECharts 图表（任务量趋势折线图 3 条线、LLM 成本趋势柱状图、业务线分布饼图、错误类型分布饼图、风险等级分布饼图 4 色）、LLM 成本统计表（按模型维度）、审批统计面板（通过/拒绝/超时/待处理 + 平均响应时长）、30 秒自动刷新 + 手动刷新按钮；`router.tsx` 注册 `/dashboard` 路由，`RootLayout.tsx` 顶部导航添加"大屏"入口；`mockServer.ts` 添加 6 个 dashboard mock handler；`glass.css` 增加 Dashboard 专属样式（约 170 行）。tsc 类型检查通过，vite build 成功（5.81s），内置浏览器验证全部通过（6 图表渲染正常、数值正确、刷新/自动刷新交互正常、毛玻璃风格统一）。 |
 
 ---
 
