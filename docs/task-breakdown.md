@@ -1918,10 +1918,10 @@ M{里程碑号}.{任务序号}
 | 4 | `04-workflows.html` | [Workflows.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/workflows/Workflows.tsx) | ✅ 已完成 | 2026-08-04 | 行业 Tab、卡片统计行、详情配置网格、日期参数选择器、执行历史（含后端字段补充） |
 | 5 | `05-approval-center.html` | [ApprovalCenter.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/ApprovalCenter.tsx) | ✅ 已完成 | 2026-08-04 | 双栏工作台重构（左卡片列表+右固定详情面板）、Tab 3 项含计数、面包屑、风险色边框卡片、倒计时、元信息网格、风险原因列表、任务参数表、执行截图占位、审批操作区 |
 | 6 | `06-audit-logs.html` | [AuditLogs.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/AuditLogs.tsx) | ✅ 已完成 | 2026-08-04 | 两栏布局 + 卡片列表 + 右侧详情面板 + 面包屑 + badge 4 色 + 筛选栏补全（含后端联表查询） |
-| 7 | `07-ai-monitoring.html` | [LlmMonitor.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/LlmMonitor.tsx) / [NeedsHuman.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/NeedsHuman.tsx) | ⬜ 未对齐 | — | M5.4/M5.6 后端 LLM 统计 + NEEDS_HUMAN 队列已就绪，前端待对照原型 |
+| 7 | `07-ai-monitoring.html` | [LlmMonitor.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/LlmMonitor.tsx) / [NeedsHuman.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/NeedsHuman.tsx) | ✅ 已完成 | 2026-08-04 | 接管队列两栏布局+业务线筛选；LLM 监控 KPI 环比趋势+模型分布+成本趋势 SVG+调用记录表（含后端字段补充） |
 | 8 | `08-settings.html` | 无 | ⬜ 未实现 | — | 系统设置页（组织/用户/角色/部门/业务线/Skill 元数据/工作流模板等管理）后端部分已就绪，前端页面未创建 |
 
-**汇总**：已完成 6 / 8 ｜ 未对齐 1 / 8 ｜ 未实现 1 / 8
+**汇总**：已完成 7 / 8 ｜ 未实现 1 / 8
 
 ### 10.2 建议优先级
 
@@ -2008,9 +2008,40 @@ M{里程碑号}.{任务序号}
   - 后端：`mvnw test -Dtest=AuditLogServiceImplTest` 28 测试 PASS（含 1 个新增 fillRelatedNames 测试）
   - 前端：`tsc --noEmit` 通过 + 浏览器 9 项检查 PASS（面包屑、两栏布局、卡片列表、badge 4 色、详情面板、Tab 切换等）
 
+#### 10.3.5 07-ai-monitoring.html → LlmMonitor.tsx / NeedsHuman.tsx（2026-08-04）
+
+**对比原型未对齐项**：
+- A 接管队列单栏表格 → 应改两栏（左队列卡片 + 右处置详情面板）
+- B 接管队列缺业务线筛选 / 卡片缺业务线展示
+- C LLM 监控 KPI 缺环比趋势字段（↑/↓ vs 上一周期）
+- D LLM 监控缺成本趋势 SVG 折线图
+- E LLM 监控缺模型分布横向占比条
+- F LLM 监控缺调用记录表（时间/模型/任务/费用/缓存命中）
+- G LLM 调用记录缺业务线维度（M7.6 三维度 RBAC）
+
+**核心改动**：
+- **后端字段补充**：
+  - [V20__add_business_line_to_llm_and_needs_human.sql](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/resources/db/migration/V20__add_business_line_to_llm_and_needs_human.sql)：`llm_call_log` / `needs_human_queue` 表新增 `business_line_id` 字段
+  - [LlmCallLogEO.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/llm/entity/LlmCallLogEO.java)：新增 `businessLineId` 字段（@TableField）
+  - [LlmCallStatsVO.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/llm/dto/response/LlmCallStatsVO.java)：新增 4 个环比趋势字段（`totalCallsTrendPct`/`totalCostTrendPct`/`cacheHitRateTrendPct`/`avgDurationTrendPct`）
+  - [LlmCallLogService.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/llm/service/LlmCallLogService.java) / [LlmCallLogServiceImpl.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/llm/service/impl/LlmCallLogServiceImpl.java)：新增 `listCallRecords`（分页查询调用记录，联表 `AgentTaskMapper` 填充 taskTitle）和 `getDailyTrend`（按日聚合近 7 日趋势）方法；`getCallStats` 增加环比计算（当前周期 vs 上一周期）
+  - [LlmCallLogController.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/llm/controller/LlmCallLogController.java)：新增 `GET /llm/calls`（分页）和 `GET /llm/calls/daily-trend` 端点
+  - [NeedsHumanQueueEO.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/llm/entity/NeedsHumanQueueEO.java)：新增 `businessLineId` 字段；`NeedsHumanQueryRequest` 支持 `businessLineId` 筛选
+- **前端对齐**：
+  - [NeedsHuman.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/NeedsHuman.tsx)：重构为两栏布局（`takeover-layout`：左 `takeover-list-pane` 队列卡片 + 右 `takeover-detail-panel` 处置详情）；卡片显示任务目标/业务线/状态徽章/时间；详情面板显示错误信息/任务信息/三按钮（跳过/手动执行/终止）
+  - [LlmMonitor.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/LlmMonitor.tsx)：新增 KPI 卡片环比趋势（`KpiCard` 组件，支持 `trendInvert` 反转耗时类指标好坏色）；模型分布横向占比条（`ModelDistribution`）；成本趋势 SVG 折线图（`CostTrendChart`，含渐变填充区域+数据点+Y 轴刻度）；调用记录表（`CallRecordRow`，5 列：时间/模型/任务/费用/缓存命中，含模型 badge 颜色区分）
+  - [types.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/types.ts)：新增 `LlmCallRecordVO`/`LlmCallDailyTrendVO`/`IPage` 接口；`LlmCallStatsVO` 加 4 个趋势字段
+  - [llmMonitor.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/llmMonitor.ts)：新增 `listCallRecords`/`getDailyTrend` API
+  - [needsHuman.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/needsHuman.ts)：`listNeedsHuman` 加 `businessLineId` 参数
+  - [mockServer.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/mock/mockServer.ts)：新增 `/api/llm/calls`（分页+多维过滤）、`/api/llm/calls/daily-trend`（近 7 日固定 Mock）端点；`/api/llm/calls/stats` 补全趋势字段；`/api/llm/needs-human` 加 `businessLineId` 过滤
+  - [glass.css](file:///d:/lingou-projects/financeRPA/finance-frontend/src/styles/glass.css)：新增 `takeover-layout`/`takeover-item`/`takeover-detail-panel`/`llm-kpi-grid`/`model-row`/`model-bar`/`chart-svg`/`trend-summary`/`llm-calls-card` 等样式
+- **验证**：
+  - 后端：`mvnw test -Dtest=LlmCallLogServiceImplTest,NeedsHumanServiceImplTest` 共 47 测试 PASS
+  - 前端：`tsc --noEmit` 通过 + 浏览器验证 PASS（接管队列两栏布局/详情面板/三按钮；LLM 监控标题面包屑/时间筛选/KPI 趋势/模型分布/成本趋势 SVG/调用记录表 10 行数据）
+
 ### 10.4 下一步
 
-按优先级 P0（dashboard）+ P1（audit-logs）均已完成，下一目标 **P2（approval-center，05）**。每完成一个页面：
+按优先级 P0（dashboard）+ P1（audit-logs）+ P2（approval-center）+ P3（ai-monitoring）均已完成，下一目标 **P4（settings，08）**。每完成一个页面：
 1. 对照 `prototypes/0X-xxx.html` 逐项比对
 2. 修改前端代码 + 必要时补充后端字段
 3. tsc 检查 + 浏览器截图验证

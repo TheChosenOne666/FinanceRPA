@@ -32,4 +32,7 @@ public class LlmCallStatsQueryRequest implements Serializable {
 
     /** 任务 ID 筛选（可空） */
     private Long taskId;
+
+    /** 业务线 ID 筛选（可空，P3 ai-monitoring 原型对齐） */
+    private Long businessLineId;
 }

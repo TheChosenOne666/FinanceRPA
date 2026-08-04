@@ -27,6 +27,9 @@ public class LlmCallLogCreateRequest implements Serializable {
     /** 组织 ID（字符串形式） */
     private String orgId;
 
+    /** 业务线 ID（字符串形式，可空，P3 ai-monitoring 原型对齐） */
+    private String businessLineId;
+
     /** LLM 模型名 */
     private String model;
 

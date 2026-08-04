@@ -44,6 +44,10 @@ public class NeedsHumanQueueEO implements Serializable {
     @TableField("org_id")
     private Long orgId;
 
+    /** 业务线业务 ID（关联 enterprise_business_line.business_line_id，可空表示未归属业务线） */
+    @TableField("business_line_id")
+    private Long businessLineId;
+
     /** 子任务 ID（可空，标记哪个子任务触发了 NEEDS_HUMAN） */
     @TableField("subtask_id")
     private String subtaskId;

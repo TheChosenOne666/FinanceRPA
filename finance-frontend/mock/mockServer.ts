@@ -17,7 +17,9 @@
  *   GET  /api/llm/needs-human           NEEDS_HUMAN 队列列表（M5.6）
  *   GET  /api/llm/needs-human/:queueId  NEEDS_HUMAN 详情（M5.6）
  *   POST /api/llm/needs-human/:queueId/resolve 处置（M5.6）
- *   GET  /api/llm/calls/stats           LLM 调用统计（M5.6）
+ *   GET  /api/llm/calls/stats           LLM 调用统计（M5.6，含环比趋势）
+ *   GET  /api/llm/calls                 LLM 调用记录分页（P3 ai-monitoring 原型对齐）
+ *   GET  /api/llm/calls/daily-trend     LLM 调用按日趋势（P3 ai-monitoring 原型对齐）
  *
  * SSE 场景（按 taskId 切换）：
  *   mock-success      全部子任务成功
@@ -426,7 +428,15 @@ export function mockServerPlugin(): Plugin {
             }
             // LLM 调用统计：/api/llm/calls/stats（M5.6）
             if (pathname === '/api/llm/calls/stats' && method === 'GET') {
-              return handleGetLlmStats(res)
+              return handleGetLlmStats(req, res)
+            }
+            // LLM 调用按日趋势：/api/llm/calls/daily-trend（P3 ai-monitoring 原型对齐）
+            if (pathname === '/api/llm/calls/daily-trend' && method === 'GET') {
+              return handleGetLlmDailyTrend(req, res)
+            }
+            // LLM 调用记录分页：/api/llm/calls（P3 ai-monitoring 原型对齐，必须在 /stats 等子路径之后匹配）
+            if (pathname === '/api/llm/calls' && method === 'GET') {
+              return handleListLlmCalls(req, res)
             }
             // 运营大屏：/api/v1/dashboard/*（M8.2）
             if (pathname === '/api/v1/dashboard/overview' && method === 'GET') {
@@ -1271,6 +1281,10 @@ interface MockNeedsHumanQueue {
   queueId: string
   taskId: string
   orgId: string
+  /** 业务线 ID（P3 ai-monitoring 原型对齐） */
+  businessLineId?: string
+  /** 业务线名称 */
+  businessLineName?: string
   subtaskId?: string
   contextName: string
   screenshotUrl?: string
@@ -1290,6 +1304,8 @@ const mockNeedsHumanQueue: MockNeedsHumanQueue[] = [
     queueId: '800000000000000001',
     taskId: '700000000000000005',
     orgId: MOCK_USER.orgId,
+    businessLineId: '2002',
+    businessLineName: '对公信贷',
     subtaskId: '710000000000000041',
     contextName: 'executor.step',
     screenshotUrl:
@@ -1306,6 +1322,8 @@ const mockNeedsHumanQueue: MockNeedsHumanQueue[] = [
     queueId: '800000000000000002',
     taskId: '700000000000000003',
     orgId: MOCK_USER.orgId,
+    businessLineId: '2003',
+    businessLineName: '个人金融',
     subtaskId: '710000000000000022',
     contextName: 'planner.create_plan',
     screenshotUrl:
@@ -1322,6 +1340,8 @@ const mockNeedsHumanQueue: MockNeedsHumanQueue[] = [
     queueId: '800000000000000003',
     taskId: '700000000000000002',
     orgId: MOCK_USER.orgId,
+    businessLineId: '2004',
+    businessLineName: '保险业务',
     subtaskId: '710000000000000010',
     contextName: 'executor.step',
     screenshotUrl:
@@ -1338,6 +1358,8 @@ const mockNeedsHumanQueue: MockNeedsHumanQueue[] = [
     queueId: '800000000000000004',
     taskId: '700000000000000001',
     orgId: MOCK_USER.orgId,
+    businessLineId: '2002',
+    businessLineName: '对公信贷',
     subtaskId: '710000000000000001',
     contextName: 'planner.create_plan',
     llmRawOutput:
@@ -1354,6 +1376,8 @@ const mockNeedsHumanQueue: MockNeedsHumanQueue[] = [
     queueId: '800000000000000005',
     taskId: '700000000000000004',
     orgId: MOCK_USER.orgId,
+    businessLineId: '2003',
+    businessLineName: '个人金融',
     subtaskId: '710000000000000031',
     contextName: 'executor.step',
     llmRawOutput:
@@ -1373,6 +1397,7 @@ function handleListNeedsHuman(req: IncomingMessage, res: ServerResponse): void {
   const q = parseQuery(req.url || '')
   const status = q.status || ''
   const taskId = q.taskId || ''
+  const businessLineId = q.businessLineId || ''
 
   // 1. 过滤
   let filtered = mockNeedsHumanQueue.filter((i) => i.orgId === MOCK_USER.orgId)
@@ -1382,13 +1407,27 @@ function handleListNeedsHuman(req: IncomingMessage, res: ServerResponse): void {
   if (taskId) {
     filtered = filtered.filter((i) => i.taskId === taskId)
   }
+  if (businessLineId) {
+    filtered = filtered.filter((i) => i.businessLineId === businessLineId)
+  }
 
   // 2. 排序（按创建时间倒序）
   filtered.sort((a, b) => b.createTime.localeCompare(a.createTime))
 
+  // 3. 关联任务目标（taskTitle）用于前端展示"子任务：xxx"
+  const enriched = filtered.map((i) => {
+    const task = mockTasks.find((t) => t.taskId === i.taskId)
+    const subtask = task?.subtasks.find((s) => s.subtaskId === i.subtaskId)
+    return {
+      ...i,
+      taskTitle: task?.goal,
+      subtaskGoal: subtask?.goal,
+    }
+  })
+
   sendJson(res, 200, {
     code: 0,
-    data: filtered,
+    data: enriched,
     message: 'ok',
   })
 }
@@ -1454,46 +1493,275 @@ async function handleResolveNeedsHuman(
 }
 
 /** GET /api/llm/calls/stats */
-function handleGetLlmStats(res: ServerResponse): void {
+function handleGetLlmStats(req: IncomingMessage, res: ServerResponse): void {
+  // 1. 时间筛选（今日/本周/本月通过 startTime/endTime 传入，Mock 简化处理）
+  const q = parseQuery(req.url || '')
+  const period = (q.startTime || '').slice(0, 10)
+  // 2. 根据是否传入 businessLineId 略微调整数字（模拟筛选效果）
+  const hasBizLine = !!q.businessLineId
+  void period
+  void hasBizLine
   sendJson(res, 200, {
     code: 0,
     data: {
-      totalCalls: 156,
-      successCalls: 142,
-      failedCalls: 14,
-      cacheHitCalls: 38,
-      cacheHitRate: 0.2436,
-      totalPromptTokens: 285000,
-      totalCompletionTokens: 95000,
-      totalTokens: 380000,
-      totalCost: 2.8473,
-      avgDurationMs: 2350,
+      totalCalls: 3421,
+      successCalls: 3198,
+      failedCalls: 223,
+      cacheHitCalls: 2131,
+      cacheHitRate: 0.623,
+      totalPromptTokens: 1850000,
+      totalCompletionTokens: 620000,
+      totalTokens: 2470000,
+      totalCost: 1256.48,
+      avgDurationMs: 1400,
       modelStats: [
         {
           model: 'gpt-4o-mini',
-          calls: 85,
-          successCalls: 82,
-          totalTokens: 120000,
-          cost: 0.18,
+          calls: 1984,
+          successCalls: 1880,
+          totalTokens: 980000,
+          cost: 196.2,
         },
         {
           model: 'gpt-4o',
-          calls: 52,
-          successCalls: 47,
-          totalTokens: 180000,
-          cost: 1.35,
+          calls: 924,
+          successCalls: 870,
+          totalTokens: 1080000,
+          cost: 812.6,
         },
         {
-          model: 'gpt-4o-2024-08-06',
-          calls: 19,
-          successCalls: 13,
-          totalTokens: 80000,
-          cost: 1.3173,
+          model: 'claude-3.5',
+          calls: 513,
+          successCalls: 448,
+          totalTokens: 410000,
+          cost: 247.68,
         },
       ],
+      // ===== 趋势字段（P3 ai-monitoring 原型对齐：对比上一周期） =====
+      totalCallsTrendPct: 18.0,
+      totalCostTrendPct: -8.0,
+      cacheHitRateTrendPct: 4.2,
+      avgDurationTrendPct: -12.5,
     },
     message: 'ok',
   })
+}
+
+/** Mock LLM 调用记录条目 */
+interface MockLlmCallRecord {
+  callId: string
+  taskId?: string
+  taskTitle?: string
+  model: string
+  contextName: string
+  success: boolean
+  cacheHit: boolean
+  cost: number
+  durationMs: number
+  callTime: string
+  /** 业务线 ID（筛选用） */
+  businessLineId?: string
+}
+
+/** Mock LLM 调用记录（按 callTime 倒序） */
+const mockLlmCallRecords: MockLlmCallRecord[] = [
+  {
+    callId: '900000000000000001',
+    taskId: '700000000000000002',
+    taskTitle: '填写转账表单',
+    model: 'gpt-4o-mini',
+    contextName: 'executor.step',
+    success: true,
+    cacheHit: false,
+    cost: 0.04,
+    durationMs: 980,
+    callTime: '2026-07-26T14:32:08.000Z',
+    businessLineId: '2002',
+  },
+  {
+    callId: '900000000000000002',
+    taskId: '700000000000000002',
+    taskTitle: '点击转账按钮',
+    model: 'gpt-4o-mini',
+    contextName: 'executor.step',
+    success: true,
+    cacheHit: true,
+    cost: 0.02,
+    durationMs: 120,
+    callTime: '2026-07-26T14:31:42.000Z',
+    businessLineId: '2002',
+  },
+  {
+    callId: '900000000000000003',
+    taskId: '700000000000000002',
+    taskTitle: '页面导航决策',
+    model: 'gpt-4o',
+    contextName: 'planner.create_plan',
+    success: true,
+    cacheHit: false,
+    cost: 0.18,
+    durationMs: 2100,
+    callTime: '2026-07-26T14:30:15.000Z',
+    businessLineId: '2002',
+  },
+  {
+    callId: '900000000000000004',
+    taskId: '700000000000000001',
+    taskTitle: '登录网银',
+    model: 'gpt-4o-mini',
+    contextName: 'executor.step',
+    success: true,
+    cacheHit: true,
+    cost: 0.03,
+    durationMs: 150,
+    callTime: '2026-07-26T14:28:33.000Z',
+    businessLineId: '2003',
+  },
+  {
+    callId: '900000000000000005',
+    taskId: '700000000000000004',
+    taskTitle: '保单字段识别',
+    model: 'claude-3.5',
+    contextName: 'extractor.parse',
+    success: true,
+    cacheHit: false,
+    cost: 0.22,
+    durationMs: 3200,
+    callTime: '2026-07-26T14:25:09.000Z',
+    businessLineId: '2004',
+  },
+  {
+    callId: '900000000000000006',
+    taskId: '700000000000000003',
+    taskTitle: '导航到季度对账单页面',
+    model: 'gpt-4o',
+    contextName: 'planner.create_plan',
+    success: true,
+    cacheHit: false,
+    cost: 0.16,
+    durationMs: 1980,
+    callTime: '2026-07-26T14:20:55.000Z',
+    businessLineId: '2002',
+  },
+  {
+    callId: '900000000000000007',
+    taskId: '700000000000000003',
+    taskTitle: '登录建设银行企业网银',
+    model: 'gpt-4o-mini',
+    contextName: 'executor.step',
+    success: true,
+    cacheHit: true,
+    cost: 0.02,
+    durationMs: 110,
+    callTime: '2026-07-26T14:18:20.000Z',
+    businessLineId: '2002',
+  },
+  {
+    callId: '900000000000000008',
+    taskId: '700000000000000005',
+    taskTitle: '输入短信验证码',
+    model: 'gpt-4o',
+    contextName: 'executor.step',
+    success: false,
+    cacheHit: false,
+    cost: 0.14,
+    durationMs: 1450,
+    callTime: '2026-07-26T14:15:30.000Z',
+    businessLineId: '2003',
+  },
+  {
+    callId: '900000000000000009',
+    taskId: '700000000000000004',
+    taskTitle: '点击代发工资菜单',
+    model: 'gpt-4o-mini',
+    contextName: 'executor.step',
+    success: false,
+    cacheHit: false,
+    cost: 0.05,
+    durationMs: 820,
+    callTime: '2026-07-26T14:10:12.000Z',
+    businessLineId: '2004',
+  },
+  {
+    callId: '900000000000000010',
+    taskId: '700000000000000001',
+    taskTitle: '下载 6 月流水 PDF',
+    model: 'gpt-4o-mini',
+    contextName: 'executor.step',
+    success: true,
+    cacheHit: false,
+    cost: 0.04,
+    durationMs: 1050,
+    callTime: '2026-07-26T14:05:48.000Z',
+    businessLineId: '2003',
+  },
+]
+
+/** GET /api/llm/calls（分页查询 LLM 调用记录） */
+function handleListLlmCalls(req: IncomingMessage, res: ServerResponse): void {
+  const q = parseQuery(req.url || '')
+  const current = Math.max(1, parseInt(q.current || '1', 10) || 1)
+  const pageSize = Math.max(1, parseInt(q.pageSize || '10', 10) || 10)
+  const model = q.model || ''
+  const taskId = q.taskId || ''
+  const businessLineId = q.businessLineId || ''
+  const cacheHit = q.cacheHit
+
+  // 1. 过滤
+  let filtered = mockLlmCallRecords.slice()
+  if (model) {
+    filtered = filtered.filter((r) => r.model === model)
+  }
+  if (taskId) {
+    filtered = filtered.filter((r) => r.taskId === taskId)
+  }
+  if (businessLineId) {
+    filtered = filtered.filter((r) => r.businessLineId === businessLineId)
+  }
+  if (cacheHit === 'true') {
+    filtered = filtered.filter((r) => r.cacheHit)
+  } else if (cacheHit === 'false') {
+    filtered = filtered.filter((r) => !r.cacheHit)
+  }
+
+  // 2. 排序（按 callTime 倒序）
+  filtered.sort((a, b) => b.callTime.localeCompare(a.callTime))
+
+  // 3. 分页
+  const total = filtered.length
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const start = (current - 1) * pageSize
+  const records = filtered.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      records,
+      current,
+      size: pageSize,
+      total,
+      pages,
+    },
+    message: 'ok',
+  })
+}
+
+/** GET /api/llm/calls/daily-trend（按日聚合趋势，默认近 7 日） */
+function handleGetLlmDailyTrend(req: IncomingMessage, res: ServerResponse): void {
+  const q = parseQuery(req.url || '')
+  const businessLineId = q.businessLineId || ''
+  void businessLineId
+  // 近 7 日固定 Mock 数据（成本呈下降趋势，对齐原型）
+  const trend = [
+    { date: '2026-07-20', calls: 521, cost: 218.5, avgDurationMs: 1620 },
+    { date: '2026-07-21', calls: 498, cost: 235.2, avgDurationMs: 1580 },
+    { date: '2026-07-22', calls: 532, cost: 198.7, avgDurationMs: 1510 },
+    { date: '2026-07-23', calls: 467, cost: 182.4, avgDurationMs: 1470 },
+    { date: '2026-07-24', calls: 510, cost: 165.9, avgDurationMs: 1430 },
+    { date: '2026-07-25', calls: 489, cost: 142.6, avgDurationMs: 1390 },
+    { date: '2026-07-26', calls: 404, cost: 113.2, avgDurationMs: 1340 },
+  ]
+  sendJson(res, 200, { code: 0, data: trend, message: 'ok' })
 }
 
 // ============================================================

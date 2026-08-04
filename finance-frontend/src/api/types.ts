@@ -520,6 +520,10 @@ export interface NeedsHumanQueueVO {
   taskId: string;
   /** 组织 ID */
   orgId: string;
+  /** 业务线 ID（P3 ai-monitoring 原型对齐） */
+  businessLineId?: string;
+  /** 业务线名称（用于队列卡片展示） */
+  businessLineName?: string;
   /** 子任务 ID */
   subtaskId?: string;
   /** 调用上下文名称 */
@@ -542,6 +546,10 @@ export interface NeedsHumanQueueVO {
   resolvedAt?: string;
   /** 创建时间 */
   createTime: string;
+  /** 任务目标（关联 rpa_agent_task.goal，Mock 端联表填充，用于队列卡片"子任务"展示） */
+  taskTitle?: string;
+  /** 子任务目标（关联 rpa_agent_subtask.goal，Mock 端联表填充，用于队列卡片"子任务"展示） */
+  subtaskGoal?: string;
 }
 
 /**
@@ -556,6 +564,8 @@ export interface NeedsHumanQueryRequest {
   status?: NeedsHumanStatus | '';
   /** 任务 ID 筛选 */
   taskId?: string;
+  /** 业务线 ID 筛选（P3 ai-monitoring 原型对齐） */
+  businessLineId?: string;
 }
 
 /**
@@ -613,6 +623,15 @@ export interface LlmCallStatsVO {
   avgDurationMs: number;
   /** 按模型维度的统计列表 */
   modelStats: ModelStatsVO[];
+  // ===== 趋势字段（P3 ai-monitoring 原型对齐：对比上一周期） =====
+  /** 总调用次数环比变化百分比（正数↑增长 / 负数↓下降，null 表示无对比数据） */
+  totalCallsTrendPct?: number | null;
+  /** 总成本环比变化百分比 */
+  totalCostTrendPct?: number | null;
+  /** 缓存命中率环比变化（百分点） */
+  cacheHitRateTrendPct?: number | null;
+  /** 平均耗时环比变化百分比 */
+  avgDurationTrendPct?: number | null;
 }
 
 /**
@@ -627,6 +646,86 @@ export interface LlmCallStatsQueryRequest {
   model?: string;
   /** 任务 ID 筛选 */
   taskId?: string;
+  /** 业务线 ID 筛选（P3 ai-monitoring 原型对齐） */
+  businessLineId?: string;
+}
+
+/**
+ * LLM 调用记录 VO（单条记录，对齐 com.finrpa.llm.dto.response.LlmCallRecordVO）
+ */
+export interface LlmCallRecordVO {
+  /** 调用记录业务 ID */
+  callId: string;
+  /** 任务 ID（可空） */
+  taskId?: string;
+  /** 任务标题（关联 rpa_agent_task.goal） */
+  taskTitle?: string;
+  /** LLM 模型名 */
+  model: string;
+  /** 调用上下文名称 */
+  contextName: string;
+  /** 调用是否成功 */
+  success: boolean;
+  /** 是否命中缓存 */
+  cacheHit: boolean;
+  /** 本次调用成本（美元） */
+  cost: number;
+  /** 调用耗时（毫秒） */
+  durationMs: number;
+  /** 调用发生时间 */
+  callTime: string;
+}
+
+/**
+ * LLM 调用记录分页查询请求（继承分页基类，P3 ai-monitoring 原型对齐）
+ */
+export interface LlmCallRecordQueryRequest {
+  /** 当前页号 */
+  current: number;
+  /** 页面大小 */
+  pageSize: number;
+  /** 起始时间 */
+  startTime?: string;
+  /** 结束时间 */
+  endTime?: string;
+  /** 模型名筛选 */
+  model?: string;
+  /** 任务 ID 筛选 */
+  taskId?: string;
+  /** 业务线 ID 筛选 */
+  businessLineId?: string;
+  /** 是否仅查询缓存命中记录 */
+  cacheHit?: boolean;
+}
+
+/**
+ * LLM 调用按日聚合趋势 VO（对齐 com.finrpa.llm.dto.response.LlmCallDailyTrendVO）
+ */
+export interface LlmCallDailyTrendVO {
+  /** 日期（格式 yyyy-MM-dd） */
+  date: string;
+  /** 当日调用次数 */
+  calls: number;
+  /** 当日总成本（美元） */
+  cost: number;
+  /** 当日平均耗时（毫秒） */
+  avgDurationMs: number;
+}
+
+/**
+ * 通用分页结果（对齐 MyBatis-Plus IPage）
+ */
+export interface IPage<T> {
+  /** 当前页号 */
+  current: number;
+  /** 页面大小 */
+  size: number;
+  /** 总记录数 */
+  total: number;
+  /** 总页数 */
+  pages: number;
+  /** 当前页数据 */
+  records: T[];
 }
 
 // ============================================================

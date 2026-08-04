@@ -1,11 +1,18 @@
 package com.finrpa.llm.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.finrpa.agent.entity.AgentTaskEO;
+import com.finrpa.agent.mapper.AgentTaskMapper;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
 import com.finrpa.llm.constant.LlmConstant;
 import com.finrpa.llm.dto.request.LlmCallLogCreateRequest;
+import com.finrpa.llm.dto.request.LlmCallRecordQueryRequest;
 import com.finrpa.llm.dto.request.LlmCallStatsQueryRequest;
+import com.finrpa.llm.dto.response.LlmCallDailyTrendVO;
+import com.finrpa.llm.dto.response.LlmCallRecordVO;
 import com.finrpa.llm.dto.response.LlmCallStatsVO;
 import com.finrpa.llm.dto.response.ModelStatsVO;
 import com.finrpa.llm.entity.LlmCallLogEO;
@@ -18,11 +25,14 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * LLM 调用记录服务实现
@@ -39,6 +49,10 @@ public class LlmCallLogServiceImpl implements LlmCallLogService {
     /** LLM 调用记录 Mapper */
     @Resource
     private LlmCallLogMapper llmCallLogMapper;
+
+    /** 任务 Mapper（用于调用记录列表关联查询任务标题） */
+    @Resource
+    private AgentTaskMapper agentTaskMapper;
 
     // region 创建调用记录
 
@@ -69,9 +83,10 @@ public class LlmCallLogServiceImpl implements LlmCallLogService {
         callLog.setTotalTokens(request.getTotalTokens());
         callLog.setCacheHit(request.getCacheHit() != null ? request.getCacheHit() : false);
 
-        // 3. 解析 taskId / orgId（Python 侧为字符串）
+        // 3. 解析 taskId / orgId / businessLineId（Python 侧为字符串）
         callLog.setTaskId(parseLong(request.getTaskId()));
         callLog.setOrgId(parseLong(request.getOrgId()));
+        callLog.setBusinessLineId(parseLong(request.getBusinessLineId()));
 
         // 4. 解析调用时间戳
         callLog.setCallTime(parseTimestamp(request.getTimestamp()));
@@ -92,18 +107,235 @@ public class LlmCallLogServiceImpl implements LlmCallLogService {
 
     // endregion
 
-    // region 统计查询
+    // region 统计查询（含趋势）
 
     /**
-     * 查询 LLM 调用统计（按时间/模型/任务维度筛选）
+     * 查询 LLM 调用统计（按时间/模型/任务/业务线维度筛选，含环比趋势）
+     *
+     * <p>趋势计算：若 queryRequest 同时提供 startTime/endTime，自动取等长的上一周期对比；
+     * 若未提供时间范围，趋势字段为 null。</p>
      *
      * @param queryRequest 统计查询请求
      * @param orgId        组织 ID（租户隔离）
-     * @return 聚合统计结果
+     * @return 聚合统计结果（含趋势字段）
      */
     @Override
     public LlmCallStatsVO getStats(LlmCallStatsQueryRequest queryRequest, Long orgId) {
+        // 1. 当前周期查询
+        QueryWrapper<LlmCallLogEO> currentWrapper = buildStatsWrapper(queryRequest, orgId);
+        List<LlmCallLogEO> currentLogs = llmCallLogMapper.selectList(currentWrapper);
+        LlmCallStatsVO stats = aggregateStats(currentLogs);
+
+        // 2. 计算环比趋势（仅当提供完整时间范围时）
+        if (queryRequest != null && queryRequest.getStartTime() != null && queryRequest.getEndTime() != null) {
+            long durationMs = queryRequest.getEndTime().getTime() - queryRequest.getStartTime().getTime();
+            Timestamp prevStart = new Timestamp(queryRequest.getStartTime().getTime() - durationMs);
+            Timestamp prevEnd = queryRequest.getStartTime();
+            LlmCallStatsQueryRequest prevQuery = new LlmCallStatsQueryRequest();
+            prevQuery.setStartTime(prevStart);
+            prevQuery.setEndTime(prevEnd);
+            prevQuery.setModel(queryRequest.getModel());
+            prevQuery.setTaskId(queryRequest.getTaskId());
+            prevQuery.setBusinessLineId(queryRequest.getBusinessLineId());
+
+            QueryWrapper<LlmCallLogEO> prevWrapper = buildStatsWrapper(prevQuery, orgId);
+            List<LlmCallLogEO> prevLogs = llmCallLogMapper.selectList(prevWrapper);
+            LlmCallStatsVO prevStats = aggregateStats(prevLogs);
+
+            stats.setTotalCallsTrendPct(calcTrendPct(prevStats.getTotalCalls(), stats.getTotalCalls()));
+            stats.setTotalCostTrendPct(calcTrendPct(
+                    prevStats.getTotalCost() != null ? prevStats.getTotalCost().doubleValue() : 0.0,
+                    stats.getTotalCost() != null ? stats.getTotalCost().doubleValue() : 0.0));
+            // 缓存命中率趋势用百分点差值
+            stats.setCacheHitRateTrendPct(
+                    Math.round((stats.getCacheHitRate() - prevStats.getCacheHitRate()) * 10000) / 100.0);
+            stats.setAvgDurationTrendPct(calcTrendPct(prevStats.getAvgDurationMs(), stats.getAvgDurationMs()));
+        }
+
+        return stats;
+    }
+
+    // endregion
+
+    // region 调用记录分页查询
+
+    /**
+     * 分页查询 LLM 调用记录（按 call_time 倒序）
+     *
+     * @param queryRequest 分页查询请求
+     * @param orgId        组织 ID（租户隔离）
+     * @return 分页结果
+     */
+    @Override
+    public IPage<LlmCallRecordVO> listCallRecords(LlmCallRecordQueryRequest queryRequest, Long orgId) {
+        ThrowUtils.throwIf(queryRequest == null, ErrorCode.PARAMS_ERROR, "查询请求不能为空");
+        int current = queryRequest.getCurrent();
+        int pageSize = queryRequest.getPageSize();
+        ThrowUtils.throwIf(pageSize > 100, ErrorCode.PARAMS_ERROR, "单页大小不能超过 100");
+
         // 1. 构建查询条件
+        QueryWrapper<LlmCallLogEO> wrapper = new QueryWrapper<>();
+        if (orgId != null) {
+            wrapper.eq("org_id", orgId);
+        }
+        if (queryRequest.getStartTime() != null) {
+            wrapper.ge("call_time", queryRequest.getStartTime());
+        }
+        if (queryRequest.getEndTime() != null) {
+            wrapper.le("call_time", queryRequest.getEndTime());
+        }
+        if (queryRequest.getModel() != null && !queryRequest.getModel().isBlank()) {
+            wrapper.eq("model", queryRequest.getModel());
+        }
+        if (queryRequest.getTaskId() != null) {
+            wrapper.eq("task_id", queryRequest.getTaskId());
+        }
+        if (queryRequest.getBusinessLineId() != null) {
+            wrapper.eq("business_line_id", queryRequest.getBusinessLineId());
+        }
+        if (queryRequest.getCacheHit() != null) {
+            wrapper.eq("cache_hit", queryRequest.getCacheHit());
+        }
+        wrapper.orderByDesc("call_time");
+
+        // 2. 分页查询
+        Page<LlmCallLogEO> page = new Page<>(current, pageSize);
+        IPage<LlmCallLogEO> eoPage = llmCallLogMapper.selectPage(page, wrapper);
+
+        // 3. 转 VO
+        Page<LlmCallRecordVO> voPage = new Page<>(current, pageSize);
+        voPage.setTotal(eoPage.getTotal());
+
+        List<LlmCallLogEO> records = eoPage.getRecords();
+        if (records.isEmpty()) {
+            voPage.setRecords(new ArrayList<>());
+            return voPage;
+        }
+
+        // 4. 批量查询任务标题（避免 N+1）
+        List<Long> taskIds = records.stream()
+                .map(LlmCallLogEO::getTaskId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, String> taskTitleMap = new LinkedHashMap<>();
+        if (!taskIds.isEmpty()) {
+            QueryWrapper<AgentTaskEO> taskWrapper = new QueryWrapper<>();
+            taskWrapper.in("task_id", taskIds);
+            List<AgentTaskEO> tasks = agentTaskMapper.selectList(taskWrapper);
+            for (AgentTaskEO task : tasks) {
+                taskTitleMap.put(task.getTaskId(), task.getGoal());
+            }
+        }
+
+        // 5. 组装 VO
+        List<LlmCallRecordVO> voList = records.stream().map(eo -> {
+            LlmCallRecordVO vo = new LlmCallRecordVO();
+            vo.setCallId(eo.getCallId());
+            vo.setTaskId(eo.getTaskId());
+            vo.setTaskTitle(eo.getTaskId() != null ? taskTitleMap.get(eo.getTaskId()) : null);
+            vo.setModel(eo.getModel());
+            vo.setContextName(eo.getContextName());
+            vo.setSuccess(eo.getSuccess());
+            vo.setCacheHit(eo.getCacheHit());
+            vo.setCost(eo.getCost());
+            vo.setDurationMs(eo.getDurationMs());
+            vo.setCallTime(eo.getCallTime());
+            return vo;
+        }).collect(Collectors.toList());
+        voPage.setRecords(voList);
+
+        return voPage;
+    }
+
+    // endregion
+
+    // region 按日聚合趋势
+
+    /**
+     * 查询按日聚合趋势（按日期升序返回）
+     *
+     * <p>若未提供时间范围，默认查最近 7 天。</p>
+     *
+     * @param queryRequest 统计查询请求（用 startTime/endTime/businessLineId 筛选）
+     * @param orgId        组织 ID（租户隔离）
+     * @return 按日期升序的每日聚合数据列表
+     */
+    @Override
+    public List<LlmCallDailyTrendVO> getDailyTrend(LlmCallStatsQueryRequest queryRequest, Long orgId) {
+        // 1. 默认时间范围：最近 7 天
+        Timestamp startTime = queryRequest != null ? queryRequest.getStartTime() : null;
+        Timestamp endTime = queryRequest != null ? queryRequest.getEndTime() : null;
+        if (startTime == null || endTime == null) {
+            endTime = Timestamp.valueOf(LocalDateTime.now());
+            startTime = Timestamp.valueOf(endTime.toInstant()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDateTime()
+                    .minusDays(6)
+                    .toLocalDate()
+                    .atStartOfDay());
+        }
+
+        // 2. 查询时间范围内的记录
+        QueryWrapper<LlmCallLogEO> wrapper = new QueryWrapper<>();
+        if (orgId != null) {
+            wrapper.eq("org_id", orgId);
+        }
+        wrapper.ge("call_time", startTime);
+        wrapper.le("call_time", endTime);
+        if (queryRequest != null) {
+            if (queryRequest.getModel() != null && !queryRequest.getModel().isBlank()) {
+                wrapper.eq("model", queryRequest.getModel());
+            }
+            if (queryRequest.getBusinessLineId() != null) {
+                wrapper.eq("business_line_id", queryRequest.getBusinessLineId());
+            }
+            if (queryRequest.getTaskId() != null) {
+                wrapper.eq("task_id", queryRequest.getTaskId());
+            }
+        }
+        List<LlmCallLogEO> logs = llmCallLogMapper.selectList(wrapper);
+
+        // 3. 按日期分组聚合
+        Map<LocalDate, List<LlmCallLogEO>> grouped = logs.stream()
+                .filter(l -> l.getCallTime() != null)
+                .collect(Collectors.groupingBy(
+                        l -> l.getCallTime().toInstant().atZone(ZoneId.systemDefault()).toLocalDate(),
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        // 4. 填充每一天（含无数据日）
+        List<LlmCallDailyTrendVO> result = new ArrayList<>();
+        LocalDate start = startTime.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        LocalDate end = endTime.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
+            List<LlmCallLogEO> dayLogs = grouped.getOrDefault(d, java.util.Collections.emptyList());
+            LlmCallDailyTrendVO vo = new LlmCallDailyTrendVO();
+            vo.setDate(d.toString());
+            vo.setCalls((long) dayLogs.size());
+            BigDecimal dayCost = dayLogs.stream()
+                    .map(l -> l.getCost() != null ? l.getCost() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            vo.setCost(dayCost);
+            double avgMs = dayLogs.stream()
+                    .mapToInt(l -> l.getDurationMs() != null ? l.getDurationMs() : 0)
+                    .average()
+                    .orElse(0.0);
+            vo.setAvgDurationMs(Math.round(avgMs * 100) / 100.0);
+            result.add(vo);
+        }
+
+        return result;
+    }
+
+    // endregion
+
+    // region 私有方法：构建统计查询条件
+
+    /**
+     * 构建统计查询 QueryWrapper（复用于当前周期 / 上一周期）
+     */
+    private QueryWrapper<LlmCallLogEO> buildStatsWrapper(LlmCallStatsQueryRequest queryRequest, Long orgId) {
         QueryWrapper<LlmCallLogEO> wrapper = new QueryWrapper<>();
         if (orgId != null) {
             wrapper.eq("org_id", orgId);
@@ -121,13 +353,36 @@ public class LlmCallLogServiceImpl implements LlmCallLogService {
             if (queryRequest.getTaskId() != null) {
                 wrapper.eq("task_id", queryRequest.getTaskId());
             }
+            if (queryRequest.getBusinessLineId() != null) {
+                wrapper.eq("business_line_id", queryRequest.getBusinessLineId());
+            }
         }
+        return wrapper;
+    }
 
-        // 2. 查询记录
-        List<LlmCallLogEO> logs = llmCallLogMapper.selectList(wrapper);
+    // endregion
 
-        // 3. 聚合统计
-        return aggregateStats(logs);
+    // region 私有方法：趋势百分比计算
+
+    /**
+     * 计算环比百分比变化
+     *
+     * @param prev 上一周期值
+     * @param curr 当前周期值
+     * @return 变化百分比（正数↑增长 / 负数↓下降），上一周期为 0 时返回 null（无法计算）
+     */
+    private Double calcTrendPct(double prev, double curr) {
+        if (prev == 0.0) {
+            return curr == 0.0 ? 0.0 : null;
+        }
+        return Math.round((curr - prev) / prev * 10000) / 100.0;
+    }
+
+    /**
+     * 计算环比百分比变化（Long 重载）
+     */
+    private Double calcTrendPct(long prev, long curr) {
+        return calcTrendPct((double) prev, (double) curr);
     }
 
     // endregion

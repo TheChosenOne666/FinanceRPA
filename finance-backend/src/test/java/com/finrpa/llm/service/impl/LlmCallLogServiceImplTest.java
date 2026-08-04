@@ -1,10 +1,17 @@
 package com.finrpa.llm.service.impl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.finrpa.agent.entity.AgentTaskEO;
+import com.finrpa.agent.mapper.AgentTaskMapper;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.response.ErrorCode;
 import com.finrpa.llm.constant.LlmConstant;
 import com.finrpa.llm.dto.request.LlmCallLogCreateRequest;
+import com.finrpa.llm.dto.request.LlmCallRecordQueryRequest;
 import com.finrpa.llm.dto.request.LlmCallStatsQueryRequest;
+import com.finrpa.llm.dto.response.LlmCallDailyTrendVO;
+import com.finrpa.llm.dto.response.LlmCallRecordVO;
 import com.finrpa.llm.dto.response.LlmCallStatsVO;
 import com.finrpa.llm.dto.response.ModelStatsVO;
 import com.finrpa.llm.entity.LlmCallLogEO;
@@ -19,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -42,8 +50,14 @@ class LlmCallLogServiceImplTest {
     /** 测试用组织 ID */
     private static final String TEST_ORG_ID = "2082342545947660289";
 
+    /** 测试用业务线 ID */
+    private static final Long TEST_BIZ_LINE_ID = 2082380000000000003L;
+
     @Mock
     private LlmCallLogMapper llmCallLogMapper;
+
+    @Mock
+    private AgentTaskMapper agentTaskMapper;
 
     @InjectMocks
     private LlmCallLogServiceImpl llmCallLogService;
@@ -51,7 +65,7 @@ class LlmCallLogServiceImplTest {
     // region createCallLog 成功场景
 
     @Test
-    @DisplayName("创建调用记录 - 成功（完整参数）")
+    @DisplayName("创建调用记录 - 成功（完整参数，含业务线）")
     void createCallLog_SuccessWithFullParams() {
         // 1. 构建请求
         LlmCallLogCreateRequest request = buildFullRequest();
@@ -70,6 +84,7 @@ class LlmCallLogServiceImplTest {
         LlmCallLogEO eo = captor.getValue();
         assertEquals(Long.parseLong(TEST_TASK_ID), eo.getTaskId());
         assertEquals(Long.parseLong(TEST_ORG_ID), eo.getOrgId());
+        assertEquals(TEST_BIZ_LINE_ID, eo.getBusinessLineId());
         assertEquals("gpt-4o", eo.getModel());
         assertEquals("planner", eo.getContextName());
         assertEquals(0, eo.getRetryAttempt());
@@ -400,17 +415,180 @@ class LlmCallLogServiceImplTest {
         assertEquals(0L, stats.getTotalCalls());
     }
 
+    @Test
+    @DisplayName("查询统计 - 提供完整时间范围时计算环比趋势")
+    void getStats_WithTimeRange_CalculatesTrend() {
+        // 当前周期 100 调用，上一周期 50 调用 → 趋势 +100%
+        LlmCallLogEO currentLog = buildLogEO("gpt-4o-mini", true, 100, 200, 300, 100,
+                new BigDecimal("0.000015"), false);
+        LlmCallLogEO prevLog = buildLogEO("gpt-4o-mini", true, 50, 100, 150, 80,
+                new BigDecimal("0.0000075"), false);
+
+        // 第一次调用返回当前周期，第二次返回上一周期
+        when(llmCallLogMapper.selectList(any()))
+                .thenReturn(Collections.singletonList(currentLog))
+                .thenReturn(Collections.singletonList(prevLog));
+
+        LlmCallStatsQueryRequest queryRequest = new LlmCallStatsQueryRequest();
+        queryRequest.setStartTime(Timestamp.valueOf(LocalDateTime.of(2026, 8, 1, 0, 0)));
+        queryRequest.setEndTime(Timestamp.valueOf(LocalDateTime.of(2026, 8, 2, 0, 0)));
+
+        LlmCallStatsVO stats = llmCallLogService.getStats(queryRequest, 1L);
+
+        assertEquals(1L, stats.getTotalCalls());
+        assertNotNull(stats.getTotalCallsTrendPct());
+        // 上一周期 1 → 当前 1，变化 0%
+        assertEquals(0.0, stats.getTotalCallsTrendPct(), 0.01);
+        verify(llmCallLogMapper, times(2)).selectList(any());
+    }
+
+    @Test
+    @DisplayName("查询统计 - 业务线筛选透传到 wrapper")
+    void getStats_WithBusinessLine_FiltersCorrectly() {
+        when(llmCallLogMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        LlmCallStatsQueryRequest queryRequest = new LlmCallStatsQueryRequest();
+        queryRequest.setBusinessLineId(TEST_BIZ_LINE_ID);
+
+        llmCallLogService.getStats(queryRequest, 1L);
+
+        verify(llmCallLogMapper, times(1)).selectList(any());
+    }
+
+    // endregion
+
+    // region listCallRecords 调用记录分页
+
+    @Test
+    @DisplayName("调用记录分页 - 空结果返回空列表")
+    void listCallRecords_EmptyResult() {
+        LlmCallRecordQueryRequest queryRequest = new LlmCallRecordQueryRequest();
+
+        Page<LlmCallLogEO> emptyPage = new Page<>(1, 10);
+        emptyPage.setTotal(0);
+        emptyPage.setRecords(Collections.emptyList());
+        when(llmCallLogMapper.selectPage(any(Page.class), any())).thenReturn(emptyPage);
+
+        IPage<LlmCallRecordVO> result = llmCallLogService.listCallRecords(queryRequest, 1L);
+
+        assertEquals(0L, result.getTotal());
+        assertTrue(result.getRecords().isEmpty());
+    }
+
+    @Test
+    @DisplayName("调用记录分页 - 含任务标题关联")
+    void listCallRecords_WithTaskTitle() {
+        LlmCallLogEO log = buildLogEO("gpt-4o", true, 100, 200, 300, 100,
+                new BigDecimal("0.001"), false);
+        log.setCallId(2082400000000000001L);
+        log.setTaskId(2082400000000000002L);
+
+        Page<LlmCallLogEO> page = new Page<>(1, 10);
+        page.setTotal(1);
+        page.setRecords(Collections.singletonList(log));
+        when(llmCallLogMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        // mock 任务标题查询
+        AgentTaskEO task = new AgentTaskEO();
+        task.setTaskId(2082400000000000002L);
+        task.setGoal("下载银行流水");
+        when(agentTaskMapper.selectList(any())).thenReturn(Collections.singletonList(task));
+
+        LlmCallRecordQueryRequest queryRequest = new LlmCallRecordQueryRequest();
+        IPage<LlmCallRecordVO> result = llmCallLogService.listCallRecords(queryRequest, 1L);
+
+        assertEquals(1L, result.getTotal());
+        assertEquals(1, result.getRecords().size());
+        LlmCallRecordVO vo = result.getRecords().get(0);
+        assertEquals("gpt-4o", vo.getModel());
+        assertEquals("下载银行流水", vo.getTaskTitle());
+        assertTrue(vo.getSuccess());
+    }
+
+    @Test
+    @DisplayName("调用记录分页 - 请求为空抛异常")
+    void listCallRecords_NullRequest_ThrowsException() {
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> llmCallLogService.listCallRecords(null, 1L));
+        assertEquals(ErrorCode.PARAMS_ERROR.getCode(), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("调用记录分页 - pageSize 超过 100 抛异常")
+    void listCallRecords_PageSizeOver100_ThrowsException() {
+        LlmCallRecordQueryRequest queryRequest = new LlmCallRecordQueryRequest();
+        queryRequest.setPageSize(101);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> llmCallLogService.listCallRecords(queryRequest, 1L));
+        assertEquals(ErrorCode.PARAMS_ERROR.getCode(), ex.getCode());
+    }
+
+    // endregion
+
+    // region getDailyTrend 按日趋势
+
+    @Test
+    @DisplayName("按日趋势 - 默认最近 7 天，含无数据日填充零值")
+    void getDailyTrend_DefaultRange_FillsEmptyDays() {
+        when(llmCallLogMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        List<LlmCallDailyTrendVO> trend = llmCallLogService.getDailyTrend(null, 1L);
+
+        assertNotNull(trend);
+        assertEquals(7, trend.size());
+        // 每一天都有零值
+        for (LlmCallDailyTrendVO day : trend) {
+            assertEquals(0L, day.getCalls());
+            assertEquals(BigDecimal.ZERO, day.getCost());
+        }
+    }
+
+    @Test
+    @DisplayName("按日趋势 - 提供时间范围时按日聚合")
+    void getDailyTrend_WithTimeRange_AggregatesByDay() {
+        // 2 天范围，第 1 天 2 条记录，第 2 天 1 条记录
+        Timestamp start = Timestamp.valueOf(LocalDateTime.of(2026, 8, 1, 0, 0));
+        Timestamp end = Timestamp.valueOf(LocalDateTime.of(2026, 8, 2, 23, 59));
+
+        LlmCallLogEO log1 = buildLogEO("gpt-4o", true, 100, 200, 300, 100,
+                new BigDecimal("0.001"), false);
+        log1.setCallTime(Timestamp.valueOf(LocalDateTime.of(2026, 8, 1, 10, 0)));
+        LlmCallLogEO log2 = buildLogEO("gpt-4o", true, 100, 200, 300, 200,
+                new BigDecimal("0.002"), false);
+        log2.setCallTime(Timestamp.valueOf(LocalDateTime.of(2026, 8, 1, 15, 0)));
+        LlmCallLogEO log3 = buildLogEO("gpt-4o", true, 100, 200, 300, 300,
+                new BigDecimal("0.003"), false);
+        log3.setCallTime(Timestamp.valueOf(LocalDateTime.of(2026, 8, 2, 11, 0)));
+
+        when(llmCallLogMapper.selectList(any())).thenReturn(Arrays.asList(log1, log2, log3));
+
+        LlmCallStatsQueryRequest queryRequest = new LlmCallStatsQueryRequest();
+        queryRequest.setStartTime(start);
+        queryRequest.setEndTime(end);
+
+        List<LlmCallDailyTrendVO> trend = llmCallLogService.getDailyTrend(queryRequest, 1L);
+
+        assertEquals(2, trend.size());
+        assertEquals("2026-08-01", trend.get(0).getDate());
+        assertEquals(2L, trend.get(0).getCalls());
+        assertEquals(0, trend.get(0).getCost().compareTo(new BigDecimal("0.003")));
+        assertEquals("2026-08-02", trend.get(1).getDate());
+        assertEquals(1L, trend.get(1).getCalls());
+    }
+
     // endregion
 
     // region 辅助方法
 
     /**
-     * 构建完整参数的创建请求
+     * 构建完整参数的创建请求（含业务线）
      */
     private LlmCallLogCreateRequest buildFullRequest() {
         LlmCallLogCreateRequest request = new LlmCallLogCreateRequest();
         request.setTaskId(TEST_TASK_ID);
         request.setOrgId(TEST_ORG_ID);
+        request.setBusinessLineId(String.valueOf(TEST_BIZ_LINE_ID));
         request.setModel("gpt-4o");
         request.setContextName("planner");
         request.setRetryAttempt(0);

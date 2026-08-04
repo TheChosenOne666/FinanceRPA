@@ -13,6 +13,8 @@ import com.finrpa.llm.dto.request.NeedsHumanResolveRequest;
 import com.finrpa.llm.dto.response.NeedsHumanQueueVO;
 import com.finrpa.llm.entity.NeedsHumanQueueEO;
 import com.finrpa.llm.mapper.NeedsHumanQueueMapper;
+import com.finrpa.tenant.entity.BusinessLineEO;
+import com.finrpa.tenant.mapper.BusinessLineMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,11 +52,17 @@ class NeedsHumanServiceImplTest {
     /** 测试用用户 ID */
     private static final Long TEST_USER_ID = 2082360000000000002L;
 
+    /** 测试用业务线 ID */
+    private static final Long TEST_BIZ_LINE_ID = 2082380000000000003L;
+
     @Mock
     private NeedsHumanQueueMapper needsHumanQueueMapper;
 
     @Mock
     private TaskService taskService;
+
+    @Mock
+    private BusinessLineMapper businessLineMapper;
 
     @InjectMocks
     private NeedsHumanServiceImpl needsHumanService;
@@ -77,6 +85,7 @@ class NeedsHumanServiceImplTest {
         NeedsHumanQueueEO eo = captor.getValue();
         assertEquals(TEST_TASK_ID, eo.getTaskId());
         assertEquals(TEST_ORG_ID, eo.getOrgId());
+        assertEquals(TEST_BIZ_LINE_ID, eo.getBusinessLineId());
         assertEquals("planner", eo.getContextName());
         assertEquals("raw-llm-output", eo.getLlmRawOutput());
         assertEquals("validation failed", eo.getValidationError());
@@ -143,16 +152,44 @@ class NeedsHumanServiceImplTest {
         queryRequest.setPageSize(10);
         queryRequest.setStatus(LlmConstant.NEEDS_HUMAN_STATUS_PENDING);
 
-        List<NeedsHumanQueueEO> records = List.of(buildQueueEO(1L), buildQueueEO(2L));
+        NeedsHumanQueueEO eo1 = buildQueueEO(1L);
+        eo1.setBusinessLineId(TEST_BIZ_LINE_ID);
+        List<NeedsHumanQueueEO> records = List.of(eo1, buildQueueEO(2L));
         Page<NeedsHumanQueueEO> page = new Page<>(1, 10, 2);
         page.setRecords(records);
 
         when(needsHumanQueueMapper.selectPage(any(Page.class), any(Wrapper.class))).thenReturn(page);
+        // mock 业务线名称查询
+        BusinessLineEO bizLine = new BusinessLineEO();
+        bizLine.setBusinessLineId(TEST_BIZ_LINE_ID);
+        bizLine.setBusinessLineName("对公业务");
+        when(businessLineMapper.selectList(any())).thenReturn(List.of(bizLine));
 
         IPage<NeedsHumanQueueVO> result = needsHumanService.listNeedsHuman(queryRequest, TEST_ORG_ID);
 
         assertEquals(2, result.getRecords().size());
         assertEquals(2L, result.getTotal());
+        // 验证业务线名称填充
+        NeedsHumanQueueVO vo0 = result.getRecords().get(0);
+        assertEquals(TEST_BIZ_LINE_ID, vo0.getBusinessLineId());
+        assertEquals("对公业务", vo0.getBusinessLineName());
+        verify(needsHumanQueueMapper).selectPage(any(Page.class), any(Wrapper.class));
+    }
+
+    @Test
+    @DisplayName("列表查询 - 按业务线筛选")
+    @SuppressWarnings("unchecked")
+    void listNeedsHuman_FilterByBusinessLine() {
+        NeedsHumanQueryRequest queryRequest = new NeedsHumanQueryRequest();
+        queryRequest.setBusinessLineId(TEST_BIZ_LINE_ID);
+
+        Page<NeedsHumanQueueEO> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(Collections.emptyList());
+        when(needsHumanQueueMapper.selectPage(any(Page.class), any(Wrapper.class))).thenReturn(emptyPage);
+
+        IPage<NeedsHumanQueueVO> result = needsHumanService.listNeedsHuman(queryRequest, TEST_ORG_ID);
+
+        assertEquals(0, result.getRecords().size());
         verify(needsHumanQueueMapper).selectPage(any(Page.class), any(Wrapper.class));
     }
 
@@ -362,6 +399,7 @@ class NeedsHumanServiceImplTest {
         NeedsHumanReportRequest request = new NeedsHumanReportRequest();
         request.setTaskId(String.valueOf(TEST_TASK_ID));
         request.setOrgId(String.valueOf(TEST_ORG_ID));
+        request.setBusinessLineId(String.valueOf(TEST_BIZ_LINE_ID));
         request.setSubtaskId("subtask-001");
         request.setContextName("planner");
         request.setScreenshotUrl("https://example.com/screenshot.png");

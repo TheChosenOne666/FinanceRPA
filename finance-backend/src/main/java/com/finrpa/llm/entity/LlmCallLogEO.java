@@ -45,6 +45,10 @@ public class LlmCallLogEO implements Serializable {
     @TableField("org_id")
     private Long orgId;
 
+    /** 业务线业务 ID（关联 enterprise_business_line.business_line_id，可空表示未归属业务线） */
+    @TableField("business_line_id")
+    private Long businessLineId;
+
     /** LLM 模型名（如 gpt-4o-mini / gpt-4o / gpt-4o-2024-08-06） */
     @TableField("model")
     private String model;

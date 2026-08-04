@@ -5585,3 +5585,396 @@ table.data-table {
 }
 
 /* endregion */
+
+/* ============================================================
+   P3 ai-monitoring 页样式（对齐 prototypes/07-ai-monitoring.html）
+   含：人工接管队列 + LLM 监控
+   ============================================================ */
+
+/* ---------- 页面头部：标题 + 面包屑 + 时间筛选 ---------- */
+.ai-monitor-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.ai-monitor-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-monitor-header .page-title {
+  margin: 0;
+}
+
+/* ---------- Tab 切换栏（待处置 / 已处理，下划线样式） ---------- */
+.ai-monitor-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-md);
+}
+
+.ai-monitor-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  margin-bottom: -1px;
+}
+
+.ai-monitor-tab:hover {
+  color: var(--text-primary);
+}
+
+.ai-monitor-tab.active {
+  color: var(--finrpa-blue);
+  border-bottom-color: var(--finrpa-blue);
+}
+
+/* ---------- 两栏布局：左侧队列 + 右侧详情 ---------- */
+.takeover-layout {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .takeover-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 左侧队列区 */
+.takeover-list-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* 队列卡片 */
+.takeover-item {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.takeover-item:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--glass-border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 选中态：左侧红色高亮边 */
+.takeover-item.active {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: var(--accent-danger);
+  box-shadow: inset 3px 0 0 var(--accent-danger), var(--shadow-xs);
+}
+
+/* 卡片顶部行：徽章 + 等待时长 */
+.takeover-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.takeover-wait {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 卡片任务标题行 */
+.takeover-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.takeover-title .mono {
+  font-family: var(--font-mono);
+  color: var(--finrpa-blue);
+}
+
+/* 卡片元信息行 */
+.takeover-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* NEEDS_HUMAN 红色徽章 */
+.badge-NEEDS_HUMAN {
+  background: rgba(239, 68, 68, 0.10);
+  color: var(--accent-danger);
+  border: 1px solid rgba(239, 68, 68, 0.26);
+}
+
+/* ---------- 右侧处置详情面板 ---------- */
+.takeover-detail-panel {
+  padding: var(--space-lg);
+}
+
+.takeover-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: var(--space-md);
+}
+
+.takeover-detail-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.takeover-detail-title .mono {
+  font-family: var(--font-mono);
+  color: var(--finrpa-blue);
+}
+
+.takeover-detail-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* 处置详情内 section 标题（复用 .section-title 已有样式） */
+.takeover-detail-panel .section-title {
+  margin-top: var(--space-md);
+}
+
+/* 触发原因横条 */
+.takeover-reason {
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.26);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--accent-danger);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-md);
+}
+
+/* 深色代码块（对齐原型 .code-block，突出 JSON） */
+.code-block {
+  background: #0F172A;
+  border: 1px solid #1E293B;
+  border-radius: var(--radius-md);
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  overflow-x: auto;
+  color: #CBD5E1;
+  margin: 0 0 var(--space-md);
+  white-space: pre;
+}
+
+.code-block .tk-key   { color: #6EE7B7; }
+.code-block .tk-str   { color: #A7F3D0; }
+.code-block .tk-num   { color: #5EEAD4; }
+.code-block .tk-bool  { color: #FCD34D; }
+.code-block .tk-null  { color: #FCA5A5; }
+.code-block .tk-punct { color: #94A3B8; }
+
+/* 校验错误框（对齐原型 .error-box） */
+.error-box {
+  padding: 14px 16px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.30);
+  border-left: 4px solid var(--accent-danger);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--accent-danger);
+  line-height: 1.6;
+  margin: 0 0 var(--space-md);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.error-box .err-title {
+  color: var(--accent-danger);
+  font-weight: 600;
+  font-family: var(--font-sans);
+  margin-bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.error-box .err-detail {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.error-box .err-line {
+  color: var(--accent-danger);
+  margin-top: 4px;
+}
+
+/* 截图占位框（对齐原型 .screenshot-box） */
+.screenshot-box {
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, #F1F5F9, #E2E8F0);
+  border: 1px dashed var(--glass-border-strong);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 var(--space-md);
+}
+
+.screenshot-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.screenshot-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  background: var(--accent-primary-light);
+  color: var(--accent-primary-hover);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+/* 处置按钮组 */
+.takeover-actions {
+  display: flex;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+}
+
+.takeover-actions .btn {
+  flex: 1;
+}
+
+/* ---------- LLM 监控：模型分布条 ---------- */
+.model-row {
+  margin-bottom: var(--space-md);
+}
+
+.model-row:last-child {
+  margin-bottom: 0;
+}
+
+.model-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.model-row-head .mono {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.model-bar {
+  height: 8px;
+  background: #F1F5F9;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.model-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 8px rgba(26, 58, 92, 0.3);
+  transition: width 0.6s var(--ease-out);
+}
+
+/* ---------- LLM 监控：成本趋势 SVG（复用 .chart-svg 通用样式） ---------- */
+.trend-summary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.trend-summary .text-success {
+  color: var(--status-completed);
+  font-family: var(--font-mono);
+}
+
+/* ---------- LLM 监控：KPI 卡片网格 ---------- */
+.llm-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+@media (max-width: 1024px) {
+  .llm-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .llm-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- LLM 监控：模型分布 + 成本趋势 两栏 ---------- */
+.llm-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+@media (max-width: 1024px) {
+  .llm-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- LLM 监控：调用记录表 ---------- */
+.llm-calls-card {
+  padding: var(--space-lg);
+}
+
+/* endregion P3 ai-monitoring */

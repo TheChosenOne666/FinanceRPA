@@ -15,12 +15,20 @@ import com.finrpa.llm.dto.response.NeedsHumanQueueVO;
 import com.finrpa.llm.entity.NeedsHumanQueueEO;
 import com.finrpa.llm.mapper.NeedsHumanQueueMapper;
 import com.finrpa.llm.service.NeedsHumanService;
+import com.finrpa.tenant.entity.BusinessLineEO;
+import com.finrpa.tenant.mapper.BusinessLineMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * NEEDS_HUMAN 队列服务实现
@@ -43,6 +51,10 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
     @Resource
     private TaskService taskService;
 
+    /** 业务线 Mapper（用于填充队列 VO 的 businessLineName） */
+    @Resource
+    private BusinessLineMapper businessLineMapper;
+
     // region 入队
 
     /**
@@ -62,6 +74,7 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
         NeedsHumanQueueEO queue = new NeedsHumanQueueEO();
         queue.setTaskId(parseLong(request.getTaskId()));
         queue.setOrgId(parseLong(request.getOrgId()));
+        queue.setBusinessLineId(parseLong(request.getBusinessLineId()));
         queue.setSubtaskId(request.getSubtaskId());
         queue.setContextName(request.getContextName() != null && !request.getContextName().isBlank()
                 ? request.getContextName() : LlmConstant.DEFAULT_CONTEXT);
@@ -87,7 +100,7 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
     /**
      * 分页查询 NEEDS_HUMAN 队列
      *
-     * @param queryRequest 查询请求（含分页参数）
+     * @param queryRequest 查询请求（含分页参数 + 业务线筛选）
      * @param orgId        组织 ID（租户隔离）
      * @return 分页结果
      */
@@ -105,6 +118,9 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
             if (queryRequest.getTaskId() != null) {
                 wrapper.eq("task_id", queryRequest.getTaskId());
             }
+            if (queryRequest.getBusinessLineId() != null) {
+                wrapper.eq("business_line_id", queryRequest.getBusinessLineId());
+            }
         }
         wrapper.orderByDesc("create_time");
 
@@ -115,10 +131,16 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
         Page<NeedsHumanQueueEO> page = new Page<>(current, size);
         IPage<NeedsHumanQueueEO> queuePage = needsHumanQueueMapper.selectPage(page, wrapper);
 
-        // 3. 转换为 VO
+        // 3. 批量查询业务线名称（避免 N+1）
+        Map<Long, String> bizLineNameMap = loadBusinessLineNames(queuePage.getRecords());
+
+        // 4. 转换为 VO
         return queuePage.convert(eo -> {
             NeedsHumanQueueVO vo = new NeedsHumanQueueVO();
             BeanUtils.copyProperties(eo, vo);
+            if (eo.getBusinessLineId() != null) {
+                vo.setBusinessLineName(bizLineNameMap.get(eo.getBusinessLineId()));
+            }
             return vo;
         });
     }
@@ -146,6 +168,12 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
         // 2. 转换为 VO
         NeedsHumanQueueVO vo = new NeedsHumanQueueVO();
         BeanUtils.copyProperties(queue, vo);
+
+        // 3. 填充业务线名称
+        if (queue.getBusinessLineId() != null) {
+            Map<Long, String> bizLineNameMap = loadBusinessLineNames(Collections.singletonList(queue));
+            vo.setBusinessLineName(bizLineNameMap.get(queue.getBusinessLineId()));
+        }
         return vo;
     }
 
@@ -220,6 +248,34 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
     // endregion
 
     // region 私有方法
+
+    /**
+     * 批量加载业务线名称映射（避免 N+1 查询）
+     *
+     * @param queues 队列条目列表
+     * @return businessLineId → businessLineName 映射
+     */
+    private Map<Long, String> loadBusinessLineNames(List<NeedsHumanQueueEO> queues) {
+        if (queues == null || queues.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        List<Long> bizLineIds = queues.stream()
+                .map(NeedsHumanQueueEO::getBusinessLineId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (bizLineIds.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        QueryWrapper<BusinessLineEO> bizWrapper = new QueryWrapper<>();
+        bizWrapper.in("business_line_id", bizLineIds);
+        List<BusinessLineEO> bizLines = businessLineMapper.selectList(bizWrapper);
+        Map<Long, String> result = new LinkedHashMap<>();
+        for (BusinessLineEO biz : bizLines) {
+            result.put(biz.getBusinessLineId(), biz.getBusinessLineName());
+        }
+        return result;
+    }
 
     /**
      * 解析字符串为 Long（兼容 null / 空串 / 非数字）

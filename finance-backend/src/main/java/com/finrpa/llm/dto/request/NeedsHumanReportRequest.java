@@ -27,6 +27,9 @@ public class NeedsHumanReportRequest implements Serializable {
     /** 组织 ID（字符串形式） */
     private String orgId;
 
+    /** 业务线 ID（字符串形式，可空，P3 ai-monitoring 原型对齐） */
+    private String businessLineId;
+
     /** 子任务 ID（可空） */
     private String subtaskId;
 

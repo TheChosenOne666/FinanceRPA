@@ -35,6 +35,7 @@ export async function listNeedsHuman(
         pageSize: query.pageSize,
         status: query.status || undefined,
         taskId: query.taskId || undefined,
+        businessLineId: query.businessLineId || undefined,
       },
     },
   )

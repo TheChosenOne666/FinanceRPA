@@ -30,6 +30,12 @@ public class NeedsHumanQueueVO implements Serializable {
     /** 组织 ID */
     private Long orgId;
 
+    /** 业务线业务 ID（P3 ai-monitoring 原型对齐） */
+    private Long businessLineId;
+
+    /** 业务线名称（关联 enterprise_business_line.business_line_name，用于队列卡片展示，可空） */
+    private String businessLineName;
+
     /** 子任务 ID */
     private String subtaskId;
 

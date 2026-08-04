@@ -55,4 +55,18 @@ public class LlmCallStatsVO implements Serializable {
 
     /** 按模型维度的统计列表 */
     private List<ModelStatsVO> modelStats;
+
+    // ===== 趋势字段（P3 ai-monitoring 原型对齐：对比上一周期） =====
+
+    /** 总调用次数环比上一周期变化百分比（正数↑ 表示增长，负数↓ 表示下降，NULL 表示无对比数据） */
+    private Double totalCallsTrendPct;
+
+    /** 总成本环比上一周期变化百分比（正数↑ 表示成本上升，负数↓ 表示下降，NULL 表示无对比数据） */
+    private Double totalCostTrendPct;
+
+    /** 缓存命中率环比变化（百分点，正数↑ 表示提升，负数↓ 表示下降，NULL 表示无对比数据） */
+    private Double cacheHitRateTrendPct;
+
+    /** 平均耗时环比变化百分比（正数↑ 表示变慢，负数↓ 表示变快，NULL 表示无对比数据） */
+    private Double avgDurationTrendPct;
 }
