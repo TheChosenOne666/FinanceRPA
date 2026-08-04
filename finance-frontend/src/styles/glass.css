@@ -220,6 +220,7 @@ a:hover {
 .gap-lg { gap: var(--space-lg); }
 .mt-lg { margin-top: var(--space-lg); }
 .mb-md { margin-bottom: var(--space-md); }
+.p-md { padding: var(--space-md); }
 .p-lg { padding: var(--space-lg); }
 .mono { font-family: var(--font-mono); }
 
@@ -4240,6 +4241,12 @@ a:hover {
   word-break: break-all;
 }
 
+/* 页面 URL 容器：长链接换行 + 可点击 */
+.audit-detail-url {
+  word-break: break-all;
+  font-size: 13px;
+}
+
 /* 错误信息样式（基于 approval-detail-reasoning 覆盖配色为红色） */
 .audit-detail-error {
   background: rgba(239, 68, 68, 0.06);
@@ -4355,6 +4362,176 @@ a:hover {
   font-size: 13px;
   color: var(--text-primary);
   word-break: break-all;
+}
+
+/* ---------- 审计列表卡片（M7.5 原型对齐：两栏布局左栏） ---------- */
+
+/* 卡片列表容器 */
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 单条审计卡片 */
+.audit-item {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.audit-item:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--glass-border-strong);
+}
+
+/* 选中态：左侧高亮边 */
+.audit-item.active {
+  background: rgba(26, 58, 92, 0.06);
+  border-color: var(--accent-primary);
+  box-shadow: inset 3px 0 0 var(--accent-primary), var(--glass-shadow);
+}
+
+/* 卡片顶部行：时间戳 + 操作类型 badge */
+.audit-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* 时间戳（mono 字体） */
+.audit-ts {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 卡片元信息行 */
+.audit-item-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* 元信息中的等宽片段（任务 ID 等） */
+.audit-item-meta .mono {
+  color: var(--text-primary);
+}
+
+/* ---------- 操作类型徽章 4 色（对齐原型 .badge-CLICK / .badge-INPUT / .badge-NAVIGATE / .badge-LOGIN） ---------- */
+
+/* CLICK：蓝色 */
+.badge-action-CLICK {
+  background: rgba(59, 130, 246, 0.10);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+}
+
+/* INPUT_TEXT：深蓝色 */
+.badge-action-INPUT_TEXT {
+  background: rgba(26, 58, 92, 0.12);
+  color: var(--accent-success);
+  border: 1px solid rgba(26, 58, 92, 0.24);
+}
+
+/* NAVIGATE：橙色 */
+.badge-action-NAVIGATE {
+  background: rgba(249, 115, 22, 0.12);
+  color: var(--accent-warning);
+  border: 1px solid rgba(249, 115, 22, 0.24);
+}
+
+/* LOGIN：深蓝色 */
+.badge-action-LOGIN {
+  background: rgba(26, 58, 92, 0.10);
+  color: var(--accent-primary-hover);
+  border: 1px solid rgba(26, 58, 92, 0.22);
+}
+
+/* ---------- 审计详情面板（M7.5 原型对齐：两栏布局右栏） ---------- */
+
+/* 详情面板容器 */
+.audit-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 详情面板头部：标题 + 副信息 */
+.audit-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.audit-detail-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.audit-detail-title .mono {
+  font-family: var(--font-mono);
+  color: var(--finrpa-blue);
+}
+
+.audit-detail-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 未选中时的占位提示 */
+.audit-detail-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 80px 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.audit-detail-placeholder-icon {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* 审计卡片左侧列表区：内部滚动（当条数多时） */
+.audit-list-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* 审计列表区头部：标题 + 条数 badge */
+.audit-list-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.audit-list-header .section-title {
+  margin: 0;
+  padding: 0;
+  border: none;
 }
 
 /* ---------- end 审计日志页 ---------- */
@@ -4896,6 +5073,13 @@ table.data-table {
   background: rgba(153, 27, 27, 0.12);
   color: var(--risk-critical);
   border: 1px solid rgba(153, 27, 27, 0.24);
+}
+
+/* 灰色中性徽章（对齐原型 .badge-muted，用于条数统计等） */
+.badge-muted {
+  background: rgba(107, 114, 128, 0.10);
+  color: var(--status-queued);
+  border: 1px solid rgba(107, 114, 128, 0.22);
 }
 
 /* ---------- 操作按钮组 ---------- */

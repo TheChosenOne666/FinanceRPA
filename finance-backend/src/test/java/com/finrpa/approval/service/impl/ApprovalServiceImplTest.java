@@ -6,16 +6,21 @@ import com.finrpa.ai.client.AiServiceClient;
 import com.finrpa.ai.client.dto.TaskTriggerResponse;
 import com.finrpa.approval.constant.ApprovalConstant;
 import com.finrpa.approval.dto.request.ApprovalQueryRequest;
+import com.finrpa.approval.dto.response.ApprovalRequestVO;
 import com.finrpa.approval.dto.response.ApprovalResultResponse;
 import com.finrpa.approval.entity.ApprovalRequestEO;
 import com.finrpa.approval.mapper.ApprovalRequestMapper;
 import com.finrpa.approval.service.ApprovalPubSubService;
 import com.finrpa.approval.service.ApprovalRouteService;
+import com.finrpa.auth.entity.UserEO;
+import com.finrpa.auth.mapper.UserMapper;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.response.ErrorCode;
 import com.finrpa.notification.enums.NotificationTemplateEnum;
 import com.finrpa.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +35,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -64,6 +70,9 @@ class ApprovalServiceImplTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private UserMapper userMapper;
 
     @InjectMocks
     private ApprovalServiceImpl approvalService;
@@ -337,6 +346,75 @@ class ApprovalServiceImplTest {
         assertEquals("TIMEOUT", approval.getStatus());
         // 任务状态更新仍应执行
         verify(taskService, times(1)).abortTask(103L);
+    }
+
+    // endregion
+
+    // region listApprovals 填充 userName（对齐原型 02-dashboard.html 申请人列）
+
+    @Test
+    @DisplayName("listApprovals - 批量填充 userName，避免 N+1 查询")
+    @SuppressWarnings("unchecked")
+    void listApprovals_FillsUserName_BatchQuery() {
+        // 1. 构造 2 条审批单（不同 userId）
+        ApprovalRequestEO eo1 = buildPendingApproval(801L, 101L, "high", "department");
+        eo1.setUserId(1001L);
+        ApprovalRequestEO eo2 = buildPendingApproval(802L, 102L, "critical", "compliance");
+        eo2.setUserId(1002L);
+
+        // 2. mock 分页查询
+        Page<ApprovalRequestEO> eoPage = new Page<>(1, 10);
+        eoPage.setRecords(List.of(eo1, eo2));
+        eoPage.setTotal(2);
+        when(approvalRequestMapper.selectPage(any(Page.class), any())).thenReturn(eoPage);
+
+        // 3. mock UserMapper 批量查询
+        UserEO u1 = new UserEO();
+        u1.setUserId(1001L);
+        u1.setRealName("王经理");
+        UserEO u2 = new UserEO();
+        u2.setUserId(1002L);
+        u2.setRealName("李经理");
+        when(userMapper.selectByUserIds(anyList())).thenReturn(List.of(u1, u2));
+
+        // 4. 构造查询请求
+        ApprovalQueryRequest queryRequest = new ApprovalQueryRequest();
+        queryRequest.setCurrent(1);
+        queryRequest.setPageSize(10);
+
+        // 5. 执行
+        IPage<ApprovalRequestVO> voPage = approvalService.listApprovals(queryRequest);
+
+        // 6. 验证 userName 已填充
+        assertEquals(2, voPage.getRecords().size());
+        assertEquals("王经理", voPage.getRecords().get(0).getUserName());
+        assertEquals("李经理", voPage.getRecords().get(1).getUserName());
+        // 7. 验证 UserMapper 仅调用一次（批量查询，无 N+1）
+        verify(userMapper, times(1)).selectByUserIds(anyList());
+    }
+
+    @Test
+    @DisplayName("listApprovals - userId 查无对应用户时 userName 为 null")
+    @SuppressWarnings("unchecked")
+    void listApprovals_UserIdNotFound_UserNameNull() {
+        ApprovalRequestEO eo = buildPendingApproval(803L, 103L, "high", "department");
+        eo.setUserId(9999L);
+
+        Page<ApprovalRequestEO> eoPage = new Page<>(1, 10);
+        eoPage.setRecords(List.of(eo));
+        eoPage.setTotal(1);
+        when(approvalRequestMapper.selectPage(any(Page.class), any())).thenReturn(eoPage);
+        // UserMapper 返回空列表
+        when(userMapper.selectByUserIds(anyList())).thenReturn(Collections.emptyList());
+
+        ApprovalQueryRequest queryRequest = new ApprovalQueryRequest();
+        queryRequest.setCurrent(1);
+        queryRequest.setPageSize(10);
+
+        IPage<ApprovalRequestVO> voPage = approvalService.listApprovals(queryRequest);
+
+        assertEquals(1, voPage.getRecords().size());
+        assertNull(voPage.getRecords().get(0).getUserName());
     }
 
     // endregion

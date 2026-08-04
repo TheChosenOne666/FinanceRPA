@@ -1508,6 +1508,12 @@ interface MockAuditLog {
   departmentId?: string
   businessLineId?: string
   userId?: string
+  /** 触发用户姓名（联表 sys_user.real_name 填充，对齐原型 06-audit-logs.html 列表显示） */
+  userName?: string
+  /** 部门名称（联表 sys_department.dept_name 填充） */
+  departmentName?: string
+  /** 业务线名称（联表 sys_business_line.business_line_name 填充） */
+  businessLineName?: string
   actionType: string
   targetElement?: string
   pageUrl?: string
@@ -1533,15 +1539,24 @@ const MOCK_SCREENSHOT_BEFORE =
 const MOCK_SCREENSHOT_AFTER =
   'https://picsum.photos/seed/finrpa-after/640/400'
 
-/** Mock 审计日志数据：覆盖不同 actionType / riskLevel / executionResult / 截图 / LLM */
+/** Mock 审计日志数据：覆盖不同 actionType / riskLevel / executionResult / 截图 / LLM
+ *
+ * 关联 mock 用户：
+ *   - 100001 张三 · 对公信贷部(1002) · 对公信贷(2002)
+ *   - 100002 李四 · 个人金融部(1003) · 个人金融(2003)
+ *   - 100003 王五 · 保险业务部(1004) · 保险业务(2004)
+ */
 const mockAuditLogs: MockAuditLog[] = [
   {
     auditId: '800000000000000001',
     taskId: '700000000000000001',
     orgId: MOCK_USER.orgId,
-    departmentId: '500000000000000001',
-    businessLineId: '600000000000000001',
-    userId: MOCK_USER.userId,
+    departmentId: '1002',
+    businessLineId: '2002',
+    userId: '100001',
+    userName: '张三',
+    departmentName: '对公信贷部',
+    businessLineName: '对公信贷',
     actionType: 'NAVIGATE',
     targetElement: 'https://corporate.icbc.com.cn/',
     pageUrl: 'https://corporate.icbc.com.cn/ICBCINES/financialmarketstable.jsp',
@@ -1563,7 +1578,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000002',
     taskId: '700000000000000001',
     orgId: MOCK_USER.orgId,
-    userId: MOCK_USER.userId,
+    departmentId: '1002',
+    businessLineId: '2002',
+    userId: '100001',
+    userName: '张三',
+    departmentName: '对公信贷部',
+    businessLineName: '对公信贷',
     actionType: 'LOGIN',
     targetElement: 'input[name="username"]',
     pageUrl: 'https://corporate.icbc.com.cn/login',
@@ -1586,6 +1606,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000003',
     taskId: '700000000000000001',
     orgId: MOCK_USER.orgId,
+    departmentId: '1002',
+    businessLineId: '2002',
+    userId: '100001',
+    userName: '张三',
+    departmentName: '对公信贷部',
+    businessLineName: '对公信贷',
     actionType: 'CLICK',
     targetElement: '#download-statement-btn',
     pageUrl: 'https://corporate.icbc.com.cn/accounts/statements',
@@ -1603,6 +1629,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000004',
     taskId: '700000000000000001',
     orgId: MOCK_USER.orgId,
+    departmentId: '1002',
+    businessLineId: '2002',
+    userId: '100001',
+    userName: '张三',
+    departmentName: '对公信贷部',
+    businessLineName: '对公信贷',
     actionType: 'FILE_DOWNLOAD',
     targetElement: 'a[href*="statement.pdf"]',
     pageUrl: 'https://corporate.icbc.com.cn/accounts/statements/download',
@@ -1619,7 +1651,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000010',
     taskId: '700000000000000002',
     orgId: MOCK_USER.orgId,
-    userId: MOCK_USER.userId,
+    departmentId: '1003',
+    businessLineId: '2003',
+    userId: '100002',
+    userName: '李四',
+    departmentName: '个人金融部',
+    businessLineName: '个人金融',
     actionType: 'LOGIN',
     targetElement: 'input[name="password"]',
     pageUrl: 'https://biz.cmbchina.com/login',
@@ -1643,6 +1680,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000020',
     taskId: '700000000000000003',
     orgId: MOCK_USER.orgId,
+    departmentId: '1004',
+    businessLineId: '2004',
+    userId: '100003',
+    userName: '王五',
+    departmentName: '保险业务部',
+    businessLineName: '保险业务',
     actionType: 'NAVIGATE',
     targetElement: 'https://biz.ccb.com/',
     pageUrl: 'https://biz.ccb.com/corporate/dashboard',
@@ -1661,6 +1704,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000021',
     taskId: '700000000000000003',
     orgId: MOCK_USER.orgId,
+    departmentId: '1004',
+    businessLineId: '2004',
+    userId: '100003',
+    userName: '王五',
+    departmentName: '保险业务部',
+    businessLineName: '保险业务',
     actionType: 'INPUT_TEXT',
     targetElement: 'input[name="account_number"]',
     pageUrl: 'https://biz.ccb.com/corporate/quarterly',
@@ -1677,6 +1726,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000022',
     taskId: '700000000000000003',
     orgId: MOCK_USER.orgId,
+    departmentId: '1004',
+    businessLineId: '2004',
+    userId: '100003',
+    userName: '王五',
+    departmentName: '保险业务部',
+    businessLineName: '保险业务',
     actionType: 'FORM_FILL',
     targetElement: 'form#quarterly-form',
     pageUrl: 'https://biz.ccb.com/corporate/quarterly',
@@ -1697,6 +1752,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000023',
     taskId: '700000000000000003',
     orgId: MOCK_USER.orgId,
+    departmentId: '1004',
+    businessLineId: '2004',
+    userId: '100003',
+    userName: '王五',
+    departmentName: '保险业务部',
+    businessLineName: '保险业务',
     actionType: 'WAIT',
     targetElement: '.loading-spinner',
     pageUrl: 'https://biz.ccb.com/corporate/quarterly',
@@ -1712,6 +1773,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000024',
     taskId: '700000000000000003',
     orgId: MOCK_USER.orgId,
+    departmentId: '1004',
+    businessLineId: '2004',
+    userId: '100003',
+    userName: '王五',
+    departmentName: '保险业务部',
+    businessLineName: '保险业务',
     actionType: 'SCREENSHOT',
     targetElement: 'body',
     pageUrl: 'https://biz.ccb.com/corporate/quarterly/result',
@@ -1729,6 +1796,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000030',
     taskId: '700000000000000004',
     orgId: MOCK_USER.orgId,
+    departmentId: '1002',
+    businessLineId: '2002',
+    userId: '100001',
+    userName: '张三',
+    departmentName: '对公信贷部',
+    businessLineName: '对公信贷',
     actionType: 'CLICK',
     targetElement: 'button#transfer',
     pageUrl: 'https://biz.boc.com/transfer/confirm',
@@ -1752,6 +1825,12 @@ const mockAuditLogs: MockAuditLog[] = [
     auditId: '800000000000000031',
     taskId: '700000000000000004',
     orgId: MOCK_USER.orgId,
+    departmentId: '1002',
+    businessLineId: '2002',
+    userId: '100001',
+    userName: '张三',
+    departmentName: '对公信贷部',
+    businessLineName: '对公信贷',
     actionType: 'INPUT_TEXT',
     targetElement: 'input[name="to_account"]',
     pageUrl: 'https://biz.boc.com/transfer',
@@ -2057,6 +2136,10 @@ function handleGetDashboardOverview(res: ServerResponse): void {
         { riskLevel: 'high', count: '8' },
         { riskLevel: 'critical', count: '2' },
       ],
+      // 环比趋势（对齐原型 02-dashboard.html KPI 卡片 trend 文案，今日 vs 昨日）
+      taskGrowthRate: 0.12, // +12%
+      successRateDelta: 0.021, // +2.1%
+      llmCostDelta: -0.08, // -8%
     },
     message: 'ok',
   })
@@ -2224,6 +2307,7 @@ function handleListApprovals(
       taskId: 'TASK-A0215',
       orgId: 'org-001',
       userId: 'wangmgr',
+      userName: '王经理',
       riskLevel: 'critical',
       approvalRoute: 'compliance',
       status: 'PENDING',
@@ -2236,6 +2320,7 @@ function handleListApprovals(
       taskId: 'TASK-A0218',
       orgId: 'org-001',
       userId: 'limgr',
+      userName: '李经理',
       riskLevel: 'high',
       approvalRoute: 'department',
       status: 'PENDING',
@@ -2248,6 +2333,7 @@ function handleListApprovals(
       taskId: 'TASK-A0223',
       orgId: 'org-001',
       userId: 'zhaosup',
+      userName: '赵主管',
       riskLevel: 'high',
       approvalRoute: 'department',
       status: 'PENDING',
@@ -2260,6 +2346,7 @@ function handleListApprovals(
       taskId: 'TASK-A0231',
       orgId: 'org-001',
       userId: 'qianspec',
+      userName: '钱专员',
       riskLevel: 'medium',
       approvalRoute: 'department',
       status: 'PENDING',

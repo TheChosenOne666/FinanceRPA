@@ -72,21 +72,6 @@ function toNum(v: string | number | undefined | null): number {
 }
 
 /**
- * 格式化耗时（毫秒 → 人类可读）
- *
- * @param ms 毫秒数
- * @returns 形如 "1.2s" / "2分3秒" 的可读字符串
- */
-function formatDuration(ms?: number): string {
-  if (ms == null || Number.isNaN(ms)) return '—'
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
-  const minutes = Math.floor(ms / 60_000)
-  const seconds = Math.floor((ms % 60_000) / 1000)
-  return `${minutes}分${seconds}秒`
-}
-
-/**
  * 格式化百分比（0-1 → xx.x%）
  *
  * @param rate 比率（0-1）
@@ -98,14 +83,38 @@ function formatPercent(rate?: number): string {
 }
 
 /**
- * 格式化成本（美元）
+ * 格式化百分点差值（环比差值，0.021 → +2.1% / -2.1%）
+ *
+ * @param delta 比率差值（如 0.021 表示 +2.1 个百分点）
+ * @returns 形如 "+2.1%" / "-2.1%" / "—"
+ */
+function formatPercentDelta(delta?: number): string {
+  if (delta == null || Number.isNaN(delta)) return '—'
+  const sign = delta >= 0 ? '+' : ''
+  return `${sign}${(delta * 100).toFixed(1)}%`
+}
+
+/**
+ * 格式化环比变化率（0.12 → +12% / -8%）
+ *
+ * @param rate 变化率（如 0.12 表示 +12%）
+ * @returns 形如 "+12%" / "-8%" / "—"
+ */
+function formatGrowthRate(rate?: number): string {
+  if (rate == null || Number.isNaN(rate)) return '—'
+  const sign = rate >= 0 ? '+' : ''
+  return `${sign}${(rate * 100).toFixed(0)}%`
+}
+
+/**
+ * 格式化成本（人民币，对齐原型 02-dashboard.html 货币符号 ¥）
  *
  * @param cost 成本
- * @returns $x.xx 形式
+ * @returns ¥x.xx 形式
  */
 function formatCost(cost?: number): string {
-  if (cost == null || Number.isNaN(cost)) return '$0.00'
-  return `$${cost.toFixed(2)}`
+  if (cost == null || Number.isNaN(cost)) return '¥0.00'
+  return `¥${cost.toFixed(2)}`
 }
 
 /**
@@ -146,11 +155,9 @@ function calcRemainingTime(
 /** 运营大屏页面 */
 function Dashboard() {
   const navigate = useNavigate()
-  // 1. 自动刷新开关
-  const [autoRefresh, setAutoRefresh] = useState(true)
-  // 2. 时间筛选器（今日 / 本周 / 本月）
+  // 1. 时间筛选器（今日 / 本周 / 本月）
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today')
-  // 3. 最后刷新时间
+  // 2. 最后刷新时间
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null)
 
   // 4. 概览查询
@@ -193,9 +200,8 @@ function Dashboard() {
     refetchOnWindowFocus: false,
   })
 
-  // 9. 自动刷新：每 30 秒重新拉取所有指标
+  // 9. 自动刷新：每 30 秒重新拉取所有指标（对齐原型 02-dashboard.html 默认行为）
   useEffect(() => {
-    if (!autoRefresh) return
     const timer = setInterval(() => {
       overviewQuery.refetch()
       trendsQuery.refetch()
@@ -206,7 +212,7 @@ function Dashboard() {
     }, AUTO_REFRESH_INTERVAL)
     return () => clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh])
+  }, [])
 
   // 10. 首次加载完成后记录刷新时间
   useEffect(() => {
@@ -265,6 +271,10 @@ function Dashboard() {
               首页
             </a>
             <span className="sep">/</span>
+            <a href="#" onClick={(e) => e.preventDefault()}>
+              监控
+            </a>
+            <span className="sep">/</span>
             <span className="current">运营大屏</span>
           </div>
         </div>
@@ -290,15 +300,6 @@ function Dashboard() {
               本月
             </button>
           </div>
-          {/* 自动刷新勾选 */}
-          <label className="dashboard-auto-refresh">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
-            <span>自动刷新</span>
-          </label>
           {/* 手动刷新按钮 */}
           <button
             type="button"
@@ -327,16 +328,25 @@ function Dashboard() {
         <div className="tasks-empty">加载中…</div>
       ) : overview ? (
         <>
-          {/* region KPI 卡片（4 个核心指标） */}
+          {/* region KPI 卡片（4 个核心指标，对齐原型 02-dashboard.html trend 文案） */}
           <div className="page-grid grid-4">
             <div className="glass-card kpi-card">
               <div className="kpi-label">任务总数</div>
               <div className="kpi-value">
                 {toNum(overview.totalTasks).toLocaleString()}
               </div>
-              <div className="kpi-trend up">
-                成功 {toNum(overview.successTasks).toLocaleString()} · 失败{' '}
-                {toNum(overview.failedTasks).toLocaleString()}
+              <div
+                className={
+                  overview.taskGrowthRate == null
+                    ? 'kpi-trend'
+                    : overview.taskGrowthRate >= 0
+                      ? 'kpi-trend up'
+                      : 'kpi-trend down'
+                }
+              >
+                {overview.taskGrowthRate == null
+                  ? '— vs 上期'
+                  : `${formatGrowthRate(overview.taskGrowthRate)} vs 上期`}
               </div>
             </div>
             <div className="glass-card kpi-card">
@@ -344,8 +354,16 @@ function Dashboard() {
               <div className="kpi-value">
                 {formatPercent(overview.successRate)}
               </div>
-              <div className="kpi-trend up">
-                平均耗时 {formatDuration(overview.avgDurationMs)}
+              <div
+                className={
+                  overview.successRateDelta == null
+                    ? 'kpi-trend'
+                    : overview.successRateDelta >= 0
+                        ? 'kpi-trend up'
+                        : 'kpi-trend down'
+                }
+              >
+                {formatPercentDelta(overview.successRateDelta)}
               </div>
             </div>
             <div className="glass-card kpi-card">
@@ -353,9 +371,16 @@ function Dashboard() {
               <div className="kpi-value">
                 {formatCost(overview.llmTotalCost)}
               </div>
-              <div className="kpi-trend down">
-                调用 {toNum(overview.llmCallCount).toLocaleString()} 次 · 缓存命中{' '}
-                {formatPercent(overview.llmCacheHitRate)}
+              <div
+                className={
+                  overview.llmCostDelta == null
+                    ? 'kpi-trend'
+                    : overview.llmCostDelta >= 0
+                        ? 'kpi-trend up'
+                        : 'kpi-trend down'
+                }
+              >
+                {formatGrowthRate(overview.llmCostDelta)}
               </div>
             </div>
             <div className="glass-card kpi-card">
@@ -864,7 +889,7 @@ function RecentApprovalRow({
           {RISK_LABELS[approval.riskLevel]}
         </span>
       </td>
-      <td>{approval.userId}</td>
+      <td>{approval.userName || `用户 ${approval.userId}`}</td>
       <td className={`mono time-${level}`}>{text}</td>
       <td style={{ textAlign: 'right' }}>
         <div className="action-group">

@@ -80,4 +80,17 @@ public class OverviewVO implements Serializable {
     private List<RiskLevelStatVO> riskLevelDistribution;
 
     // endregion
+
+    // region 环比趋势（今日 vs 昨日，对齐原型 02-dashboard.html KPI 卡片 trend 文案）
+
+    /** 任务总数环比增长率（今日 vs 昨日，0.12 表示 +12%；null 表示无上期数据） */
+    private Double taskGrowthRate;
+
+    /** 成功率环比差值（百分点，0.021 表示 +2.1%；null 表示无上期数据） */
+    private Double successRateDelta;
+
+    /** LLM 成本环比变化率（今日 vs 昨日，-0.08 表示 -8%；null 表示无上期数据） */
+    private Double llmCostDelta;
+
+    // endregion
 }

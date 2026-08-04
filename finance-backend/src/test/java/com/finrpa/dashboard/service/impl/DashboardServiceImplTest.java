@@ -360,6 +360,91 @@ class DashboardServiceImplTest {
 
     // endregion
 
+    // region getOverview 环比趋势（今日 vs 昨日，对齐原型 KPI 卡片 trend）
+
+    @Test
+    @DisplayName("概览环比 - 任务量/成功率/LLM 成本环比计算正确")
+    void getOverview_GrowthRates_Calculated() {
+        // 1. 全量指标 mock（不为空以触发完整流程）
+        when(dashboardStatsMapper.countTaskByStatus(ORG_ID)).thenReturn(List.of(
+                new TaskStatusCountDTO() {{ setStatus("SUCCESS"); setCount(80L); }},
+                new TaskStatusCountDTO() {{ setStatus("FAILED"); setCount(20L); }}
+        ));
+        when(dashboardStatsMapper.selectTaskDurationStat(ORG_ID)).thenReturn(null);
+        when(dashboardStatsMapper.selectLlmAggregate(ORG_ID)).thenReturn(null);
+        when(dashboardStatsMapper.selectHumanTakeoverAggregate(ORG_ID)).thenReturn(null);
+        when(dashboardStatsMapper.countRiskLevel(ORG_ID)).thenReturn(List.of());
+
+        // 2. 今日：100 总，90 成功；昨日：80 总，64 成功
+        when(dashboardStatsMapper.countTaskByStatusInRange(eq(ORG_ID), eq(LocalDate.now()), eq(LocalDate.now().plusDays(1))))
+                .thenReturn(List.of(
+                        new TaskStatusCountDTO() {{ setStatus("SUCCESS"); setCount(90L); }},
+                        new TaskStatusCountDTO() {{ setStatus("FAILED"); setCount(10L); }}
+                ));
+        when(dashboardStatsMapper.countTaskByStatusInRange(eq(ORG_ID), eq(LocalDate.now().minusDays(1)), eq(LocalDate.now())))
+                .thenReturn(List.of(
+                        new TaskStatusCountDTO() {{ setStatus("SUCCESS"); setCount(64L); }},
+                        new TaskStatusCountDTO() {{ setStatus("FAILED"); setCount(16L); }}
+                ));
+
+        // 3. 今日 LLM 成本 200，昨日 250 → -20%
+        LlmAggregateDTO todayLlm = new LlmAggregateDTO();
+        todayLlm.setTotalCost(new BigDecimal("200.00"));
+        when(dashboardStatsMapper.selectLlmAggregateInRange(eq(ORG_ID), eq(LocalDate.now()), eq(LocalDate.now().plusDays(1))))
+                .thenReturn(todayLlm);
+        LlmAggregateDTO yesterdayLlm = new LlmAggregateDTO();
+        yesterdayLlm.setTotalCost(new BigDecimal("250.00"));
+        when(dashboardStatsMapper.selectLlmAggregateInRange(eq(ORG_ID), eq(LocalDate.now().minusDays(1)), eq(LocalDate.now())))
+                .thenReturn(yesterdayLlm);
+
+        mockBucketMiss();
+
+        OverviewVO vo = dashboardService.getOverview(ORG_ID);
+
+        // 任务总数环比 +25%：(100 - 80) / 80 = 0.25
+        assertEquals(0.25, vo.getTaskGrowthRate(), 0.0001);
+        // 成功率差值：今日 0.9 - 昨日 0.8 = 0.1（百分点）
+        assertEquals(0.1, vo.getSuccessRateDelta(), 0.0001);
+        // LLM 成本环比 -20%：(200 - 250) / 250 = -0.2
+        assertEquals(-0.20, vo.getLlmCostDelta(), 0.0001);
+    }
+
+    @Test
+    @DisplayName("概览环比 - 上期数据为 0 时返回 null")
+    void getOverview_GrowthRates_NullWhenYesterdayZero() {
+        when(dashboardStatsMapper.countTaskByStatus(ORG_ID)).thenReturn(List.of());
+        when(dashboardStatsMapper.selectTaskDurationStat(ORG_ID)).thenReturn(null);
+        when(dashboardStatsMapper.selectLlmAggregate(ORG_ID)).thenReturn(null);
+        when(dashboardStatsMapper.selectHumanTakeoverAggregate(ORG_ID)).thenReturn(null);
+        when(dashboardStatsMapper.countRiskLevel(ORG_ID)).thenReturn(List.of());
+
+        // 今日 5 条，昨日 0 条 → 上期为 0，所有环比字段应为 null
+        when(dashboardStatsMapper.countTaskByStatusInRange(eq(ORG_ID), eq(LocalDate.now()), eq(LocalDate.now().plusDays(1))))
+                .thenReturn(List.of(new TaskStatusCountDTO() {{ setStatus("SUCCESS"); setCount(5L); }}));
+        when(dashboardStatsMapper.countTaskByStatusInRange(eq(ORG_ID), eq(LocalDate.now().minusDays(1)), eq(LocalDate.now())))
+                .thenReturn(List.of());
+
+        // 今日 LLM 成本 100，昨日 0 → llmCostDelta 为 null
+        LlmAggregateDTO todayLlm = new LlmAggregateDTO();
+        todayLlm.setTotalCost(new BigDecimal("100.00"));
+        when(dashboardStatsMapper.selectLlmAggregateInRange(eq(ORG_ID), eq(LocalDate.now()), eq(LocalDate.now().plusDays(1))))
+                .thenReturn(todayLlm);
+        LlmAggregateDTO yesterdayLlm = new LlmAggregateDTO();
+        yesterdayLlm.setTotalCost(BigDecimal.ZERO);
+        when(dashboardStatsMapper.selectLlmAggregateInRange(eq(ORG_ID), eq(LocalDate.now().minusDays(1)), eq(LocalDate.now())))
+                .thenReturn(yesterdayLlm);
+
+        mockBucketMiss();
+
+        OverviewVO vo = dashboardService.getOverview(ORG_ID);
+
+        assertNull(vo.getTaskGrowthRate());
+        assertNull(vo.getSuccessRateDelta());
+        assertNull(vo.getLlmCostDelta());
+    }
+
+    // endregion
+
     // region 辅助方法
 
     /**

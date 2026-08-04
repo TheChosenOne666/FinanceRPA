@@ -211,7 +211,91 @@ public class DashboardServiceImpl implements DashboardService {
         List<RiskLevelStatVO> riskLevels = dashboardStatsMapper.countRiskLevel(orgId);
         vo.setRiskLevelDistribution(riskLevels != null ? riskLevels : List.of());
 
+        // 6. 环比趋势（今日 vs 昨日，对齐原型 KPI 卡片 trend 文案）
+        fillGrowthRates(vo, orgId);
+
         return vo;
+    }
+
+    /**
+     * 填充环比趋势字段（今日 vs 昨日）
+     *
+     * <p>口径：
+     * <ul>
+     *   <li>任务总数增长率 = (今日总数 - 昨日总数) / 昨日总数</li>
+     *   <li>成功率差值 = 今日成功率 - 昨日成功率（百分点）</li>
+     *   <li>LLM 成本变化率 = (今日成本 - 昨日成本) / 昨日成本</li>
+     * </ul>
+     * 上期数据为 0 或不存在时，对应字段返回 null（前端显示为 "—"）。</p>
+     *
+     * @param vo   概览 VO（in-place 填充）
+     * @param orgId 组织 ID
+     */
+    private void fillGrowthRates(OverviewVO vo, Long orgId) {
+        LocalDate today = LocalDate.now();
+        LocalDate yesterday = today.minusDays(1);
+
+        // 1. 任务量环比
+        List<TaskStatusCountDTO> todayStatus = dashboardStatsMapper.countTaskByStatusInRange(orgId, today, today.plusDays(1));
+        List<TaskStatusCountDTO> yesterdayStatus = dashboardStatsMapper.countTaskByStatusInRange(orgId, yesterday, today);
+        long todayTotal = sumCount(todayStatus);
+        long yesterdayTotal = sumCount(yesterdayStatus);
+        if (yesterdayTotal > 0) {
+            vo.setTaskGrowthRate((double) (todayTotal - yesterdayTotal) / yesterdayTotal);
+        }
+
+        // 2. 成功率环比差值（百分点）
+        long todaySuccess = sumCountByStatus(todayStatus, DashboardConstant.TASK_STATUS_SUCCESS);
+        long yesterdaySuccess = sumCountByStatus(yesterdayStatus, DashboardConstant.TASK_STATUS_SUCCESS);
+        if (todayTotal > 0 && yesterdayTotal > 0) {
+            double todayRate = (double) todaySuccess / todayTotal;
+            double yesterdayRate = (double) yesterdaySuccess / yesterdayTotal;
+            vo.setSuccessRateDelta(todayRate - yesterdayRate);
+        }
+
+        // 3. LLM 成本环比
+        LlmAggregateDTO todayLlm = dashboardStatsMapper.selectLlmAggregateInRange(orgId, today, today.plusDays(1));
+        LlmAggregateDTO yesterdayLlm = dashboardStatsMapper.selectLlmAggregateInRange(orgId, yesterday, today);
+        BigDecimal todayCost = (todayLlm != null && todayLlm.getTotalCost() != null) ? todayLlm.getTotalCost() : BigDecimal.ZERO;
+        BigDecimal yesterdayCost = (yesterdayLlm != null && yesterdayLlm.getTotalCost() != null) ? yesterdayLlm.getTotalCost() : BigDecimal.ZERO;
+        if (yesterdayCost.compareTo(BigDecimal.ZERO) > 0) {
+            vo.setLlmCostDelta(todayCost.subtract(yesterdayCost)
+                    .divide(yesterdayCost, 4, java.math.RoundingMode.HALF_UP)
+                    .doubleValue());
+        }
+    }
+
+    /**
+     * 汇总状态计数列表的总数
+     *
+     * @param list 状态计数列表
+     * @return 总数；null 视为 0
+     */
+    private long sumCount(List<TaskStatusCountDTO> list) {
+        if (list == null) return 0;
+        long sum = 0;
+        for (TaskStatusCountDTO sc : list) {
+            sum += (sc.getCount() == null) ? 0 : sc.getCount();
+        }
+        return sum;
+    }
+
+    /**
+     * 按状态过滤并汇总计数
+     *
+     * @param list   状态计数列表
+     * @param status 目标状态
+     * @return 该状态的计数
+     */
+    private long sumCountByStatus(List<TaskStatusCountDTO> list, String status) {
+        if (list == null) return 0;
+        long sum = 0;
+        for (TaskStatusCountDTO sc : list) {
+            if (status.equals(sc.getStatus())) {
+                sum += (sc.getCount() == null) ? 0 : sc.getCount();
+            }
+        }
+        return sum;
     }
 
     // endregion

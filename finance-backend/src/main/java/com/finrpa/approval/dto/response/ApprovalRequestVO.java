@@ -28,6 +28,9 @@ public class ApprovalRequestVO {
     /** 触发用户 ID */
     private Long userId;
 
+    /** 触发用户姓名（联表 sys_user.real_name 填充，对齐原型 02-dashboard.html 申请人列显示） */
+    private String userName;
+
     /** 风险等级：low / medium / high / critical */
     private String riskLevel;
 

@@ -21,6 +21,8 @@ import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
 import com.finrpa.approval.enums.ApprovalRouteEnum;
+import com.finrpa.auth.entity.UserEO;
+import com.finrpa.auth.mapper.UserMapper;
 import com.finrpa.notification.enums.NotificationTemplateEnum;
 import com.finrpa.notification.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,7 +33,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * 审批服务实现（M6.3）
@@ -70,6 +76,10 @@ public class ApprovalServiceImpl implements ApprovalService {
     /** 通知服务（M6.6 审批触发通知：待处理 / 超时告警） */
     @Resource
     private NotificationService notificationService;
+
+    /** 用户 Mapper（批量填充 userName，对齐原型 02-dashboard.html 申请人列） */
+    @Resource
+    private UserMapper userMapper;
 
     // region 创建审批
 
@@ -227,7 +237,10 @@ public class ApprovalServiceImpl implements ApprovalService {
         wrapper.orderByDesc(ApprovalRequestEO::getCreateTime);
 
         IPage<ApprovalRequestEO> eoPage = approvalRequestMapper.selectPage(page, wrapper);
-        return eoPage.convert(this::convertToVO);
+        IPage<ApprovalRequestVO> voPage = eoPage.convert(this::convertToVO);
+        // 批量填充 userName（避免 N+1 查询，对齐原型申请人列显示）
+        fillUserNames(voPage.getRecords());
+        return voPage;
     }
 
     /**
@@ -240,7 +253,10 @@ public class ApprovalServiceImpl implements ApprovalService {
     public ApprovalRequestVO getApprovalDetail(Long approvalId) {
         ApprovalRequestEO approval = approvalRequestMapper.selectById(approvalId);
         ThrowUtils.throwIf(approval == null, ErrorCode.NOT_FOUND_ERROR, "审批单不存在: " + approvalId);
-        return convertToVO(approval);
+        ApprovalRequestVO vo = convertToVO(approval);
+        // 单条填充 userName
+        fillUserNames(List.of(vo));
+        return vo;
     }
 
     /**
@@ -386,6 +402,45 @@ public class ApprovalServiceImpl implements ApprovalService {
         vo.setApprovedAt(approval.getApprovedAt());
         vo.setCreateTime(approval.getCreateTime());
         return vo;
+    }
+
+    /**
+     * 批量填充审批列表的 userName 字段（联表 sys_user.real_name）
+     *
+     * <p>对齐原型 02-dashboard.html 与 05-approval-center.html 申请人列显示。
+     * 单次批量查询避免 N+1；缺失 userId 或查无对应用户时 userName 置空。</p>
+     *
+     * @param records 审批 VO 列表（in-place 填充）
+     */
+    private void fillUserNames(List<ApprovalRequestVO> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        // 1. 收集非空 userId
+        List<Long> userIds = records.stream()
+                .map(ApprovalRequestVO::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (userIds.isEmpty()) {
+            return;
+        }
+        // 2. 批量查询用户
+        List<UserEO> users = userMapper.selectByUserIds(userIds);
+        Map<Long, String> userIdToName = new HashMap<>();
+        if (users != null) {
+            for (UserEO u : users) {
+                if (u.getUserId() != null) {
+                    userIdToName.put(u.getUserId(), u.getRealName());
+                }
+            }
+        }
+        // 3. 填充 userName
+        for (ApprovalRequestVO vo : records) {
+            if (vo.getUserId() != null) {
+                vo.setUserName(userIdToName.getOrDefault(vo.getUserId(), null));
+            }
+        }
     }
 
     /**

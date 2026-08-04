@@ -1,11 +1,11 @@
 /**
  * 审计日志页面
  *
- * 功能（M7.5）：
- * - 列表视图：多维筛选（任务ID / 风险 / 操作类型 / 执行结果 / 时间范围）+ 分页 + 排序
- * - 详情弹窗：基本信息 + 操作参数 JSON + 截图对比（before/after）+ LLM 信息
+ * 功能（M7.5 原型对齐 06-audit-logs.html）：
+ * - 列表视图：两栏布局（左 1/3 卡片列表 + 右 2/3 详情面板）
+ * - 多维筛选：任务ID / 用户ID / 部门 / 业务线 / 风险 / 操作类型 / 执行结果 / 时间范围 + 排序
+ * - 时间线视图：按任务维度聚合，点击单条切换回列表视图并选中
  * - 导出按钮：按当前筛选条件触发 CSV 下载（后端限制 10000 条）
- * - 时间线视图：按任务维度聚合，展示操作时间线
  *
  * 对齐后端 com.finrpa.audit.controller.AuditController：
  * - GET  /v1/audit/logs           分页多维检索
@@ -17,9 +17,12 @@
  */
 
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { auditApi } from '@/api/audit'
+import { tenantApi } from '@/api/tenant'
+import type { BusinessLineVO, DepartmentVO } from '@/api/tenant'
 import type {
   AuditActionType,
   AuditExecutionResult,
@@ -35,10 +38,10 @@ import {
   IconAlert,
   IconCamera,
   IconChevronDown,
-  IconClose,
   IconDownload,
   IconList,
   IconRefresh,
+  IconSearch,
   IconShield,
   IconTerminal,
 } from '@/components/Icons'
@@ -157,8 +160,26 @@ function toIso(localValue: string): string | undefined {
   return dayjs(localValue).toISOString()
 }
 
+/**
+ * 根据操作类型返回 badge 类名（4 色区分，对齐原型 06-audit-logs.html）
+ *
+ * 仅 CLICK / INPUT_TEXT / NAVIGATE / LOGIN 走专属配色，其它走默认 badge 样式。
+ *
+ * @param actionType 操作类型
+ * @returns badge 类名（如 "badge badge-action-CLICK"）
+ */
+function getActionBadgeClass(actionType: string): string {
+  const supported = new Set(['CLICK', 'INPUT_TEXT', 'NAVIGATE', 'LOGIN'])
+  if (supported.has(actionType)) {
+    return `badge badge-action-${actionType}`
+  }
+  return 'badge'
+}
+
 /** 审计日志页面 */
 function AuditLogs() {
+  const navigate = useNavigate()
+
   // 1. Tab 切换：列表 / 时间线
   const [tab, setTab] = useState<AuditTab>('list')
 
@@ -168,6 +189,9 @@ function AuditLogs() {
 
   // 3. 筛选条件
   const [taskId, setTaskId] = useState('')
+  const [userId, setUserId] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [businessLineId, setBusinessLineId] = useState('')
   const [riskLevel, setRiskLevel] = useState<'' | WorkflowRiskLevel>('')
   const [actionType, setActionType] = useState<'' | AuditActionType>('')
   const [executionResult, setExecutionResult] = useState<
@@ -180,7 +204,7 @@ function AuditLogs() {
   const [sortField, setSortField] = useState<AuditSortField>('createTime')
   const [sortOrder, setSortOrder] = useState<SortOrder>('descend')
 
-  // 5. 详情弹窗
+  // 5. 选中详情（列表视图右栏展示）
   const [selectedLog, setSelectedLog] = useState<AuditLogVO | null>(null)
 
   // 6. 导出状态
@@ -190,7 +214,21 @@ function AuditLogs() {
     text: string
   } | null>(null)
 
-  // 7. 查询参数构造
+  // 7. 部门 / 业务线下拉数据（用于筛选栏）
+  const departmentsQuery = useQuery({
+    queryKey: ['tenant-departments'] as const,
+    queryFn: () => tenantApi.listDepartments(),
+    refetchOnWindowFocus: false,
+  })
+  const businessLinesQuery = useQuery({
+    queryKey: ['tenant-business-lines'] as const,
+    queryFn: () => tenantApi.listBusinessLines(),
+    refetchOnWindowFocus: false,
+  })
+  const departments: DepartmentVO[] = departmentsQuery.data ?? []
+  const businessLines: BusinessLineVO[] = businessLinesQuery.data ?? []
+
+  // 8. 查询参数构造
   const query: AuditLogQueryRequest = useMemo(
     () => ({
       current,
@@ -198,6 +236,9 @@ function AuditLogs() {
       sortField,
       sortOrder,
       taskId: taskId.trim() || undefined,
+      userId: userId.trim() || undefined,
+      departmentId: departmentId || undefined,
+      businessLineId: businessLineId || undefined,
       riskLevel,
       actionType,
       executionResult,
@@ -210,6 +251,9 @@ function AuditLogs() {
       sortField,
       sortOrder,
       taskId,
+      userId,
+      departmentId,
+      businessLineId,
       riskLevel,
       actionType,
       executionResult,
@@ -264,6 +308,9 @@ function AuditLogs() {
   /** 重置筛选条件 */
   const handleReset = () => {
     setTaskId('')
+    setUserId('')
+    setDepartmentId('')
+    setBusinessLineId('')
     setRiskLevel('')
     setActionType('')
     setExecutionResult('')
@@ -292,6 +339,16 @@ function AuditLogs() {
     )
     // 3 秒后清空提示
     setTimeout(() => setExportMsg(null), 3000)
+  }
+
+  /**
+   * 时间线视图点击单条日志：切换到列表视图并选中该日志
+   *
+   * @param log 被点击的审计日志
+   */
+  const handleSelectFromTimeline = (log: AuditLogVO) => {
+    setSelectedLog(log)
+    setTab('list')
   }
 
   // 列表数据
@@ -331,6 +388,9 @@ function AuditLogs() {
 
   const hasFilters =
     !!taskId ||
+    !!userId ||
+    !!departmentId ||
+    !!businessLineId ||
     !!riskLevel ||
     !!actionType ||
     !!executionResult ||
@@ -339,15 +399,29 @@ function AuditLogs() {
 
   return (
     <div className="tasks-page">
-      {/* region 页面标题 + 操作区 */}
+      {/* region 页面标题 + 面包屑 + 操作区 */}
       <div className="tasks-header">
         <div>
-          <h1 className="page-title">
+          <h1 className="page-title" style={{ margin: '0 0 4px' }}>
             审计日志
           </h1>
-          <p className="page-subtitle">
-            全链路操作审计 · 多维检索 · 截图对比 · CSV 导出
-          </p>
+          <div className="breadcrumb">
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault()
+                navigate('/')
+              }}
+            >
+              首页
+            </a>
+            <span className="sep">/</span>
+            <a href="#" onClick={(e) => e.preventDefault()}>
+              合规
+            </a>
+            <span className="sep">/</span>
+            <span className="current">审计日志</span>
+          </div>
         </div>
         <div className="tasks-header-actions">
           <button
@@ -425,6 +499,55 @@ function AuditLogs() {
               setCurrent(1)
             }}
           />
+        </div>
+        <div className="toolbar-filter">
+          <label className="toolbar-filter-label">用户 ID</label>
+          <input
+            type="text"
+            className="input audit-filter-input"
+            placeholder="精确匹配用户 ID"
+            value={userId}
+            onChange={(e) => {
+              setUserId(e.target.value)
+              setCurrent(1)
+            }}
+          />
+        </div>
+        <div className="toolbar-filter">
+          <label className="toolbar-filter-label">部门</label>
+          <select
+            className="select toolbar-select"
+            value={departmentId}
+            onChange={(e) => {
+              setDepartmentId(e.target.value)
+              setCurrent(1)
+            }}
+          >
+            <option value="">全部部门</option>
+            {departments.map((d) => (
+              <option key={d.deptId} value={d.deptId}>
+                {d.deptName}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="toolbar-filter">
+          <label className="toolbar-filter-label">业务线</label>
+          <select
+            className="select toolbar-select"
+            value={businessLineId}
+            onChange={(e) => {
+              setBusinessLineId(e.target.value)
+              setCurrent(1)
+            }}
+          >
+            <option value="">全部业务线</option>
+            {businessLines.map((b) => (
+              <option key={b.businessLineId} value={b.businessLineId}>
+                {b.businessLineName}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="toolbar-filter">
           <label className="toolbar-filter-label">风险等级</label>
@@ -539,6 +662,20 @@ function AuditLogs() {
         <div className="toolbar-filter audit-filter-actions">
           <button
             type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setCurrent(1)
+              if (tab === 'list') listQuery.refetch()
+              else timelineQuery.refetch()
+            }}
+            disabled={isFetching}
+            title="按当前条件搜索"
+          >
+            <IconSearch size={13} />
+            搜索
+          </button>
+          <button
+            type="button"
             className="btn btn-ghost btn-sm"
             onClick={handleReset}
             disabled={!hasFilters}
@@ -559,49 +696,58 @@ function AuditLogs() {
       )}
       {/* endregion */}
 
-      {/* region 列表视图 */}
+      {/* region 列表视图：两栏布局（左 1/3 卡片列表 + 右 2/3 详情面板） */}
       {tab === 'list' && (
         <>
-          <div className="tasks-table-wrapper glass-card-static">
-            {isLoading ? (
-              <div className="tasks-empty">加载中…</div>
-            ) : records.length === 0 ? (
-              <div className="tasks-empty">
-                <IconShield size={36} />
-                <div className="tasks-empty-title">暂无审计日志</div>
-                <div className="tasks-empty-desc">
-                  {hasFilters
-                    ? '当前筛选条件下没有匹配的审计记录'
-                    : '尚未有任何任务执行审计上报'}
+          <div className="page-grid grid-1-2">
+            {/* 左侧：审计卡片列表 */}
+            <div className="glass-card-static p-md">
+              <div className="audit-list-header">
+                <div className="section-title">
+                  审计记录
+                  <span className="badge badge-muted">{total} 条</span>
                 </div>
               </div>
-            ) : (
-              <table className="tasks-table audit-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '11%' }}>审计 ID</th>
-                    <th style={{ width: '11%' }}>任务 ID</th>
-                    <th style={{ width: '10%' }}>操作类型</th>
-                    <th style={{ width: '8%' }}>执行结果</th>
-                    <th style={{ width: '8%' }}>风险等级</th>
-                    <th style={{ width: '11%' }}>开始时间</th>
-                    <th style={{ width: '8%' }}>耗时</th>
-                    <th style={{ width: '8%' }}>LLM</th>
-                    <th>页面</th>
-                    <th style={{ width: '7%' }}>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {records.map((log) => (
-                    <AuditRow
-                      key={log.auditId}
-                      log={log}
-                      onClick={() => setSelectedLog(log)}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            )}
+
+              {isLoading ? (
+                <div className="tasks-empty">加载中…</div>
+              ) : records.length === 0 ? (
+                <div className="tasks-empty">
+                  <IconShield size={36} />
+                  <div className="tasks-empty-title">暂无审计日志</div>
+                  <div className="tasks-empty-desc">
+                    {hasFilters
+                      ? '当前筛选条件下没有匹配的审计记录'
+                      : '尚未有任何任务执行审计上报'}
+                  </div>
+                </div>
+              ) : (
+                <div className="audit-list-pane">
+                  <div className="audit-list">
+                    {records.map((log) => (
+                      <AuditListItem
+                        key={log.auditId}
+                        log={log}
+                        active={selectedLog?.auditId === log.auditId}
+                        onClick={() => setSelectedLog(log)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 右侧：详情面板 */}
+            <div className="glass-card-static p-lg">
+              {selectedLog ? (
+                <AuditDetailPanel log={selectedLog} />
+              ) : (
+                <div className="audit-detail-placeholder">
+                  <IconShield size={48} className="audit-detail-placeholder-icon" />
+                  <div>请从左侧选择一条审计记录查看详情</div>
+                </div>
+              )}
+            </div>
           </div>
 
           {total > 0 && (
@@ -642,7 +788,7 @@ function AuditLogs() {
                   key={group.taskId}
                   taskId={group.taskId}
                   logs={group.logs}
-                  onSelectLog={(log) => setSelectedLog(log)}
+                  onSelectLog={handleSelectFromTimeline}
                 />
               ))}
               {timelineGroups.length > TIMELINE_PAGE_SIZE && (
@@ -655,86 +801,57 @@ function AuditLogs() {
         </div>
       )}
       {/* endregion */}
-
-      {/* region 详情弹窗 */}
-      {selectedLog && (
-        <AuditDetailModal log={selectedLog} onClose={() => setSelectedLog(null)} />
-      )}
-      {/* endregion */}
     </div>
   )
 }
 
 /**
- * 审计表格行
+ * 审计卡片项（左栏列表单条）
  *
  * @param log    审计日志
- * @param onClick 点击行回调（打开详情）
+ * @param active 是否选中
+ * @param onClick 点击卡片回调（选中并展示详情）
  */
-function AuditRow({
+function AuditListItem({
   log,
+  active,
   onClick,
 }: {
   log: AuditLogVO
+  active: boolean
   onClick: () => void
 }) {
+  // 用户展示名：优先用 userName，否则 fallback 到 "用户{userId}"
+  const userDisplay = log.userName || (log.userId ? `用户${log.userId}` : '—')
+  // 部门 / 业务线（可能为空）
+  const metaLine2 = [userDisplay, log.departmentName, log.businessLineName]
+    .filter((s) => !!s)
+    .join(' · ')
+
   return (
-    <tr className="task-row" onClick={onClick}>
-      <td className="cell-mono">
-        <span className="task-id-chip" title={log.auditId}>
-          #{log.auditId.slice(-10)}
+    <div
+      className={`audit-item${active ? ' active' : ''}`}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+    >
+      <div className="audit-item-top">
+        <span className="audit-ts">{formatTime(log.startedAt)}</span>
+        <span className={getActionBadgeClass(log.actionType)}>
+          {log.actionType}
         </span>
-      </td>
-      <td className="cell-mono">
-        <span className="task-id-chip" title={log.taskId}>
-          #{log.taskId.slice(-10)}
-        </span>
-      </td>
-      <td className="cell-mono">{log.actionType}</td>
-      <td>
-        <span
-          className={`tag tag-result-${log.executionResult}`}
-          title={log.errorMessage}
-        >
-          {RESULT_LABELS[log.executionResult]}
-        </span>
-      </td>
-      <td>
-        {log.riskLevel ? (
-          <span className={`tag tag-risk-${log.riskLevel}`}>
-            {RISK_LABELS[log.riskLevel]}
-          </span>
-        ) : (
-          <span className="text-muted">—</span>
-        )}
-      </td>
-      <td className="cell-mono cell-time">{formatTime(log.startedAt)}</td>
-      <td className="cell-mono">{formatDuration(log.durationMs)}</td>
-      <td className="cell-mono">
-        {log.llmModel ? (
-          <span title={`${log.llmModel} · ${log.llmTokensUsed ?? 0} tokens`}>
-            {log.llmModel}
-          </span>
-        ) : (
-          <span className="text-muted">—</span>
-        )}
-      </td>
-      <td className="cell-url" title={log.pageUrl}>
-        {log.pageUrl || '—'}
-      </td>
-      <td>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={(e) => {
-            e.stopPropagation()
-            onClick()
-          }}
-        >
-          详情
-        </button>
-      </td>
-    </tr>
+      </div>
+      <div className="audit-item-meta">
+        任务 <span className="mono">{log.taskId}</span>
+      </div>
+      <div className="audit-item-meta">{metaLine2 || '—'}</div>
+    </div>
   )
 }
 
@@ -743,7 +860,7 @@ function AuditRow({
  *
  * @param taskId 任务 ID
  * @param logs   该任务下的所有审计日志（按时间升序）
- * @param onSelectLog 点击单条日志回调（打开详情）
+ * @param onSelectLog 点击单条日志回调（切换到列表视图并选中）
  */
 function AuditTimelineGroup({
   taskId,
@@ -841,267 +958,249 @@ function AuditTimelineGroup({
   )
 }
 
-/** 审计详情弹窗属性 */
-interface AuditDetailModalProps {
+/** 审计详情面板属性 */
+interface AuditDetailPanelProps {
   /** 审计日志 */
   log: AuditLogVO
-  /** 关闭弹窗回调 */
-  onClose: () => void
 }
 
 /**
- * 审计详情弹窗
+ * 审计详情面板（右栏内联展示，替代原 AuditDetailModal）
  *
- * 展示审计详情（基本信息 + 操作参数 + 截图对比 + LLM 信息）。
+ * 展示审计详情（头部 + 基本信息 + 操作参数 + 截图对比 + LLM 信息 + 错误信息）。
  *
- * @param log     审计日志
- * @param onClose 关闭回调
+ * @param log 审计日志
  */
-function AuditDetailModal({ log, onClose }: AuditDetailModalProps) {
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="glass-card modal-card audit-modal-card"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* region 弹窗头部 */}
-        <div className="modal-header">
-          <div className="modal-title">
-            <IconShield size={18} />
-            审计详情
-          </div>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label="关闭"
-          >
-            <IconClose size={16} />
-          </button>
-        </div>
-        {/* endregion */}
+function AuditDetailPanel({ log }: AuditDetailPanelProps) {
+  // 用户展示名：优先用 userName，否则 fallback 到 "用户{userId}"
+  const userDisplay = log.userName || (log.userId ? `用户${log.userId}` : '—')
 
-        {/* region 基本信息网格 */}
-        <div className="approval-detail-meta">
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">审计 ID</div>
-            <div className="approval-detail-meta-value cell-mono">#{log.auditId}</div>
+  return (
+    <div className="audit-detail-panel">
+      {/* region 头部：任务 ID + 用户 / 时间 / 操作类型 */}
+      <div className="audit-detail-header">
+        <div className="audit-detail-title">
+          任务 <span className="mono">{log.taskId}</span>
+        </div>
+        <div className="audit-detail-sub">
+          用户 {userDisplay}
+          <span className="sep">·</span>
+          {formatTime(log.startedAt)}
+          <span className="sep">·</span>
+          操作类型
+          <span className={getActionBadgeClass(log.actionType)} style={{ marginLeft: 4 }}>
+            {log.actionType}
+          </span>
+        </div>
+      </div>
+      {/* endregion */}
+
+      {/* region 基本信息网格 */}
+      <div className="approval-detail-meta">
+        <div className="approval-detail-meta-item">
+          <div className="approval-detail-meta-label">审计 ID</div>
+          <div className="approval-detail-meta-value cell-mono">#{log.auditId}</div>
+        </div>
+        <div className="approval-detail-meta-item">
+          <div className="approval-detail-meta-label">执行结果</div>
+          <div>
+            <span className={`tag tag-result-${log.executionResult}`}>
+              {RESULT_LABELS[log.executionResult]}
+            </span>
           </div>
+        </div>
+        {log.riskLevel && (
           <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">任务 ID</div>
-            <div className="approval-detail-meta-value cell-mono">#{log.taskId}</div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">操作类型</div>
-            <div className="approval-detail-meta-value cell-mono">{log.actionType}</div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">执行结果</div>
+            <div className="approval-detail-meta-label">风险等级</div>
             <div>
-              <span className={`tag tag-result-${log.executionResult}`}>
-                {RESULT_LABELS[log.executionResult]}
+              <span className={`tag tag-risk-${log.riskLevel}`}>
+                {RISK_LABELS[log.riskLevel]}
               </span>
             </div>
           </div>
-          {log.riskLevel && (
-            <div className="approval-detail-meta-item">
-              <div className="approval-detail-meta-label">风险等级</div>
-              <div>
-                <span className={`tag tag-risk-${log.riskLevel}`}>
-                  {RISK_LABELS[log.riskLevel]}
+        )}
+        {log.userId && (
+          <div className="approval-detail-meta-item">
+            <div className="approval-detail-meta-label">用户 ID</div>
+            <div className="approval-detail-meta-value cell-mono">#{log.userId}</div>
+          </div>
+        )}
+        {log.departmentId && (
+          <div className="approval-detail-meta-item">
+            <div className="approval-detail-meta-label">部门</div>
+            <div className="approval-detail-meta-value">
+              {log.departmentName || `#${log.departmentId}`}
+            </div>
+          </div>
+        )}
+        {log.businessLineId && (
+          <div className="approval-detail-meta-item">
+            <div className="approval-detail-meta-label">业务线</div>
+            <div className="approval-detail-meta-value">
+              {log.businessLineName || `#${log.businessLineId}`}
+            </div>
+          </div>
+        )}
+        {log.approvalId && (
+          <div className="approval-detail-meta-item">
+            <div className="approval-detail-meta-label">审批单 ID</div>
+            <div className="approval-detail-meta-value cell-mono">
+              #{log.approvalId}
+            </div>
+          </div>
+        )}
+        <div className="approval-detail-meta-item">
+          <div className="approval-detail-meta-label">完成时间</div>
+          <div className="approval-detail-meta-value cell-mono">
+            {formatTime(log.completedAt)}
+          </div>
+        </div>
+        <div className="approval-detail-meta-item">
+          <div className="approval-detail-meta-label">执行耗时</div>
+          <div className="approval-detail-meta-value">
+            {formatDuration(log.durationMs)}
+          </div>
+        </div>
+      </div>
+      {/* endregion */}
+
+      {/* region 页面 URL */}
+      {log.pageUrl && (
+        <div className="form-group">
+          <label className="label">页面 URL</label>
+          <div className="approval-detail-text audit-detail-url">
+            <a
+              href={log.pageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="audit-detail-link"
+            >
+              {log.pageUrl}
+            </a>
+          </div>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region 目标元素 */}
+      {log.targetElement && (
+        <div className="form-group">
+          <label className="label">目标元素</label>
+          <div className="approval-detail-text audit-detail-mono">
+            {log.targetElement}
+          </div>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region 错误信息（失败时展示） */}
+      {log.executionResult === 'failed' && log.errorMessage && (
+        <div className="form-group">
+          <label className="label">错误信息</label>
+          <div className="approval-detail-reasoning audit-detail-error">
+            {log.errorMessage}
+          </div>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region 截图对比 */}
+      {(log.beforeScreenshotUrl || log.afterScreenshotUrl) && (
+        <div className="form-group">
+          <label className="label">
+            <IconCamera size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
+            截图对比（before / after）
+          </label>
+          <div className="audit-screenshot-grid">
+            <div className="audit-screenshot-cell">
+              <div className="audit-screenshot-label">
+                <span>Before</span>
+              </div>
+              {log.beforeScreenshotUrl ? (
+                <img
+                  src={log.beforeScreenshotUrl}
+                  alt="操作前截图"
+                  className="audit-screenshot-img"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="audit-screenshot-placeholder">
+                  <IconCamera size={24} />
+                  <div>无截图</div>
+                </div>
+              )}
+            </div>
+            <div className="audit-screenshot-cell">
+              <div className="audit-screenshot-label">
+                <span>After</span>
+              </div>
+              {log.afterScreenshotUrl ? (
+                <img
+                  src={log.afterScreenshotUrl}
+                  alt="操作后截图"
+                  className="audit-screenshot-img"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="audit-screenshot-placeholder">
+                  <IconCamera size={24} />
+                  <div>无截图</div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="audit-screenshot-hint">
+            截图为 MinIO 预签名 URL，有效期 1 小时
+          </div>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region 操作参数（已脱敏） */}
+      {log.actionParams && (
+        <div className="form-group">
+          <label className="label">
+            操作参数
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
+              （已脱敏）
+            </span>
+          </label>
+          <pre className="audit-detail-code">{prettyJson(log.actionParams)}</pre>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region LLM 信息 */}
+      {(log.llmModel || log.llmTokensUsed || log.llmCost != null) && (
+        <div className="form-group">
+          <label className="label">LLM 调用信息</label>
+          <div className="audit-llm-grid">
+            {log.llmModel && (
+              <div className="audit-llm-item">
+                <span className="audit-llm-label">模型</span>
+                <span className="audit-llm-value cell-mono">{log.llmModel}</span>
+              </div>
+            )}
+            {log.llmTokensUsed != null && (
+              <div className="audit-llm-item">
+                <span className="audit-llm-label">Token 用量</span>
+                <span className="audit-llm-value cell-mono">
+                  {log.llmTokensUsed.toLocaleString()}
                 </span>
               </div>
-            </div>
-          )}
-          {log.approvalId && (
-            <div className="approval-detail-meta-item">
-              <div className="approval-detail-meta-label">审批单 ID</div>
-              <div className="approval-detail-meta-value cell-mono">
-                #{log.approvalId}
+            )}
+            {log.llmCost != null && (
+              <div className="audit-llm-item">
+                <span className="audit-llm-label">成本（USD）</span>
+                <span className="audit-llm-value cell-mono">
+                  ${log.llmCost.toFixed(6)}
+                </span>
               </div>
-            </div>
-          )}
-          {log.userId && (
-            <div className="approval-detail-meta-item">
-              <div className="approval-detail-meta-label">用户 ID</div>
-              <div className="approval-detail-meta-value cell-mono">
-                #{log.userId}
-              </div>
-            </div>
-          )}
-          {log.departmentId && (
-            <div className="approval-detail-meta-item">
-              <div className="approval-detail-meta-label">部门 ID</div>
-              <div className="approval-detail-meta-value cell-mono">
-                #{log.departmentId}
-              </div>
-            </div>
-          )}
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">开始时间</div>
-            <div className="approval-detail-meta-value cell-mono">
-              {formatTime(log.startedAt)}
-            </div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">完成时间</div>
-            <div className="approval-detail-meta-value cell-mono">
-              {formatTime(log.completedAt)}
-            </div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">执行耗时</div>
-            <div className="approval-detail-meta-value">
-              {formatDuration(log.durationMs)}
-            </div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">创建时间</div>
-            <div className="approval-detail-meta-value cell-mono">
-              {formatTime(log.createTime)}
-            </div>
+            )}
           </div>
         </div>
-        {/* endregion */}
-
-        {/* region 页面 URL */}
-        {log.pageUrl && (
-          <div className="form-group">
-            <label className="label">页面 URL</label>
-            <div className="approval-detail-text audit-detail-url">
-              <a
-                href={log.pageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="audit-detail-link"
-              >
-                {log.pageUrl}
-              </a>
-            </div>
-          </div>
-        )}
-        {/* endregion */}
-
-        {/* region 目标元素 */}
-        {log.targetElement && (
-          <div className="form-group">
-            <label className="label">目标元素</label>
-            <div className="approval-detail-text audit-detail-mono">
-              {log.targetElement}
-            </div>
-          </div>
-        )}
-        {/* endregion */}
-
-        {/* region 错误信息（失败时展示） */}
-        {log.executionResult === 'failed' && log.errorMessage && (
-          <div className="form-group">
-            <label className="label">错误信息</label>
-            <div className="approval-detail-reasoning audit-detail-error">
-              {log.errorMessage}
-            </div>
-          </div>
-        )}
-        {/* endregion */}
-
-        {/* region 截图对比 */}
-        {(log.beforeScreenshotUrl || log.afterScreenshotUrl) && (
-          <div className="form-group">
-            <label className="label">
-              <IconCamera size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
-              截图对比（before / after）
-            </label>
-            <div className="audit-screenshot-grid">
-              <div className="audit-screenshot-cell">
-                <div className="audit-screenshot-label">
-                  <span>Before</span>
-                </div>
-                {log.beforeScreenshotUrl ? (
-                  <img
-                    src={log.beforeScreenshotUrl}
-                    alt="操作前截图"
-                    className="audit-screenshot-img"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="audit-screenshot-placeholder">
-                    <IconCamera size={24} />
-                    <div>无截图</div>
-                  </div>
-                )}
-              </div>
-              <div className="audit-screenshot-cell">
-                <div className="audit-screenshot-label">
-                  <span>After</span>
-                </div>
-                {log.afterScreenshotUrl ? (
-                  <img
-                    src={log.afterScreenshotUrl}
-                    alt="操作后截图"
-                    className="audit-screenshot-img"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="audit-screenshot-placeholder">
-                    <IconCamera size={24} />
-                    <div>无截图</div>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="audit-screenshot-hint">
-              截图为 MinIO 预签名 URL，有效期 1 小时
-            </div>
-          </div>
-        )}
-        {/* endregion */}
-
-        {/* region 操作参数（已脱敏） */}
-        {log.actionParams && (
-          <div className="form-group">
-            <label className="label">
-              操作参数
-              <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
-                （已脱敏）
-              </span>
-            </label>
-            <pre className="audit-detail-code">{prettyJson(log.actionParams)}</pre>
-          </div>
-        )}
-        {/* endregion */}
-
-        {/* region LLM 信息 */}
-        {(log.llmModel || log.llmTokensUsed || log.llmCost != null) && (
-          <div className="form-group">
-            <label className="label">LLM 调用信息</label>
-            <div className="audit-llm-grid">
-              {log.llmModel && (
-                <div className="audit-llm-item">
-                  <span className="audit-llm-label">模型</span>
-                  <span className="audit-llm-value cell-mono">{log.llmModel}</span>
-                </div>
-              )}
-              {log.llmTokensUsed != null && (
-                <div className="audit-llm-item">
-                  <span className="audit-llm-label">Token 用量</span>
-                  <span className="audit-llm-value cell-mono">
-                    {log.llmTokensUsed.toLocaleString()}
-                  </span>
-                </div>
-              )}
-              {log.llmCost != null && (
-                <div className="audit-llm-item">
-                  <span className="audit-llm-label">成本（USD）</span>
-                  <span className="audit-llm-value cell-mono">
-                    ${log.llmCost.toFixed(6)}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        {/* endregion */}
-      </div>
+      )}
+      {/* endregion */}
     </div>
   )
 }

@@ -43,6 +43,15 @@ public class AuditLogVO implements Serializable {
     /** 触发用户 ID */
     private Long userId;
 
+    /** 触发用户姓名（联表 sys_user.real_name 填充，对齐原型 06-audit-logs.html 列表显示） */
+    private String userName;
+
+    /** 部门名称（联表 sys_department.name 填充，对齐原型列表显示） */
+    private String departmentName;
+
+    /** 业务线名称（联表 sys_business_line.name 填充，对齐原型列表显示） */
+    private String businessLineName;
+
     // endregion
 
     // region 操作信息

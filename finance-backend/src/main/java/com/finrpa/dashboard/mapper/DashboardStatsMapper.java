@@ -113,6 +113,50 @@ public interface DashboardStatsMapper {
 
     // endregion
 
+    // region 环比趋势（trends 对比，今日 vs 昨日）
+
+    /**
+     * 按日期区间统计任务总数 / 成功数 / 失败数（用于环比对比）
+     *
+     * @param orgId     组织 ID
+     * @param start     起始日期（含）
+     * @param end       结束日期（含，exclusive 上界由 startDate + 1 天控制）
+     * @return 状态计数列表
+     */
+    @Select("""
+            SELECT status, COUNT(*) AS count
+            FROM rpa_agent_task
+            WHERE org_id = #{orgId} AND deleted = 0
+              AND create_time >= #{start} AND create_time < #{end}
+            GROUP BY status
+            """)
+    List<TaskStatusCountDTO> countTaskByStatusInRange(@Param("orgId") Long orgId,
+                                                       @Param("start") LocalDate start,
+                                                       @Param("end") LocalDate end);
+
+    /**
+     * 按日期区间统计 LLM 总成本（用于环比对比）
+     *
+     * @param orgId 组织 ID
+     * @param start 起始日期（含）
+     * @param end   结束日期（不含）
+     * @return LLM 聚合统计；无记录时返回 null
+     */
+    @Select("""
+            SELECT
+                COUNT(*) AS call_count,
+                COALESCE(SUM(cost), 0) AS total_cost,
+                SUM(CASE WHEN cache_hit = TRUE THEN 1 ELSE 0 END) AS cache_hit_count
+            FROM rpa_llm_call_log
+            WHERE org_id = #{orgId} AND deleted = 0
+              AND call_time >= #{start} AND call_time < #{end}
+            """)
+    LlmAggregateDTO selectLlmAggregateInRange(@Param("orgId") Long orgId,
+                                               @Param("start") LocalDate start,
+                                               @Param("end") LocalDate end);
+
+    // endregion
+
     // region 趋势（trends）
 
     /**

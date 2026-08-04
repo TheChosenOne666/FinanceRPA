@@ -23,6 +23,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 /**
@@ -47,6 +48,15 @@ class AuditLogServiceImplTest {
 
     @Mock
     private SanitizeService sanitizeService;
+
+    @Mock
+    private com.finrpa.auth.mapper.UserMapper userMapper;
+
+    @Mock
+    private com.finrpa.tenant.mapper.DepartmentMapper departmentMapper;
+
+    @Mock
+    private com.finrpa.tenant.mapper.BusinessLineMapper businessLineMapper;
 
     @InjectMocks
     private AuditLogServiceImpl auditLogService;
@@ -285,6 +295,52 @@ class AuditLogServiceImplTest {
 
         IPage<AuditLogVO> result = auditLogService.listAuditLogs(queryRequest);
         assertNotNull(result);
+    }
+
+    @Test
+    @DisplayName("listAuditLogs - 批量填充 userName/departmentName/businessLineName")
+    @SuppressWarnings("unchecked")
+    void listAuditLogs_FillsRelatedNames() {
+        // 1. 构建带 userId/departmentId/businessLineId 的审计记录
+        AuditLogEO eo = new AuditLogEO();
+        eo.setAuditId(1L);
+        eo.setTaskId(TEST_TASK_ID);
+        eo.setOrgId(TEST_ORG_ID);
+        eo.setUserId(1001L);
+        eo.setDepartmentId(2001L);
+        eo.setBusinessLineId(3001L);
+        eo.setActionType("CLICK");
+        Page<AuditLogEO> page = new Page<>(1, 10);
+        page.setRecords(List.of(eo));
+        page.setTotal(1);
+        when(auditLogMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(page);
+
+        // 2. mock 联表查询
+        com.finrpa.auth.entity.UserEO user = new com.finrpa.auth.entity.UserEO();
+        user.setUserId(1001L);
+        user.setRealName("张三");
+        when(userMapper.selectByUserIds(anyList())).thenReturn(List.of(user));
+
+        com.finrpa.tenant.entity.DepartmentEO dept = new com.finrpa.tenant.entity.DepartmentEO();
+        dept.setDeptId(2001L);
+        dept.setDeptName("对公信贷部");
+        when(departmentMapper.selectBatchIds(anyList())).thenReturn(List.of(dept));
+
+        com.finrpa.tenant.entity.BusinessLineEO bl = new com.finrpa.tenant.entity.BusinessLineEO();
+        bl.setBusinessLineId(3001L);
+        bl.setBusinessLineName("银行业务");
+        when(businessLineMapper.selectBatchIds(anyList())).thenReturn(List.of(bl));
+
+        // 3. 执行
+        AuditLogQueryRequest queryRequest = new AuditLogQueryRequest();
+        queryRequest.setOrgId(TEST_ORG_ID);
+        IPage<AuditLogVO> result = auditLogService.listAuditLogs(queryRequest);
+
+        // 4. 验证名称已填充
+        AuditLogVO vo = result.getRecords().get(0);
+        assertEquals("张三", vo.getUserName());
+        assertEquals("对公信贷部", vo.getDepartmentName());
+        assertEquals("银行业务", vo.getBusinessLineName());
     }
 
     // endregion

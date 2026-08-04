@@ -11,16 +11,26 @@ import com.finrpa.audit.entity.AuditLogEO;
 import com.finrpa.audit.mapper.AuditLogMapper;
 import com.finrpa.audit.service.AuditLogService;
 import com.finrpa.audit.service.SanitizeService;
+import com.finrpa.auth.entity.UserEO;
+import com.finrpa.auth.mapper.UserMapper;
 import com.finrpa.common.constant.CommonConstant;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
+import com.finrpa.tenant.entity.BusinessLineEO;
+import com.finrpa.tenant.entity.DepartmentEO;
+import com.finrpa.tenant.mapper.BusinessLineMapper;
+import com.finrpa.tenant.mapper.DepartmentMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * 审计日志服务实现（M7.1，M7.4 增强）
@@ -47,6 +57,18 @@ public class AuditLogServiceImpl implements AuditLogService {
     /** 脱敏服务 */
     @Resource
     private SanitizeService sanitizeService;
+
+    /** 用户 Mapper（批量填充 userName，对齐原型 06-audit-logs.html 列表显示） */
+    @Resource
+    private UserMapper userMapper;
+
+    /** 部门 Mapper（批量填充 departmentName） */
+    @Resource
+    private DepartmentMapper departmentMapper;
+
+    /** 业务线 Mapper（批量填充 businessLineName） */
+    @Resource
+    private BusinessLineMapper businessLineMapper;
 
     // region 创建审计日志
 
@@ -104,7 +126,10 @@ public class AuditLogServiceImpl implements AuditLogService {
         applySort(wrapper, queryRequest.getSortField(), queryRequest.getSortOrder());
 
         IPage<AuditLogEO> eoPage = auditLogMapper.selectPage(page, wrapper);
-        return eoPage.convert(this::convertToVO);
+        IPage<AuditLogVO> voPage = eoPage.convert(this::convertToVO);
+        // 批量填充 userName/departmentName/businessLineName（避免 N+1，对齐原型列表显示）
+        fillRelatedNames(voPage.getRecords());
+        return voPage;
     }
 
     // endregion
@@ -134,7 +159,10 @@ public class AuditLogServiceImpl implements AuditLogService {
         }
         log.info("导出审计日志: 条数={}, orgId={}, taskId={}",
                 eoList.size(), queryRequest.getOrgId(), queryRequest.getTaskId());
-        return eoList.stream().map(this::convertToVO).toList();
+        List<AuditLogVO> voList = eoList.stream().map(this::convertToVO).toList();
+        // 批量填充 userName/departmentName/businessLineName
+        fillRelatedNames(voList);
+        return voList;
     }
 
     // endregion
@@ -151,7 +179,10 @@ public class AuditLogServiceImpl implements AuditLogService {
     public AuditLogVO getAuditLogDetail(Long auditId) {
         AuditLogEO auditLog = auditLogMapper.selectById(auditId);
         ThrowUtils.throwIf(auditLog == null, ErrorCode.NOT_FOUND_ERROR, "审计日志不存在: " + auditId);
-        return convertToVO(auditLog);
+        AuditLogVO vo = convertToVO(auditLog);
+        // 单条填充关联名称
+        fillRelatedNames(List.of(vo));
+        return vo;
     }
 
     // endregion
@@ -271,6 +302,84 @@ public class AuditLogServiceImpl implements AuditLogService {
         AuditLogVO vo = new AuditLogVO();
         BeanUtils.copyProperties(auditLog, vo);
         return vo;
+    }
+
+    /**
+     * 批量填充审计列表的 userName/departmentName/businessLineName 字段
+     *
+     * <p>对齐原型 06-audit-logs.html 列表显示「张三 · 对公信贷部 · 银行业务」。
+     * 单次批量查询避免 N+1；缺失 ID 或查无对应记录时对应字段置 null。</p>
+     *
+     * @param records 审计 VO 列表（in-place 填充）
+     */
+    private void fillRelatedNames(List<AuditLogVO> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        // 1. 收集非空 ID
+        List<Long> userIds = records.stream()
+                .map(AuditLogVO::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        List<Long> deptIds = records.stream()
+                .map(AuditLogVO::getDepartmentId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        List<Long> blIds = records.stream()
+                .map(AuditLogVO::getBusinessLineId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+
+        // 2. 批量查询并构建 ID→名称映射
+        Map<Long, String> userIdToName = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<UserEO> users = userMapper.selectByUserIds(userIds);
+            if (users != null) {
+                for (UserEO u : users) {
+                    if (u.getUserId() != null) {
+                        userIdToName.put(u.getUserId(), u.getRealName());
+                    }
+                }
+            }
+        }
+        Map<Long, String> deptIdToName = new HashMap<>();
+        if (!deptIds.isEmpty()) {
+            List<DepartmentEO> depts = departmentMapper.selectBatchIds(deptIds);
+            if (depts != null) {
+                for (DepartmentEO d : depts) {
+                    if (d.getDeptId() != null) {
+                        deptIdToName.put(d.getDeptId(), d.getDeptName());
+                    }
+                }
+            }
+        }
+        Map<Long, String> blIdToName = new HashMap<>();
+        if (!blIds.isEmpty()) {
+            List<BusinessLineEO> bls = businessLineMapper.selectBatchIds(blIds);
+            if (bls != null) {
+                for (BusinessLineEO b : bls) {
+                    if (b.getBusinessLineId() != null) {
+                        blIdToName.put(b.getBusinessLineId(), b.getBusinessLineName());
+                    }
+                }
+            }
+        }
+
+        // 3. 填充名称
+        for (AuditLogVO vo : records) {
+            if (vo.getUserId() != null) {
+                vo.setUserName(userIdToName.get(vo.getUserId()));
+            }
+            if (vo.getDepartmentId() != null) {
+                vo.setDepartmentName(deptIdToName.get(vo.getDepartmentId()));
+            }
+            if (vo.getBusinessLineId() != null) {
+                vo.setBusinessLineName(blIdToName.get(vo.getBusinessLineId()));
+            }
+        }
     }
 
     // endregion

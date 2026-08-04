@@ -1912,15 +1912,15 @@ M{里程碑号}.{任务序号}
 | # | 原型文件 | 前端页面 | 状态 | 完成日期 | 说明 |
 |---|---------|---------|------|----------|------|
 | 1 | `01-auth-and-layout.html` | [LoginPage.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/auth/LoginPage.tsx) / [RootLayout.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/RootLayout.tsx) | ✅ 已完成 | 2026-07-28 | 登录页 + 顶部导航 + 侧边栏骨架（M1.3/M1.5） |
-| 2 | `02-dashboard.html` | [Dashboard.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Dashboard.tsx) | ⬜ 未对齐 | — | M8.1 后端统计 API + Redis 缓存已就绪，前端布局/图表样式待对照原型 |
+| 2 | `02-dashboard.html` | [Dashboard.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Dashboard.tsx) | ✅ 已完成 | 2026-08-04 | 面包屑加「监控」/ 删除自动刷新勾选 / KPI 环比趋势 / ¥ 货币符号 / 申请人列姓名（含后端字段补充） |
 | 3 | `03-tasks.html` | [TasksPage.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/tasks/TasksPage.tsx) | ✅ 已完成 | 2026-08-04 | 筛选栏 6 列、元信息三段式、状态徽章 emoji、操作按钮状态化、分页居中（含 M7.6 三维度 RBAC） |
 | 4 | `04-workflows.html` | [Workflows.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/workflows/Workflows.tsx) | ✅ 已完成 | 2026-08-04 | 行业 Tab、卡片统计行、详情配置网格、日期参数选择器、执行历史（含后端字段补充） |
 | 5 | `05-approval-center.html` | [ApprovalCenter.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/ApprovalCenter.tsx) | ⬜ 未对齐 | — | M6.3/M6.4 后端审批流程 + 超时检测已就绪，前端待对照原型 |
-| 6 | `06-audit-logs.html` | [AuditLogs.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/AuditLogs.tsx) | ⬜ 未对齐 | — | M7.5 已实现列表/时间线双视图 + CSV 导出，样式待对照原型 |
+| 6 | `06-audit-logs.html` | [AuditLogs.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/AuditLogs.tsx) | ✅ 已完成 | 2026-08-04 | 两栏布局 + 卡片列表 + 右侧详情面板 + 面包屑 + badge 4 色 + 筛选栏补全（含后端联表查询） |
 | 7 | `07-ai-monitoring.html` | [LlmMonitor.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/LlmMonitor.tsx) / [NeedsHuman.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/NeedsHuman.tsx) | ⬜ 未对齐 | — | M5.4/M5.6 后端 LLM 统计 + NEEDS_HUMAN 队列已就绪，前端待对照原型 |
 | 8 | `08-settings.html` | 无 | ⬜ 未实现 | — | 系统设置页（组织/用户/角色/部门/业务线/Skill 元数据/工作流模板等管理）后端部分已就绪，前端页面未创建 |
 
-**汇总**：已完成 3 / 8 ｜ 未对齐 4 / 8 ｜ 未实现 1 / 8
+**汇总**：已完成 5 / 8 ｜ 未对齐 2 / 8 ｜ 未实现 1 / 8
 
 ### 10.2 建议优先级
 
@@ -1952,9 +1952,64 @@ M{里程碑号}.{任务序号}
 - 前端：卡片统计行 / 详情配置网格 / 日期参数选择器 / 执行历史
 - 验证：mvnw test + tsc 通过 + UI 元素确认
 
+#### 10.3.3 02-dashboard.html → Dashboard.tsx（2026-08-04）
+
+**对比原型未对齐项（8 项）**：
+- A1 面包屑缺「监控」中间层级 / A4 多了自动刷新勾选 / B1-B3 KPI trend 文案不符 / D1 LLM 折线颜色 / E2 申请人显示 userId / F2 整体配色
+
+**核心改动**：
+- **后端字段补充**：
+  - [OverviewVO.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/dashboard/dto/response/OverviewVO.java) 新增 3 个环比字段：`taskGrowthRate`（任务总数环比）、`successRateDelta`（成功率环比差值）、`llmCostDelta`（LLM 成本环比变化率）
+  - [DashboardStatsMapper.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/dashboard/mapper/DashboardStatsMapper.java) 新增 `countTaskByStatusInRange` / `selectLlmAggregateInRange` 按日期区间查询方法
+  - [DashboardServiceImpl.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/dashboard/service/impl/DashboardServiceImpl.java) 新增 `fillGrowthRates` 私有方法，按「今日 vs 昨日」口径计算环比
+  - [ApprovalRequestVO.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/approval/dto/response/ApprovalRequestVO.java) 新增 `userName` 字段
+  - [ApprovalServiceImpl.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/approval/service/impl/ApprovalServiceImpl.java) `listApprovals` / `getApprovalDetail` 通过 `UserMapper.selectByUserIds` 批量填充 userName（避免 N+1）
+- **前端对齐**：
+  - [Dashboard.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Dashboard.tsx)：
+    - 面包屑改为「首页 / 监控 / 运营大屏」三级
+    - 删除「自动刷新」勾选框，保留 30s 自动刷新逻辑（始终启用）
+    - KPI 卡片 trend 文案改用环比字段：任务总数「+12% vs 上期」/ 成功率「+2.1%」/ LLM 成本「-8%」
+    - LLM 成本货币符号由 `$` 改为 `¥`，新增 `formatGrowthRate` / `formatPercentDelta` 工具函数
+    - 申请人列改用 `approval.userName || '用户 ${userId}'`
+  - [types.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/types.ts)：OverviewVO / ApprovalRequestVO 同步新字段
+  - [mockServer.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/mock/mockServer.ts)：dashboard/overview mock 加 trend 字段，approvals mock 加 userName
+- **验证**：
+  - 后端：`mvnw test -Dtest=DashboardServiceImplTest,ApprovalServiceImplTest` 共 28 测试 PASS（含 4 个新增：环比计算 2 + userName 填充 2）
+  - 前端：`tsc --noEmit` 通过 + 浏览器 8 项检查 PASS（KPI trend 文案、¥ 符号、面包屑、申请人姓名、LLM 金色折线）
+
+#### 10.3.4 06-audit-logs.html → AuditLogs.tsx（2026-08-04）
+
+**对比原型未对齐项（9 项）**：
+- A 面包屑缺失 / B 副标题多余 / C 筛选栏缺用户/部门/业务线 / D 单栏表格应改两栏 / E 列表应改卡片 / F 详情应改右侧面板 / G 操作类型 badge 无 4 色区分 / H 详情区缺脱敏字段 / I LLM 信息字段不全
+
+**核心改动**：
+- **后端字段补充**：
+  - [AuditLogVO.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/audit/dto/response/AuditLogVO.java) 新增 `userName`/`departmentName`/`businessLineName` 三个联表名称字段
+  - [AuditLogServiceImpl.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/audit/service/impl/AuditLogServiceImpl.java) 新增 `fillRelatedNames` 私有方法，在 `listAuditLogs`/`exportAuditLogs`/`getAuditLogDetail` 中批量联表查询 `UserMapper`/`DepartmentMapper`/`BusinessLineMapper` 填充名称（避免 N+1）
+  - `AuditLogQueryRequest` 已支持 9 维筛选（userId/departmentId/businessLineId 等），无需改动
+- **前端对齐**：
+  - [AuditLogs.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/AuditLogs.tsx)：
+    - 面包屑改为「首页 / 合规 / 审计日志」三级，删除副标题
+    - 列表视图改为两栏 `grid-1-2` 布局（左 1/3 审计卡片列表 + 右 2/3 详情面板）
+    - 审计卡片列表用 `audit-item` 样式（时间戳 + 操作类型 badge / 任务 ID / 用户名·部门名·业务线名）
+    - 详情区从弹窗改为右侧固定面板（`AuditDetailPanel`）
+    - 筛选栏新增部门/业务线 select（从 `tenantApi` 获取选项）+ 用户 ID input
+    - 操作类型 badge 4 色区分（`getActionBadgeClass`：CLICK 蓝 / INPUT_TEXT 深蓝 / NAVIGATE 橙 / LOGIN 深蓝）
+    - 时间线视图保留，点击日志可切换到列表视图并选中
+  - [types.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/types.ts)：AuditLogVO 同步 `userName`/`departmentName`/`businessLineName`
+  - [mockServer.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/mock/mockServer.ts)：mock 审计日志数据填充三维度名称，filterAuditLogs 支持 9 维过滤
+  - [glass.css](file:///d:/lingou-projects/financeRPA/finance-frontend/src/styles/glass.css)：新增 `audit-item`/`audit-ts`/`audit-item-meta`/`badge-action-*`/`audit-detail-panel` 等样式
+- **未补字段（需数据库迁移 + Python 改动，超出 UI 对齐范围）**：
+  - `stepNumber`/`totalSteps`（步骤号）：Python 有 `step_index` 但 Java 未接收
+  - `llmCacheHit`/`llmPromptTokens`/`llmCompletionTokens`：Python 有但 Java 未接收
+  - 脱敏字段：保留 `actionParams` 整体 JSON 展示（用户选择方案 A）
+- **验证**：
+  - 后端：`mvnw test -Dtest=AuditLogServiceImplTest` 28 测试 PASS（含 1 个新增 fillRelatedNames 测试）
+  - 前端：`tsc --noEmit` 通过 + 浏览器 9 项检查 PASS（面包屑、两栏布局、卡片列表、badge 4 色、详情面板、Tab 切换等）
+
 ### 10.4 下一步
 
-按优先级从 P0（dashboard）开始推进，每完成一个页面：
+按优先级 P0（dashboard）+ P1（audit-logs）均已完成，下一目标 **P2（approval-center，05）**。每完成一个页面：
 1. 对照 `prototypes/0X-xxx.html` 逐项比对
 2. 修改前端代码 + 必要时补充后端字段
 3. tsc 检查 + 浏览器截图验证

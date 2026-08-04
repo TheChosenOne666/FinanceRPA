@@ -662,6 +662,8 @@ export interface ApprovalRequestVO {
   workflowId?: string;
   /** 触发用户 ID */
   userId: string;
+  /** 触发用户姓名（联表 sys_user.real_name 填充，对齐原型 02-dashboard.html 申请人列显示） */
+  userName?: string;
   /** 风险等级：low / medium / high / critical */
   riskLevel: WorkflowRiskLevel;
   /** 审批路由：auto / department / compliance */
@@ -853,6 +855,12 @@ export interface AuditLogVO {
   businessLineId?: string;
   /** 用户 ID */
   userId?: string;
+  /** 触发用户姓名（联表 sys_user.real_name 填充，对齐原型 06-audit-logs.html 列表显示） */
+  userName?: string;
+  /** 部门名称（联表 sys_department.dept_name 填充） */
+  departmentName?: string;
+  /** 业务线名称（联表 sys_business_line.business_line_name 填充） */
+  businessLineName?: string;
   /** 动作类型：NAVIGATE / CLICK / INPUT_TEXT / LOGIN 等 */
   actionType: string;
   /** 目标元素（CSS Selector / XPath） */
@@ -971,6 +979,12 @@ export interface OverviewVO {
   avgResolveDurationMs: number;
   /** 风险等级分布 */
   riskLevelDistribution: RiskLevelStatVO[];
+  /** 任务总数环比增长率（今日 vs 昨日，0.12 表示 +12%；null 表示无上期数据） */
+  taskGrowthRate?: number;
+  /** 成功率环比差值（百分点，0.021 表示 +2.1%；null 表示无上期数据） */
+  successRateDelta?: number;
+  /** LLM 成本环比变化率（今日 vs 昨日，-0.08 表示 -8%；null 表示无上期数据） */
+  llmCostDelta?: number;
 }
 
 /**
