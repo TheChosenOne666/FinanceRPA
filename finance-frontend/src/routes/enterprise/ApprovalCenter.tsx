@@ -1,13 +1,11 @@
 /**
- * 审批中心页面
+ * 审批中心页面（双栏工作台布局，对齐原型 05-approval-center.html）
  *
- * 功能（M6.5）：
- * - 待审批列表：PENDING 状态审批单，按风险等级排序（critical 优先）
- * - 历史记录：已处理审批（APPROVED / REJECTED / TIMEOUT）
- * - 审批详情：任务信息 + 风险判断理由 + 超时时间
- * - 审批操作：批准 / 拒绝（含理由）
- * - 筛选：风险等级 + 审批路由 + 状态（历史记录 Tab）
- * - 自动轮询：待审批 Tab 10s 刷新（及时感知新审批单）
+ * 布局：
+ * - 左栏（1fr）：审批卡片列表（风险色左边框 + 任务名 + 审批流 + 倒计时）
+ * - 右栏（2fr）：固定详情面板（元信息网格 + 风险原因 + 任务参数表 + 执行截图 + 操作区）
+ *
+ * Tab：待我审批 [计数] / 我发起的 / 历史
  *
  * 对齐后端 com.finrpa.approval.controller.ApprovalController：
  * - GET  /approvals                  分页查询
@@ -27,15 +25,15 @@ import type {
   ApprovalQueryRequest,
   ApprovalRequestVO,
   ApprovalRoute,
-  ApprovalStatus,
   WorkflowRiskLevel,
 } from '@/api/types'
 import { ApiError } from '@/api/AxiosClient'
+import { useAuthStore } from '@/store/AuthStore'
 import Pagination from '@/components/Pagination'
 import ApprovalStatusBadge from '@/components/ApprovalStatusBadge'
 import {
   IconAlert,
-  IconApproval,
+  IconCamera,
   IconCheck,
   IconClock,
   IconClose,
@@ -68,30 +66,27 @@ const RISK_LEVEL_ORDER: Record<WorkflowRiskLevel, number> = {
   low: 1,
 }
 
-/** Tab 类型 */
-type ApprovalTab = 'pending' | 'history'
+/** Tab 类型：待我审批 / 我发起的 / 历史 */
+type ApprovalTab = 'pending' | 'mine' | 'history'
 
-/** 风险等级筛选选项 */
-const RISK_OPTIONS: Array<{ value: '' | WorkflowRiskLevel; label: string }> = [
-  { value: '', label: '全部风险' },
-  { value: 'high', label: '高' },
-  { value: 'critical', label: '极高' },
-]
+/** 倒计时级别 */
+type CountdownLevel = 'danger' | 'warning' | 'normal'
 
-/** 路由筛选选项 */
-const ROUTE_OPTIONS: Array<{ value: '' | ApprovalRoute; label: string }> = [
-  { value: '', label: '全部路由' },
-  { value: 'department', label: '部门审批' },
-  { value: 'compliance', label: '合规审计' },
-]
+/** 倒计时计算结果 */
+interface Countdown {
+  /** 显示文本，如 "剩余 23:42" 或 "已超时" */
+  text: string
+  /** 紧急级别 */
+  level: CountdownLevel
+}
 
-/** 历史记录状态筛选选项 */
-const HISTORY_STATUS_OPTIONS: Array<{ value: '' | ApprovalStatus; label: string }> = [
-  { value: '', label: '全部状态' },
-  { value: 'APPROVED', label: '已通过' },
-  { value: 'REJECTED', label: '已拒绝' },
-  { value: 'TIMEOUT', label: '已超时' },
-]
+/** 任务参数项 */
+interface TaskParamItem {
+  /** 参数名 */
+  name: string
+  /** 参数值 */
+  value: string
+}
 
 /**
  * 从 requestPayload JSON 中解析任务目标
@@ -109,54 +104,96 @@ function parseGoal(payload?: string): string {
   }
 }
 
+/**
+ * 从 requestPayload JSON 中解析任务参数列表
+ *
+ * @param payload 请求负载 JSON 字符串
+ * @returns 参数键值对列表（解析失败返回空数组）
+ */
+function parseTaskParams(payload?: string): TaskParamItem[] {
+  if (!payload) return []
+  try {
+    const obj = JSON.parse(payload)
+    const params = obj.params
+    if (!params || typeof params !== 'object') return []
+    return Object.entries(params).map(([name, value]) => ({
+      name,
+      value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+    }))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 计算审批剩余时间（倒计时）
+ *
+ * - 30 分钟内 → danger（红）
+ * - 1 小时内 → warning（黄）
+ * - 其余 → normal
+ * - 已超时 → "已超时"
+ *
+ * @param timeoutAt 超时截止时间
+ * @returns 倒计时对象（无超时时间返回 null）
+ */
+function calcCountdown(timeoutAt?: string): Countdown | null {
+  if (!timeoutAt) return null
+  const diff = dayjs(timeoutAt).valueOf() - Date.now()
+  if (diff <= 0) return { text: '已超时', level: 'danger' }
+  const hours = Math.floor(diff / 3_600_000)
+  const minutes = Math.floor((diff % 3_600_000) / 60_000)
+  const seconds = Math.floor((diff % 60_000) / 1_000)
+  const text =
+    hours > 0
+      ? `剩余 ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      : `剩余 ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  const level: CountdownLevel =
+    diff < 30 * 60 * 1_000 ? 'danger' : diff < 60 * 60 * 1_000 ? 'warning' : 'normal'
+  return { text, level }
+}
+
 /** 审批中心页面 */
 function ApprovalCenter() {
   const queryClient = useQueryClient()
+  // 1. 当前登录用户（用于"我发起的"筛选与审批流展示）
+  const currentUser = useAuthStore((s) => s.user)
 
-  // 1. Tab 切换：待审批 / 历史记录
+  // 2. Tab 切换
   const [tab, setTab] = useState<ApprovalTab>('pending')
 
-  // 2. 分页
+  // 3. 分页
   const [current, setCurrent] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
-  // 3. 筛选条件
-  const [riskLevel, setRiskLevel] = useState<'' | WorkflowRiskLevel>('')
-  const [approvalRoute, setApprovalRoute] = useState<'' | ApprovalRoute>('')
-  const [historyStatus, setHistoryStatus] = useState<'' | ApprovalStatus>('')
+  // 4. 选中的审批单（右侧面板展示）
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  // 4. 详情弹窗
-  const [selectedApproval, setSelectedApproval] = useState<ApprovalRequestVO | null>(null)
+  // 5. 倒计时每秒刷新（触发重渲染）
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1_000)
+    return () => clearInterval(id)
+  }, [])
 
-  // 5. 查询参数（根据 Tab 构造）
+  // 6. 查询参数（根据 Tab 构造）
   const queryKey = useMemo(
     () =>
       [
         'approvals',
-        {
-          tab,
-          current,
-          pageSize,
-          riskLevel,
-          approvalRoute,
-          historyStatus,
-        },
+        { tab, current, pageSize, userId: currentUser?.userId },
       ] as const,
-    [tab, current, pageSize, riskLevel, approvalRoute, historyStatus],
+    [tab, current, pageSize, currentUser?.userId],
   )
 
   const queryFn = () => {
-    const query: ApprovalQueryRequest = {
-      current,
-      pageSize,
-      riskLevel,
-      approvalRoute,
-    }
-    // 待审批 Tab 固定查 PENDING；历史记录 Tab 按状态筛选（默认全部）
+    const query: ApprovalQueryRequest = { current, pageSize }
+    // 待我审批：PENDING；我发起的：按当前用户筛选（全部状态）；历史：终态
     if (tab === 'pending') {
       query.status = 'PENDING'
+    } else if (tab === 'mine') {
+      query.userId = currentUser?.userId
     } else {
-      query.status = historyStatus
+      // 历史：拉取全部，前端按终态过滤（APPROVED/REJECTED/TIMEOUT）
     }
     return approvalApi.listApprovals(query)
   }
@@ -167,25 +204,21 @@ function ApprovalCenter() {
     refetchOnWindowFocus: false,
   })
 
-  // 6. 自动轮询：待审批 10s 刷新（及时感知新审批单），历史记录 30s
+  // 7. 自动轮询：待审批 10s 刷新，其他 30s
   const refreshMs = tab === 'pending' ? 10_000 : 30_000
   const refreshMsRef = useRef(refreshMs)
   refreshMsRef.current = refreshMs
   useEffect(() => {
-    const id = setInterval(() => {
-      refetch()
-    }, refreshMsRef.current)
+    const id = setInterval(() => refetch(), refreshMsRef.current)
     return () => clearInterval(id)
   }, [refetch])
 
-  /** 切换 Tab：重置分页与筛选 */
+  /** 切换 Tab：重置分页与选中 */
   const handleTabChange = (next: ApprovalTab) => {
     if (next === tab) return
     setTab(next)
     setCurrent(1)
-    setRiskLevel('')
-    setApprovalRoute('')
-    setHistoryStatus('')
+    setSelectedId(null)
   }
 
   /** 分页变更 */
@@ -197,13 +230,12 @@ function ApprovalCenter() {
     }
   }
 
-  /** 审批操作成功后：刷新列表 + 关闭弹窗 */
+  /** 审批操作成功后：刷新列表 */
   const handleActionSuccess = () => {
-    setSelectedApproval(null)
     queryClient.invalidateQueries({ queryKey: ['approvals'] })
   }
 
-  // 列表记录：待审批 Tab 按风险等级降序排序（critical 优先）
+  // 列表记录：待我审批 Tab 按风险等级降序排序（critical 优先）
   const records: ApprovalRequestVO[] = useMemo(() => {
     const list = data?.records ?? []
     if (tab === 'pending') {
@@ -216,113 +248,68 @@ function ApprovalCenter() {
 
   const total: number = data?.total ?? 0
 
+  // 待我审批计数（Tab 徽章）
+  const pendingCount = tab === 'pending' ? total : 0
+
+  // 当前选中的审批单对象
+  const selectedApproval = useMemo(() => {
+    if (!selectedId) return null
+    return records.find((r) => r.approvalId === selectedId) ?? null
+  }, [selectedId, records])
+
   return (
-    <div className="tasks-page">
-      {/* region 页面标题 + 操作区 */}
-      <div className="tasks-header">
+    <div className="approval-page">
+      {/* region 标题栏 + 面包屑 + Tab */}
+      <div className="approval-header">
         <div>
-          <h1 className="page-title">
-            审批中心
-          </h1>
-          <p className="page-subtitle">
-            审核高风险任务的执行申请，管理审批历史记录
-          </p>
+          <h1 className="page-title">审批中心</h1>
+          <div className="breadcrumb">
+            <span className="breadcrumb-item">首页</span>
+            <span className="sep">/</span>
+            <span className="breadcrumb-item">合规</span>
+            <span className="sep">/</span>
+            <span className="current">审批中心</span>
+          </div>
         </div>
-        <div className="tasks-header-actions">
+        <div className="approval-tabs">
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className={`approval-tab${tab === 'pending' ? ' approval-tab-active' : ''}`}
+            onClick={() => handleTabChange('pending')}
+          >
+            待我审批
+            {pendingCount > 0 && <span className="approval-tab-count">{pendingCount}</span>}
+          </button>
+          <button
+            type="button"
+            className={`approval-tab${tab === 'mine' ? ' approval-tab-active' : ''}`}
+            onClick={() => handleTabChange('mine')}
+          >
+            我发起的
+          </button>
+          <button
+            type="button"
+            className={`approval-tab${tab === 'history' ? ' approval-tab-active' : ''}`}
+            onClick={() => handleTabChange('history')}
+          >
+            历史
+          </button>
+          <button
+            type="button"
+            className="approval-refresh-btn"
             onClick={() => refetch()}
             disabled={isFetching}
             title="刷新列表"
           >
             <IconRefresh size={14} />
-            {isFetching ? '刷新中…' : '刷新'}
           </button>
         </div>
       </div>
       {/* endregion */}
 
-      {/* region Tab 切换：待审批 / 历史记录 */}
-      <div className="approval-tabs">
-        <button
-          type="button"
-          className={`approval-tab${tab === 'pending' ? ' approval-tab-active' : ''}`}
-          onClick={() => handleTabChange('pending')}
-        >
-          待审批
-        </button>
-        <button
-          type="button"
-          className={`approval-tab${tab === 'history' ? ' approval-tab-active' : ''}`}
-          onClick={() => handleTabChange('history')}
-        >
-          历史记录
-        </button>
-      </div>
-      {/* endregion */}
-
-      {/* region 筛选栏 */}
-      <div className="tasks-toolbar glass-card-static">
-        <div className="toolbar-filter">
-          <label className="toolbar-filter-label">风险等级</label>
-          <select
-            className="select toolbar-select"
-            value={riskLevel}
-            onChange={(e) => {
-              setRiskLevel(e.target.value as '' | WorkflowRiskLevel)
-              setCurrent(1)
-            }}
-          >
-            {RISK_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="toolbar-filter">
-          <label className="toolbar-filter-label">审批路由</label>
-          <select
-            className="select toolbar-select"
-            value={approvalRoute}
-            onChange={(e) => {
-              setApprovalRoute(e.target.value as '' | ApprovalRoute)
-              setCurrent(1)
-            }}
-          >
-            {ROUTE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {tab === 'history' && (
-          <div className="toolbar-filter">
-            <label className="toolbar-filter-label">状态</label>
-            <select
-              className="select toolbar-select"
-              value={historyStatus}
-              onChange={(e) => {
-                setHistoryStatus(e.target.value as '' | ApprovalStatus)
-                setCurrent(1)
-              }}
-            >
-              {HISTORY_STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-      {/* endregion */}
-
       {/* region 错误提示 */}
       {error && (
-        <div className="form-error" style={{ margin: '16px 0' }}>
+        <div className="form-error" style={{ margin: '0 0 16px' }}>
           <IconAlert />
           加载失败：
           {error instanceof ApiError ? error.message : (error as Error).message}
@@ -330,184 +317,189 @@ function ApprovalCenter() {
       )}
       {/* endregion */}
 
-      {/* region 审批表格 */}
-      <div className="tasks-table-wrapper glass-card-static">
-        {isLoading ? (
-          <div className="tasks-empty">加载中…</div>
-        ) : records.length === 0 ? (
-          <div className="tasks-empty">
-            <IconApproval size={36} />
-            <div className="tasks-empty-title">
-              {tab === 'pending' ? '暂无待审批申请' : '暂无审批历史'}
-            </div>
-            <div className="tasks-empty-desc">
-              {riskLevel || approvalRoute || historyStatus
-                ? '当前筛选条件下没有匹配的审批记录'
-                : tab === 'pending'
+      {/* region 双栏布局：左卡片列表 + 右固定详情面板 */}
+      <div className="page-grid grid-1-2 approval-workbench">
+        {/* 左侧：审批卡片列表 */}
+        <div className="approval-list-col">
+          {isLoading ? (
+            <div className="approval-empty">加载中…</div>
+          ) : records.length === 0 ? (
+            <div className="approval-empty">
+              <div className="approval-empty-title">
+                {tab === 'pending'
+                  ? '暂无待审批申请'
+                  : tab === 'mine'
+                    ? '暂无我发起的审批'
+                    : '暂无审批历史'}
+              </div>
+              <div className="approval-empty-desc">
+                {tab === 'pending'
                   ? '所有高风险任务审批已处理完毕'
-                  : '尚无已处理的审批记录'}
+                  : '当前没有匹配的审批记录'}
+              </div>
             </div>
-          </div>
-        ) : (
-          <table className="tasks-table">
-            <thead>
-              <tr>
-                <th style={{ width: '12%' }}>审批单</th>
-                <th style={{ width: '12%' }}>任务 ID</th>
-                <th>任务目标</th>
-                <th style={{ width: '9%' }}>风险等级</th>
-                <th style={{ width: '10%' }}>审批路由</th>
-                <th style={{ width: '10%' }}>状态</th>
-                <th style={{ width: '15%' }}>创建时间</th>
-                <th style={{ width: '8%' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
+          ) : (
+            <>
               {records.map((approval) => (
-                <ApprovalRow
+                <ApprovalCard
                   key={approval.approvalId}
                   approval={approval}
-                  onClick={() => setSelectedApproval(approval)}
+                  active={selectedId === approval.approvalId}
+                  currentUserName={currentUser?.realName}
+                  onClick={() => setSelectedId(approval.approvalId)}
                 />
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {/* endregion */}
-
-      {/* region 分页 */}
-      {total > 0 && (
-        <div className="tasks-pagination">
-          <Pagination
-            current={current}
-            pageSize={pageSize}
-            total={total}
-            pages={data?.pages}
-            onChange={handlePageChange}
-            disabled={isFetching}
-          />
+              {/* 分页（历史记录数据较多时展示） */}
+              {total > pageSize && (
+                <div className="approval-list-pagination">
+                  <Pagination
+                    current={current}
+                    pageSize={pageSize}
+                    total={total}
+                    pages={data?.pages}
+                    onChange={handlePageChange}
+                    disabled={isFetching}
+                  />
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
-      {/* endregion */}
 
-      {/* region 审批详情弹窗 */}
-      {selectedApproval && (
-        <ApprovalDetailModal
-          approval={selectedApproval}
-          onClose={() => setSelectedApproval(null)}
-          onActionSuccess={handleActionSuccess}
-        />
-      )}
+        {/* 右侧：固定详情面板 */}
+        <div className="glass-card-static approval-detail-panel">
+          {selectedApproval ? (
+            <ApprovalDetail
+              approval={selectedApproval}
+              currentUserName={currentUser?.realName}
+              onActionSuccess={handleActionSuccess}
+            />
+          ) : (
+            <div className="approval-detail-empty">
+              <IconClock size={36} />
+              <div className="approval-empty-title">请从左侧选择审批单</div>
+              <div className="approval-empty-desc">
+                选择一条审批记录查看详情并执行审批操作
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
       {/* endregion */}
     </div>
   )
 }
 
 /**
- * 审批表格行
+ * 审批卡片（左侧列表项）
  *
- * @param approval 审批对象
- * @param onClick  点击行回调（打开详情）
+ * @param approval         审批对象
+ * @param active           是否选中
+ * @param currentUserName  当前用户姓名（审批流"我"的显示）
+ * @param onClick          点击回调
  */
-function ApprovalRow({
+function ApprovalCard({
   approval,
+  active,
+  currentUserName,
   onClick,
 }: {
   approval: ApprovalRequestVO
+  active: boolean
+  currentUserName?: string
   onClick: () => void
 }) {
-  const createTime = dayjs(approval.createTime).format('YYYY-MM-DD HH:mm:ss')
-  const goal = parseGoal(approval.requestPayload)
+  const countdown = calcCountdown(approval.timeoutAt)
+  const isPending = approval.status === 'PENDING'
 
   return (
-    <tr className="task-row" onClick={onClick}>
-      <td className="cell-mono">
-        <span className="task-id-chip" title={approval.approvalId}>
-          #{approval.approvalId.slice(-10)}
-        </span>
-      </td>
-      <td className="cell-mono">
-        <span className="task-id-chip" title={approval.taskId}>
-          #{approval.taskId.slice(-10)}
-        </span>
-      </td>
-      <td className="cell-goal">
-        <div className="task-goal-text">{goal || '—'}</div>
-      </td>
-      <td>
+    <div
+      className={`glass-card approval-card approval-card-risk-${approval.riskLevel}${active ? ' approval-card-active' : ''}`}
+      onClick={onClick}
+    >
+      {/* 卡片头部：任务名 + 风险徽章 */}
+      <div className="approval-card-header">
+        <div>
+          <div className="approval-card-name">{parseGoal(approval.requestPayload) || '未命名任务'}</div>
+          <div className="approval-card-id">#{approval.taskId.slice(-10)}</div>
+        </div>
         <span className={`tag tag-risk-${approval.riskLevel}`}>
           {RISK_LEVEL_LABELS[approval.riskLevel]}
         </span>
-      </td>
-      <td className="cell-mono">{ROUTE_LABELS[approval.approvalRoute]}</td>
-      <td>
-        <ApprovalStatusBadge status={approval.status} />
-      </td>
-      <td className="cell-mono cell-time">{createTime}</td>
-      <td>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={(e) => {
-            e.stopPropagation()
-            onClick()
-          }}
-        >
-          详情
-        </button>
-      </td>
-    </tr>
+      </div>
+      {/* 审批流：申请人 → 我 */}
+      <div className="approval-card-flow">
+        <span>{approval.userName ?? '未知用户'}</span>
+        <span className="arrow">→</span>
+        <span>{currentUserName ?? '我'}</span>
+      </div>
+      {/* 倒计时（仅 PENDING 状态显示） */}
+      {isPending && countdown && (
+        <div className={`approval-countdown approval-countdown-${countdown.level}`}>
+          <IconClock size={12} />
+          {countdown.text}
+        </div>
+      )}
+      {/* 历史记录显示状态徽章 */}
+      {!isPending && (
+        <div className="approval-card-status">
+          <ApprovalStatusBadge status={approval.status} />
+        </div>
+      )}
+    </div>
   )
 }
 
-/** 审批详情弹窗属性 */
-interface ApprovalDetailModalProps {
+/** 审批详情面板属性 */
+interface ApprovalDetailProps {
   /** 审批对象 */
   approval: ApprovalRequestVO
-  /** 关闭弹窗回调 */
-  onClose: () => void
-  /** 审批操作成功回调（刷新列表 + 关闭弹窗） */
+  /** 当前用户姓名（审批流"我"的显示） */
+  currentUserName?: string
+  /** 审批操作成功回调 */
   onActionSuccess: () => void
 }
 
-/** 操作类型 */
-type ActionType = 'approve' | 'reject'
-
 /**
- * 审批详情弹窗
+ * 审批详情面板（右侧固定面板）
  *
- * 展示审批详情（任务信息 + 风险理由 + 超时时间），
+ * 展示审批详情（元信息 + 风险原因 + 任务参数 + 执行截图 + 操作区），
  * PENDING 状态提供批准 / 拒绝操作表单。
- *
- * @param approval 审批对象
- * @param onClose  关闭回调
- * @param onActionSuccess 操作成功回调
  */
-function ApprovalDetailModal({
-  approval,
-  onClose,
-  onActionSuccess,
-}: ApprovalDetailModalProps) {
+function ApprovalDetail({ approval, currentUserName, onActionSuccess }: ApprovalDetailProps) {
   // 1. 表单状态
   const [reason, setReason] = useState('')
-  const [submitting, setSubmitting] = useState<null | ActionType>(null)
+  const [submitting, setSubmitting] = useState<null | 'approve' | 'reject'>(null)
   const [formError, setFormError] = useState<string | null>(null)
 
   const isPending = approval.status === 'PENDING'
   const goal = parseGoal(approval.requestPayload)
+  const taskParams = parseTaskParams(approval.requestPayload)
+  const countdown = calcCountdown(approval.timeoutAt)
+
+  // 2. 倒计时每秒刷新
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // 切换审批单时重置表单
+  useEffect(() => {
+    setReason('')
+    setFormError(null)
+    setSubmitting(null)
+  }, [approval.approvalId])
 
   /** 执行审批操作 */
-  const handleAction = async (action: ActionType) => {
+  const handleAction = async (action: 'approve' | 'reject') => {
     // 1.1 拒绝时理由必填
     if (action === 'reject' && !reason.trim()) {
       setFormError('拒绝时必须填写理由')
       return
     }
-
     setFormError(null)
     setSubmitting(action)
-
     try {
       // 2. 调用审批 API
       const body: ApprovalActionRequest | undefined = reason.trim()
@@ -533,184 +525,216 @@ function ApprovalDetailModal({
     }
   }
 
-  /** 点击遮罩关闭（提交中时禁止） */
-  const handleOverlayClick = () => {
-    if (!submitting) onClose()
-  }
+  const createTime = dayjs(approval.createTime).format('YYYY-MM-DD HH:mm:ss')
 
   return (
-    <div className="modal-overlay" onClick={handleOverlayClick}>
-      <div
-        className="glass-card modal-card"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 640 }}
-      >
-        {/* region 弹窗头部 */}
-        <div className="modal-header">
-          <div className="modal-title">
-            <IconApproval size={18} />
-            审批详情
+    <>
+      {/* region 标题区 */}
+      <div className="approval-detail-title-row">
+        <div>
+          <div className="approval-detail-title">
+            {goal || '未命名任务'}
+            <span className={`tag tag-risk-${approval.riskLevel}`}>
+              {RISK_LEVEL_LABELS[approval.riskLevel]}风险
+            </span>
           </div>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={onClose}
-            disabled={!!submitting}
-            aria-label="关闭"
+          <div className="approval-detail-id">任务 ID：#{approval.taskId}</div>
+        </div>
+      </div>
+      {/* endregion */}
+
+      {/* region 元信息网格（4 列） */}
+      <div className="approval-meta-grid">
+        <div className="approval-meta-item">
+          <div className="approval-meta-key">风险等级</div>
+          <div className="approval-meta-val">
+            <span className={`tag tag-risk-${approval.riskLevel}`}>
+              {RISK_LEVEL_LABELS[approval.riskLevel]}
+            </span>
+          </div>
+        </div>
+        <div className="approval-meta-item">
+          <div className="approval-meta-key">申请人</div>
+          <div className="approval-meta-val">{approval.userName ?? '—'}</div>
+        </div>
+        <div className="approval-meta-item">
+          <div className="approval-meta-key">触发时间</div>
+          <div className="approval-meta-val mono">{createTime}</div>
+        </div>
+        <div className="approval-meta-item">
+          <div className="approval-meta-key">剩余时间</div>
+          <div
+            className={`approval-meta-val mono${countdown && countdown.level === 'danger' ? ' approval-meta-val-danger' : ''}`}
           >
-            <IconClose size={16} />
-          </button>
+            {isPending && countdown ? countdown.text : '—'}
+          </div>
         </div>
-        {/* endregion */}
+      </div>
+      {/* endregion */}
 
-        {/* region 基本信息网格 */}
-        <div className="approval-detail-meta">
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">审批单 ID</div>
-            <div className="approval-detail-meta-value cell-mono">
-              #{approval.approvalId}
-            </div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">任务 ID</div>
-            <div className="approval-detail-meta-value cell-mono">
-              #{approval.taskId}
-            </div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">风险等级</div>
-            <div>
-              <span className={`tag tag-risk-${approval.riskLevel}`}>
-                {RISK_LEVEL_LABELS[approval.riskLevel]}
-              </span>
-            </div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">审批路由</div>
-            <div className="approval-detail-meta-value">
-              {ROUTE_LABELS[approval.approvalRoute]}
-            </div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">状态</div>
-            <div>
-              <ApprovalStatusBadge status={approval.status} size="md" />
-            </div>
-          </div>
-          <div className="approval-detail-meta-item">
-            <div className="approval-detail-meta-label">创建时间</div>
-            <div className="approval-detail-meta-value cell-mono">
-              {dayjs(approval.createTime).format('YYYY-MM-DD HH:mm:ss')}
-            </div>
-          </div>
-          {approval.timeoutAt && (
-            <div className="approval-detail-meta-item">
-              <div className="approval-detail-meta-label">超时截止</div>
-              <div className="approval-detail-meta-value cell-mono">
-                <IconClock size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
-                {dayjs(approval.timeoutAt).format('YYYY-MM-DD HH:mm:ss')}
-              </div>
-            </div>
-          )}
-          {approval.approvedAt && (
-            <div className="approval-detail-meta-item">
-              <div className="approval-detail-meta-label">审批时间</div>
-              <div className="approval-detail-meta-value cell-mono">
-                {dayjs(approval.approvedAt).format('YYYY-MM-DD HH:mm:ss')}
-              </div>
-            </div>
-          )}
+      {/* region 审批流 */}
+      <div className="approval-detail-section">
+        <div className="section-title">审批流程</div>
+        <div className="approval-flow-chain">
+          <span className="approval-flow-node">{approval.userName ?? '未知用户'}</span>
+          <span className="arrow">→</span>
+          <span className="approval-flow-node approval-flow-node-me">
+            {currentUserName ?? '我'}
+          </span>
+          <span className="approval-flow-route">
+            （{ROUTE_LABELS[approval.approvalRoute]}）
+          </span>
         </div>
-        {/* endregion */}
+      </div>
+      {/* endregion */}
 
-        {/* region 任务目标 */}
-        {goal && (
-          <div className="form-group">
-            <label className="label">任务目标</label>
-            <div className="approval-detail-text">{goal}</div>
-          </div>
-        )}
-        {/* endregion */}
-
-        {/* region 风险判断理由 */}
-        {approval.riskReasoning && (
-          <div className="form-group">
-            <label className="label">风险判断理由</label>
-            <div className="approval-detail-reasoning">{approval.riskReasoning}</div>
-          </div>
-        )}
-        {/* endregion */}
-
-        {/* region 审批结果（终态展示） */}
-        {!isPending && (approval.approveReason || approval.rejectReason) && (
-          <div className="form-group">
-            <label className="label">
-              {approval.status === 'APPROVED' ? '通过理由' : '拒绝理由'}
-            </label>
-            <div className="approval-detail-text">
-              {approval.approveReason || approval.rejectReason}
+      {/* region 风险原因 */}
+      {approval.riskReasoning && (
+        <div className="approval-detail-section">
+          <div className="section-title">风险原因</div>
+          <div className="approval-reason-list">
+            <div className="approval-reason-item">
+              <div className="approval-reason-icon">
+                <IconAlert size={12} />
+              </div>
+              <div>{approval.riskReasoning}</div>
             </div>
           </div>
-        )}
-        {/* endregion */}
+        </div>
+      )}
+      {/* endregion */}
 
-        {/* region 操作表单（PENDING 状态） */}
-        {isPending && (
+      {/* region 任务参数 */}
+      {taskParams.length > 0 && (
+        <div className="approval-detail-section">
+          <div className="section-title">任务参数</div>
+          <div className="approval-table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>参数名</th>
+                  <th>参数值</th>
+                </tr>
+              </thead>
+              <tbody>
+                {taskParams.map((p) => (
+                  <tr key={p.name}>
+                    <td>{p.name}</td>
+                    <td className="mono">{p.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region 执行截图（占位） */}
+      <div className="approval-detail-section">
+        <div className="section-title">执行截图</div>
+        <div className="approval-screenshot-grid">
+          <div className="approval-screenshot">
+            <div className="approval-screenshot-label">
+              <span>操作前</span>
+              <span className="tag tag-muted">before</span>
+            </div>
+            <div className="approval-screenshot-placeholder">
+              <IconCamera size={28} />
+              <span>暂无截图</span>
+            </div>
+          </div>
+          <div className="approval-screenshot">
+            <div className="approval-screenshot-label">
+              <span>操作后</span>
+              <span className="tag tag-success">after</span>
+            </div>
+            <div className="approval-screenshot-placeholder">
+              <IconCamera size={28} />
+              <span>暂无截图</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* endregion */}
+
+      {/* region 审批操作区（PENDING 状态） */}
+      {isPending ? (
+        <div className="approval-detail-section">
+          <div className="section-title">审批操作</div>
           <form
-            className="modal-form"
+            className="approval-action-form"
             onSubmit={(e: FormEvent) => {
               e.preventDefault()
               handleAction('approve')
             }}
           >
-            <div className="form-group">
-              <label className="label" htmlFor="approval-reason">
-                审批理由
-                <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
-                  （拒绝时必填）
-                </span>
-              </label>
-              <textarea
-                id="approval-reason"
-                className="textarea"
-                placeholder="请输入审批理由说明"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={3}
-                disabled={!!submitting}
-              />
-            </div>
-
-            {formError && <div className="form-error">{formError}</div>}
-
-            <div className="modal-actions">
+            <div className="approval-action-bar">
               <button
                 type="button"
-                className="btn btn-ghost"
-                onClick={onClose}
-                disabled={!!submitting}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger"
+                className="btn btn-danger approval-action-btn"
                 onClick={() => handleAction('reject')}
                 disabled={!!submitting}
               >
                 <IconClose size={14} />
                 {submitting === 'reject' ? '拒绝中…' : '拒绝'}
               </button>
-              <button type="submit" className="btn btn-primary" disabled={!!submitting}>
+              <button
+                type="submit"
+                className="btn btn-success approval-action-btn"
+                disabled={!!submitting}
+              >
                 <IconCheck size={14} />
-                {submitting === 'approve' ? '通过中…' : '通过'}
+                {submitting === 'approve' ? '通过中…' : '批准'}
               </button>
             </div>
+            <div className="approval-reason-input">
+              <label className="approval-reason-label">
+                <span>
+                  拒绝理由
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
+                    （拒绝时必填）
+                  </span>
+                </span>
+                <span className="approval-reason-count">{reason.length} / 200</span>
+              </label>
+              <textarea
+                className="textarea"
+                placeholder="如选择拒绝，请详细说明理由，将记入审计日志…"
+                value={reason}
+                onChange={(e) => setReason(e.target.value.slice(0, 200))}
+                rows={3}
+                disabled={!!submitting}
+              />
+            </div>
+            {formError && <div className="form-error">{formError}</div>}
           </form>
-        )}
-        {/* endregion */}
-      </div>
-    </div>
+        </div>
+      ) : (
+        /* endregion */
+        /* region 审批结果（终态展示） */
+        <div className="approval-detail-section">
+          <div className="section-title">审批结果</div>
+          <div className="approval-result-block">
+            <div className="approval-result-status">
+              <ApprovalStatusBadge status={approval.status} size="md" />
+            </div>
+            {approval.approvedAt && (
+              <div className="approval-result-time">
+                审批时间：{dayjs(approval.approvedAt).format('YYYY-MM-DD HH:mm:ss')}
+              </div>
+            )}
+            {(approval.approveReason || approval.rejectReason) && (
+              <div className="approval-result-reason">
+                {approval.status === 'APPROVED' ? '通过理由' : '拒绝理由'}：
+                {approval.approveReason || approval.rejectReason}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* endregion */}
+    </>
   )
 }
 

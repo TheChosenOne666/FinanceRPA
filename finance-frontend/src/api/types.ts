@@ -704,6 +704,8 @@ export interface ApprovalQueryRequest {
   riskLevel?: WorkflowRiskLevel | '';
   /** 任务 ID 精确查询 */
   taskId?: string;
+  /** 触发用户 ID 筛选（用于"我发起的"Tab，对齐原型 05-approval-center.html） */
+  userId?: string;
 }
 
 /**

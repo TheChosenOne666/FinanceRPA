@@ -3591,96 +3591,541 @@ a:hover {
 
 /* endregion */
 
-/* ---------- 30. 审批中心页（M6.5） ---------- */
+/* ---------- 30. 审批中心页（M6.5，双栏工作台，对齐原型 05-approval-center.html） ---------- */
 
-/* 审批 Tab 切换栏 */
-.approval-tabs {
+/* 审批页根容器 */
+.approval-page {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* 标题栏：左侧标题+面包屑，右侧 Tab+刷新 */
+.approval-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.approval-header .breadcrumb {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.approval-header .breadcrumb .sep {
+  margin: 0 6px;
+  color: var(--text-muted);
+}
+
+.approval-header .breadcrumb .current {
+  color: var(--text-secondary);
+}
+
+/* 审批 Tab 切换栏（pill 样式，含刷新按钮） */
+.approval-tabs {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
   padding: 4px;
-  background: rgba(26, 58, 92, 0.04);
-  border-radius: var(--radius-md);
-  width: fit-content;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--glass-border);
 }
 
 /* 审批 Tab 按钮 */
 .approval-tab {
-  padding: 6px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-muted);
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill, 999px);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .approval-tab:hover {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 /* 审批 Tab 激活态 */
 .approval-tab-active {
-  background: var(--glass-bg);
-  color: var(--finrpa-blue);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  background: var(--finrpa-blue);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(26, 58, 92, 0.3);
 }
 
-/* 审批详情信息网格 */
-.approval-detail-meta {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px 24px;
-  padding: 4px 0 8px;
-}
-
-/* 审批详情信息项 */
-.approval-detail-meta-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* 审批详情信息标签 */
-.approval-detail-meta-label {
+/* Tab 计数徽章 */
+.approval-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-pill, 999px);
   font-size: 11px;
   font-weight: 600;
+}
+
+.approval-tab:not(.approval-tab-active) .approval-tab-count {
+  background: rgba(201, 168, 76, 0.2);
+  color: var(--status-pending-approval);
+}
+
+/* 刷新按钮（Tab 栏右侧） */
+.approval-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: 4px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.approval-refresh-btn:hover:not(:disabled) {
+  background: rgba(26, 58, 92, 0.06);
+  color: var(--finrpa-blue);
+}
+
+.approval-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 双栏工作台布局（单独设置列宽，避免被全局 grid-1-2 媒体查询覆盖） */
+.approval-workbench {
+  grid-template-columns: 1fr 2fr;
+  align-items: flex-start;
+}
+
+/* 左侧：审批卡片列表列 */
+.approval-list-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+/* 左侧列表分页区 */
+.approval-list-pagination {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-sm);
+}
+
+/* 审批卡片（列表项） */
+.approval-card {
+  padding: var(--space-md);
+  border-left: 4px solid var(--risk-high);
+  cursor: pointer;
+  transition: all 0.25s var(--ease-out, ease-out);
+}
+
+/* 风险等级左边框配色 */
+.approval-card-risk-critical {
+  border-left-color: var(--risk-critical);
+}
+
+.approval-card-risk-high {
+  border-left-color: var(--risk-high);
+}
+
+.approval-card-risk-medium {
+  border-left-color: var(--risk-medium);
+}
+
+.approval-card-risk-low {
+  border-left-color: var(--risk-low);
+}
+
+.approval-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.13));
+}
+
+/* 选中态 */
+.approval-card-active {
+  background: rgba(26, 58, 92, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--finrpa-blue);
+}
+
+/* 卡片头部：任务名 + 风险徽章 */
+.approval-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: var(--space-sm);
+}
+
+.approval-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.approval-card-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* 审批流（申请人 → 我） */
+.approval-card-flow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.approval-card-flow .arrow {
+  color: var(--text-muted);
+}
+
+/* 倒计时 */
+.approval-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.approval-countdown-danger {
+  color: var(--accent-danger);
+}
+
+.approval-countdown-warning {
+  color: var(--accent-warning);
+}
+
+.approval-countdown-normal {
+  color: var(--text-secondary);
+}
+
+/* 历史记录状态徽章 */
+.approval-card-status {
+  margin-top: 4px;
+}
+
+/* 空状态 */
+.approval-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.approval-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.approval-empty-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 右侧：固定详情面板 */
+.approval-detail-panel {
+  padding: var(--space-lg);
+  position: sticky;
+  top: var(--space-md);
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+
+/* 详情面板空状态 */
+.approval-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 80px 24px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* 详情标题区 */
+.approval-detail-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.approval-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.approval-detail-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* 元信息网格（4 列） */
+.approval-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: var(--space-lg);
+}
+
+.approval-meta-item {
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.approval-meta-item:hover {
+  background: rgba(26, 58, 92, 0.04);
+  border-color: var(--glass-border-strong);
+}
+
+.approval-meta-key {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  font-weight: 500;
 }
 
-/* 审批详情信息值 */
-.approval-detail-meta-value {
+.approval-meta-val {
   font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
-  word-break: break-all;
 }
 
-/* 审批详情文本展示（任务目标 / 理由） */
-.approval-detail-text {
+.approval-meta-val.mono {
+  font-family: var(--font-mono);
+}
+
+.approval-meta-val-danger {
+  color: var(--accent-danger);
+}
+
+/* 详情分区 */
+.approval-detail-section {
+  margin-bottom: var(--space-lg);
+}
+
+.approval-detail-section:last-child {
+  margin-bottom: 0;
+}
+
+/* 审批流程链 */
+.approval-flow-chain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.approval-flow-node {
+  padding: 4px 10px;
+  background: rgba(26, 58, 92, 0.06);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.approval-flow-node-me {
+  background: rgba(26, 58, 92, 0.12);
+  color: var(--finrpa-blue);
+}
+
+.approval-flow-chain .arrow {
+  color: var(--text-muted);
+}
+
+.approval-flow-route {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+/* 风险原因列表 */
+.approval-reason-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.approval-reason-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.approval-reason-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--risk-critical);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* 任务参数表格容器 */
+.approval-table-wrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* 执行截图网格 */
+.approval-screenshot-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.approval-screenshot {
+  display: flex;
+  flex-direction: column;
+}
+
+.approval-screenshot-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.approval-screenshot-placeholder {
+  height: 180px;
+  background:
+    linear-gradient(135deg, rgba(26, 58, 92, 0.06), rgba(26, 58, 92, 0.02)),
+    var(--bg-surface);
+  border: 1px dashed var(--glass-border-strong);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-direction: column;
+  gap: 8px;
+  transition: all var(--transition-fast);
+}
+
+.approval-screenshot-placeholder:hover {
+  border-color: var(--finrpa-blue);
+  color: var(--finrpa-blue);
+}
+
+/* 审批操作区 */
+.approval-action-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: var(--space-md);
+}
+
+.approval-action-btn {
+  flex: 1;
+  padding: 12px 20px;
+  font-size: 14px;
+  justify-content: center;
+}
+
+/* 拒绝理由输入区 */
+.approval-reason-input {
+  margin-top: var(--space-sm);
+}
+
+.approval-reason-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.approval-reason-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* 审批结果（终态） */
+.approval-result-block {
+  padding: 14px 16px;
   background: rgba(26, 58, 92, 0.03);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.6;
-  word-break: break-all;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* 风险判断理由展示框（突出显示） */
-.approval-detail-reasoning {
-  padding: 10px 12px;
-  background: rgba(249, 115, 22, 0.06);
-  border: 1px solid rgba(249, 115, 22, 0.22);
-  border-left: 3px solid var(--status-needs-human);
-  border-radius: var(--radius-sm);
+.approval-result-status {
+  margin-bottom: 4px;
+}
+
+.approval-result-time {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.approval-result-reason {
   font-size: 13px;
   color: var(--text-primary);
   line-height: 1.6;
-  word-break: break-all;
 }
 
 /* 危险按钮（审批拒绝） */
@@ -3697,6 +4142,27 @@ a:hover {
 
 .btn-danger:active:not(:disabled) {
   background: rgba(239, 68, 68, 0.14);
+}
+
+/* 审批详情响应式：窄屏单列 */
+@media (max-width: 1024px) {
+  .approval-meta-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .approval-screenshot-grid {
+    grid-template-columns: 1fr;
+  }
+  .approval-detail-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+/* 超窄屏才转单列布局（工作台双栏在 768px 以上保持） */
+@media (max-width: 768px) {
+  .approval-workbench {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------- end 审批中心页 ---------- */

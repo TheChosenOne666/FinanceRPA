@@ -2290,76 +2290,149 @@ function handleGetDashboardApprovals(res: ServerResponse): void {
   })
 }
 
-/** GET /api/approvals — 审批列表（Dashboard 最近审批表格用） */
+/** GET /api/approvals — 审批列表（审批中心双栏工作台用，对齐原型 05-approval-center.html） */
 function handleListApprovals(
   req: IncomingMessage,
   res: ServerResponse,
 ): void {
   const query = parseQuery(req.url || '')
   const status = query.status as string | undefined
+  const userId = query.userId as string | undefined
   const current = Math.max(Number(query.current) || 1, 1)
   const pageSize = Math.max(Number(query.pageSize) || 10, 1)
 
-  // 模拟审批数据（对齐原型 02-dashboard.html 最近审批表格）
-  const allApprovals = [
+  // 模拟审批数据（对齐原型 05-approval-center.html，含风险理由 + 任务参数）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allApprovals: any[] = [
     {
       approvalId: '1900000000000000001',
-      taskId: 'TASK-A0215',
+      taskId: 'TASK-2026-007',
       orgId: 'org-001',
-      userId: 'wangmgr',
-      userName: '王经理',
+      userId: 'zhaoliu',
+      userName: '赵六',
       riskLevel: 'critical',
       approvalRoute: 'compliance',
       status: 'PENDING',
-      requestPayload: JSON.stringify({ goal: '大额转账审批' }),
-      timeoutAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      createTime: new Date(Date.now() - 55 * 60 * 1000).toISOString(),
+      riskReasoning: '关键词命中：检测到敏感关键词"放款"、"对公贷款"，命中敏感词库规则 R-012。金额超限：转账金额 ¥500,000 超出阈值 ¥100,000（5.0 倍）。LLM 风险判断：大模型综合评估为 Critical，置信度 92.4%，建议人工复核后执行。',
+      requestPayload: JSON.stringify({
+        goal: '对公贷款放款',
+        params: {
+          账户: '6225-7788-1234-5678',
+          金额: '¥500,000.00',
+          用途: '对公贷款放款',
+        },
+      }),
+      timeoutAt: new Date(Date.now() + 23 * 60 * 1000 + 42 * 1000).toISOString(),
+      createTime: new Date(Date.now() - 36 * 60 * 1000).toISOString(),
     },
     {
       approvalId: '1900000000000000002',
-      taskId: 'TASK-A0218',
+      taskId: 'TASK-2026-006',
       orgId: 'org-001',
-      userId: 'limgr',
-      userName: '李经理',
+      userId: 'lisi',
+      userName: '李四',
       riskLevel: 'high',
       approvalRoute: 'department',
       status: 'PENDING',
-      requestPayload: JSON.stringify({ goal: '信用卡大额授权' }),
-      timeoutAt: new Date(Date.now() + 12 * 60 * 1000).toISOString(),
-      createTime: new Date(Date.now() - 48 * 60 * 1000).toISOString(),
+      riskReasoning: '金额超限：跨行转账金额 ¥85,000 超出单笔阈值 ¥50,000。非工作时间操作：当前为非营业时间跨行转账请求。',
+      requestPayload: JSON.stringify({
+        goal: '跨行转账核对',
+        params: {
+          账户: '6225-3300-9876-5432',
+          金额: '¥85,000.00',
+          用途: '供应商货款',
+        },
+      }),
+      timeoutAt: new Date(Date.now() + 2 * 3600 * 1000 + 15 * 60 * 1000).toISOString(),
+      createTime: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
     },
     {
       approvalId: '1900000000000000003',
-      taskId: 'TASK-A0223',
+      taskId: 'TASK-2026-005',
       orgId: 'org-001',
-      userId: 'zhaosup',
-      userName: '赵主管',
+      userId: 'wangwu',
+      userName: '王五',
       riskLevel: 'high',
       approvalRoute: 'department',
       status: 'PENDING',
-      requestPayload: JSON.stringify({ goal: '跨境汇款审核' }),
-      timeoutAt: new Date(Date.now() + 25 * 60 * 1000).toISOString(),
-      createTime: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+      riskReasoning: '理赔金额超限：单笔理赔金额 ¥120,000 超出授权额度 ¥50,000。受益人信息变更：受益人账户近期发生过变更，需人工核实。',
+      requestPayload: JSON.stringify({
+        goal: '理赔审核提交',
+        params: {
+          保单号: 'POL-2026-008231',
+          金额: '¥120,000.00',
+          理赔类型: '意外伤害',
+        },
+      }),
+      timeoutAt: new Date(Date.now() + 5 * 3600 * 1000 + 42 * 60 * 1000).toISOString(),
+      createTime: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
     },
+    // 历史：已通过
     {
       approvalId: '1900000000000000004',
-      taskId: 'TASK-A0231',
+      taskId: 'TASK-2026-003',
       orgId: 'org-001',
-      userId: 'qianspec',
-      userName: '钱专员',
-      riskLevel: 'medium',
+      userId: 'zhangsan',
+      userName: '张三',
+      riskLevel: 'high',
       approvalRoute: 'department',
-      status: 'PENDING',
-      requestPayload: JSON.stringify({ goal: '批量代发复核' }),
-      timeoutAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      createTime: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+      status: 'APPROVED',
+      riskReasoning: '金额超限：转账金额 ¥65,000 超出阈值 ¥50,000。',
+      requestPayload: JSON.stringify({
+        goal: '批量代发工资',
+        params: { 金额: '¥65,000.00', 用途: '员工工资' },
+      }),
+      approvedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+      approveReason: '核实无误，准予执行',
+      createTime: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+    },
+    // 历史：已拒绝
+    {
+      approvalId: '1900000000000000005',
+      taskId: 'TASK-2026-002',
+      orgId: 'org-001',
+      userId: 'zhangsan',
+      userName: '张三',
+      riskLevel: 'critical',
+      approvalRoute: 'compliance',
+      status: 'REJECTED',
+      riskReasoning: '关键词命中：检测到敏感关键词"洗钱"。金额异常：大额连续转账行为可疑。',
+      requestPayload: JSON.stringify({
+        goal: '可疑大额转账',
+        params: { 金额: '¥980,000.00', 用途: '不明' },
+      }),
+      approvedAt: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
+      rejectReason: '存在合规风险，已上报合规部门进一步调查',
+      createTime: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
+    },
+    // 历史：已超时
+    {
+      approvalId: '1900000000000000006',
+      taskId: 'TASK-2026-001',
+      orgId: 'org-001',
+      userId: 'zhaoliu',
+      userName: '赵六',
+      riskLevel: 'high',
+      approvalRoute: 'department',
+      status: 'TIMEOUT',
+      riskReasoning: '金额超限：转账金额 ¥58,000 超出阈值 ¥50,000。',
+      requestPayload: JSON.stringify({
+        goal: '跨行转账',
+        params: { 金额: '¥58,000.00', 用途: '货款' },
+      }),
+      timeoutAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+      createTime: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
     },
   ]
 
-  // 按状态筛选
-  const filtered = status && status !== ''
-    ? allApprovals.filter((a) => a.status === status)
-    : allApprovals
+  // 按状态 + 用户 ID 筛选
+  let filtered = allApprovals
+  if (status && status !== '') {
+    filtered = filtered.filter((a) => a.status === status)
+  }
+  if (userId && userId !== '') {
+    filtered = filtered.filter((a) => a.userId === userId)
+  }
 
   // 分页
   const start = (current - 1) * pageSize
