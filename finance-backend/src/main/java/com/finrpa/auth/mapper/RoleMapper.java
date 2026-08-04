@@ -36,4 +36,30 @@ public interface RoleMapper extends BaseMapper<RoleEO> {
      */
     @Select("SELECT * FROM finrpa.sys_role WHERE role_code = #{roleCode} AND deleted = 0")
     RoleEO selectByRoleCode(@Param("roleCode") String roleCode);
+
+    /**
+     * 根据角色业务 ID 列表批量查询未删除的角色（用于分配角色时校验存在性）
+     *
+     * @param roleIds 角色业务 ID 列表
+     * @return 角色实体列表
+     */
+    @Select("<script>" +
+            "SELECT role_id, role_code, role_name FROM finrpa.sys_role " +
+            "WHERE deleted = 0 AND role_id IN " +
+            "<foreach item='id' collection='roleIds' open='(' separator=',' close=')'>" +
+            "#{id}" +
+            "</foreach>" +
+            "</script>")
+    List<RoleEO> selectByRoleIds(@Param("roleIds") List<Long> roleIds);
+
+    /**
+     * 查询全部未删除角色（按 id 升序）
+     *
+     * <p>sys_role 表已在 TenantConstant.IGNORED_TABLES 中，super_admin 可看全部。
+     * org_admin 仅能看本组织的角色 + 全局内置角色（org_id IS NULL）。</p>
+     *
+     * @return 角色实体列表
+     */
+    @Select("SELECT * FROM finrpa.sys_role WHERE deleted = 0 ORDER BY id ASC")
+    List<RoleEO> selectAll();
 }

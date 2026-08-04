@@ -74,6 +74,12 @@ class ApprovalServiceImplTest {
     @Mock
     private UserMapper userMapper;
 
+    @Mock
+    private com.finrpa.approval.service.ApprovalTimeoutConfigService approvalTimeoutConfigService;
+
+    @Mock
+    private com.finrpa.approval.service.ApprovalRouteConfigService approvalRouteConfigService;
+
     @InjectMocks
     private ApprovalServiceImpl approvalService;
 
@@ -85,11 +91,12 @@ class ApprovalServiceImplTest {
         // arrange
         when(approvalRouteService.routeByRiskLevel("high"))
                 .thenReturn(com.finrpa.approval.enums.ApprovalRouteEnum.DEPARTMENT);
+        when(approvalTimeoutConfigService.getTimeoutMinutesByRiskLevel("high")).thenReturn(30L);
         when(approvalRequestMapper.insert(any(ApprovalRequestEO.class))).thenReturn(1);
 
         // act
         ApprovalRequestEO result = approvalService.createApproval(
-                100L, 1L, 200L, 300L, "high", "涉及转账操作", "{\"goal\":\"test\"}");
+                100L, 1L, 200L, 300L, "high", 300L, "涉及转账操作", "{\"goal\":\"test\"}");
 
         // assert
         assertNotNull(result);
@@ -116,11 +123,12 @@ class ApprovalServiceImplTest {
         // arrange
         when(approvalRouteService.routeByRiskLevel("critical"))
                 .thenReturn(com.finrpa.approval.enums.ApprovalRouteEnum.COMPLIANCE);
+        when(approvalTimeoutConfigService.getTimeoutMinutesByRiskLevel("critical")).thenReturn(60L);
         when(approvalRequestMapper.insert(any(ApprovalRequestEO.class))).thenReturn(1);
 
         // act
         ApprovalRequestEO result = approvalService.createApproval(
-                101L, 1L, 200L, 300L, "critical", "命中敏感数据+高风险操作", "{\"goal\":\"test\"}");
+                101L, 1L, 200L, 300L, "critical", 300L, "命中敏感数据+高风险操作", "{\"goal\":\"test\"}");
 
         // assert
         assertNotNull(result);
@@ -143,7 +151,7 @@ class ApprovalServiceImplTest {
                 .thenReturn(com.finrpa.approval.enums.ApprovalRouteEnum.AUTO);
 
         assertThrows(BusinessException.class, () ->
-                approvalService.createApproval(100L, 1L, 200L, 300L, "low", "", ""));
+                approvalService.createApproval(100L, 1L, 200L, 300L, "low", 300L, "", ""));
     }
 
     // endregion

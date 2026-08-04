@@ -21,17 +21,22 @@ public interface ApprovalService {
      *
      * <p>高风险/极高风险任务触发时调用，创建审批单并发布 Pub/Sub 通知。</p>
      *
-     * @param taskId        任务 ID
-     * @param orgId         组织 ID
-     * @param workflowId    工作流模板 ID
-     * @param userId        触发用户 ID
-     * @param riskLevel     风险等级（high / critical）
-     * @param riskReasoning 风险判断理由（LLM 判断结果）
-     * @param requestPayload 请求负载 JSON（任务目标 + 参数等）
+     * <p>P1 RSK-3 起增加 {@code businessLineId} 参数，用于按
+     * 「风险等级 × 业务线」路由审批人。businessLineId 为空时按默认路由查找。</p>
+     *
+     * @param taskId          任务 ID
+     * @param orgId           组织 ID
+     * @param workflowId      工作流模板 ID
+     * @param userId          触发用户 ID
+     * @param riskLevel       风险等级（high / critical）
+     * @param businessLineId  业务线业务 ID（可空，用于按业务线路由审批人）
+     * @param riskReasoning   风险判断理由（LLM 判断结果）
+     * @param requestPayload  请求负载 JSON（任务目标 + 参数等）
      * @return 审批请求实体
      */
     ApprovalRequestEO createApproval(Long taskId, Long orgId, Long workflowId, Long userId,
-                                      String riskLevel, String riskReasoning, String requestPayload);
+                                      String riskLevel, Long businessLineId,
+                                      String riskReasoning, String requestPayload);
 
     /**
      * 审批通过

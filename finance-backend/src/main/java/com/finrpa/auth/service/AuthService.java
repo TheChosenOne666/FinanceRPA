@@ -14,19 +14,23 @@ public interface AuthService {
     /**
      * 用户登录
      *
-     * @param username 用户名
-     * @param password 密码
+     * @param username  用户名
+     * @param password  密码
+     * @param clientIp  客户端 IP（用于登录策略 IP 白/黑名单校验，null 时跳过 IP 校验）
+     * @param userAgent 客户端 User-Agent（用于 SEC-3 会话信息记录）
      * @return 登录响应（含 token 和用户信息）
      */
-    LoginResponse login(String username, String password);
+    LoginResponse login(String username, String password, String clientIp, String userAgent);
 
     /**
      * 刷新 token
      *
      * @param refreshToken 刷新令牌
+     * @param clientIp     客户端 IP（用于 SEC-3 会话信息记录）
+     * @param userAgent    客户端 User-Agent（用于 SEC-3 会话信息记录）
      * @return 登录响应（含新的 token 和用户信息）
      */
-    LoginResponse refresh(String refreshToken);
+    LoginResponse refresh(String refreshToken, String clientIp, String userAgent);
 
     /**
      * 获取当前用户信息
@@ -48,9 +52,9 @@ public interface AuthService {
     boolean checkPermission(String userId, String resourceType, String resourceId, String action);
 
     /**
-     * 用户登出
+     * 用户登出（P2 SEC-3：拉黑当前 token + 移除会话集合）
      *
-     * @param userId 用户 ID
+     * @param token JWT 访问令牌
      */
-    void logout(String userId);
+    void logout(String token);
 }

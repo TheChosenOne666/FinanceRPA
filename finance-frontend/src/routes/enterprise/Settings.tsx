@@ -1,13 +1,15 @@
 /**
- * 系统设置页面（P4 settings 原型对齐 + P0 功能扩展）
+ * 系统设置页面（P4 settings 原型对齐 + P0/P1 功能扩展）
  *
  * 功能：
  * - 两栏布局：240px 子导航 + 1fr 内容区
- * - 8 个子导航项：用户管理 / 角色管理 / 部门管理 / 业务线 / 风险关键词 / 通知配置 / Skill 管理 / 权限矩阵
+ * - 9 个子导航项：用户管理 / 角色管理 / 部门管理 / 业务线 / 风险关键词 / 风控配置 / 通知配置 / Skill 管理 / 权限矩阵
  * - 已实现区块：
- *   - 用户管理 / 角色管理（Mock 数据，后端待开发）
+ *   - 用户管理（P1 USR-1，CRUD + 启停 + 重置密码 + 分配角色）
+ *   - 角色管理（P1 USR-2，CRUD + 启停，内置角色保护）
  *   - 部门 / 业务线（只读列表，复用 TenantController）
  *   - 风险关键词库（CRUD + 筛选，复用 RiskKeywordController）
+ *   - 风控配置（P1 RSK-1 审批超时 + P1 RSK-3 审批人映射）
  *   - 通知配置（通道开关 + Webhook 弹窗编辑 + 模板勾选保存）
  *   - Skill 管理（CRUD + 筛选，复用 SkillController）
  * - 权限矩阵：占位「敬请期待」
@@ -19,27 +21,48 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
-import { settingsApi } from '@/api/settings'
-import { tenantApi } from '@/api/tenant'
-import type { DepartmentVO, BusinessLineVO } from '@/api/tenant'
 import type {
+  ApprovalRouteConfigAddRequest,
+  ApprovalRouteConfigQueryRequest,
+  ApprovalRouteConfigUpdateRequest,
+  ApprovalRouteConfigVO,
+  ApprovalTimeoutConfigUpdateRequest,
+  ApprovalTimeoutConfigVO,
   ChannelConfigSaveRequest,
   ChannelVO,
   IPage,
+  LoginPolicyUpdateRequest,
+  LoginPolicyVO,
   NotificationChannelType,
   NotificationConfigSaveRequest,
   NotificationTemplateConfigVO,
   NotificationTemplateType,
+  PasswordPolicyUpdateRequest,
+  PasswordPolicyVO,
+  PasswordResetRequest,
   RiskKeywordAddRequest,
   RiskKeywordQueryRequest,
   RiskKeywordVO,
+  RoleAddRequest,
+  RoleQueryRequest,
+  RoleUpdateRequest,
   RoleVO,
+  SessionQueryRequest,
+  SessionVO,
   SkillAddRequest,
+  SystemHealthVO,
   SkillQueryRequest,
   SkillUpdateRequest,
   SkillVO,
+  UserAddRequest,
+  UserQueryRequest,
+  UserRoleAssignRequest,
+  UserUpdateRequest,
   UserVO,
 } from '@/api/types'
+import { settingsApi } from '@/api/settings'
+import { tenantApi } from '@/api/tenant'
+import type { DepartmentVO, BusinessLineVO } from '@/api/tenant'
 import { ApiError } from '@/api/AxiosClient'
 
 /** 子导航项类型 */
@@ -49,6 +72,8 @@ type SettingsTab =
   | 'departments'
   | 'business-lines'
   | 'risk-keywords'
+  | 'risk-control'
+  | 'security'
   | 'notification'
   | 'skills'
   | 'permissions'
@@ -119,6 +144,26 @@ const SUB_NAV_ITEMS: SubNavItem[] = [
         <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
         <line x1="12" y1="9" x2="12" y2="13" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+    ),
+  },
+  {
+    key: 'risk-control',
+    label: '风控配置',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
+    key: 'security',
+    label: '安全策略',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
       </svg>
     ),
   },
@@ -235,6 +280,15 @@ function Settings() {
           {activeTab === 'departments' && <DepartmentsSection />}
           {activeTab === 'business-lines' && <BusinessLinesSection />}
           {activeTab === 'risk-keywords' && <RiskKeywordsSection />}
+          {activeTab === 'risk-control' && <RiskControlSection />}
+          {activeTab === 'security' && (
+            <>
+              <SecurityPolicySection />
+              <LoginPolicySection />
+              <SessionManagementSection />
+              <SystemHealthSection />
+            </>
+          )}
           {activeTab === 'notification' && <NotificationSection />}
           {activeTab === 'skills' && <SkillsSection />}
           {activeTab === 'permissions' && (
@@ -251,25 +305,254 @@ function Settings() {
 }
 
 // ============================================================
-// 用户管理区块
+// 用户管理区块（P1 USR-1，完整 CRUD + 启停 + 重置密码 + 分配角色）
 // ============================================================
 
-/** 用户管理区块（Mock 数据，后端 UserController 待开发） */
+/** 用户表单空状态 */
+const EMPTY_USER_FORM: UserFormState = {
+  username: '',
+  realName: '',
+  deptName: '',
+  email: '',
+  phone: '',
+  password: '',
+  status: 1,
+}
+
+/** 用户表单状态 */
+interface UserFormState {
+  username: string
+  realName: string
+  deptName: string
+  email: string
+  phone: string
+  password: string
+  status: number
+}
+
+/** 用户管理区块（P1 USR-1） */
 function UsersSection() {
-  // 1. 查询用户列表
-  const { data: users, isLoading, error } = useQuery<UserVO[], ApiError>({
-    queryKey: ['settings', 'users'],
-    queryFn: settingsApi.listUsers,
+  const queryClient = useQueryClient()
+
+  // 1. 筛选状态
+  const [filters, setFilters] = useState<UserQueryRequest>({
+    keyword: '',
+    status: undefined,
+    current: 1,
+    pageSize: 10,
   })
+
+  // 2. 新增/编辑弹窗状态
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<UserVO | null>(null)
+  const [form, setForm] = useState<UserFormState>(EMPTY_USER_FORM)
+  const [formError, setFormError] = useState('')
+
+  // 3. 分配角色弹窗状态
+  const [rolesModalOpen, setRolesModalOpen] = useState(false)
+  const [rolesTarget, setRolesTarget] = useState<UserVO | null>(null)
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([])
+  const [rolesError, setRolesError] = useState('')
+
+  // 4. 查询用户列表（分页）
+  const { data, isLoading, error } = useQuery<IPage<UserVO>, ApiError>({
+    queryKey: ['settings', 'users', filters],
+    queryFn: () => settingsApi.listUsers(filters),
+  })
+
+  // 5. 查询全部启用角色（分配角色弹窗用）
+  const { data: allRoles } = useQuery<RoleVO[], ApiError>({
+    queryKey: ['settings', 'roles-all'],
+    queryFn: settingsApi.listAllRoles,
+  })
+
+  // 6. 新增 mutation
+  const addMutation = useMutation<string, ApiError, UserAddRequest>({
+    mutationFn: settingsApi.addUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'users'] })
+      setModalOpen(false)
+    },
+    onError: (err) => setFormError(err.message),
+  })
+
+  // 7. 编辑 mutation
+  const updateMutation = useMutation<boolean, ApiError, UserUpdateRequest>({
+    mutationFn: settingsApi.updateUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'users'] })
+      setModalOpen(false)
+    },
+    onError: (err) => setFormError(err.message),
+  })
+
+  // 8. 启停 mutation
+  const toggleMutation = useMutation<
+    boolean,
+    ApiError,
+    { userId: string; status: number }
+  >({
+    mutationFn: ({ userId, status }) =>
+      settingsApi.toggleUserStatus(userId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'users'] })
+    },
+  })
+
+  // 9. 重置密码 mutation
+  const resetPwdMutation = useMutation<boolean, ApiError, PasswordResetRequest>({
+    mutationFn: settingsApi.resetPassword,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'users'] })
+    },
+  })
+
+  // 10. 删除 mutation
+  const deleteMutation = useMutation<boolean, ApiError, string>({
+    mutationFn: settingsApi.deleteUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'users'] })
+    },
+  })
+
+  // 11. 分配角色 mutation
+  const assignRolesMutation = useMutation<boolean, ApiError, UserRoleAssignRequest>(
+    {
+      mutationFn: settingsApi.assignUserRoles,
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['settings', 'users'] })
+        setRolesModalOpen(false)
+      },
+      onError: (err) => setRolesError(err.message),
+    },
+  )
+
+  // 12. 打开新增弹窗
+  const handleAdd = () => {
+    setEditingUser(null)
+    setForm(EMPTY_USER_FORM)
+    setFormError('')
+    setModalOpen(true)
+  }
+
+  // 13. 打开编辑弹窗
+  const handleEdit = (user: UserVO) => {
+    setEditingUser(user)
+    setForm({
+      username: user.username,
+      realName: user.realName,
+      deptName: user.deptName ?? '',
+      email: user.email ?? '',
+      phone: user.phone ?? '',
+      password: '',
+      status: user.status,
+    })
+    setFormError('')
+    setModalOpen(true)
+  }
+
+  // 14. 提交表单
+  const handleSubmit = () => {
+    setFormError('')
+    if (!form.username.trim()) {
+      setFormError('用户名不能为空')
+      return
+    }
+    if (!form.realName.trim()) {
+      setFormError('真实姓名不能为空')
+      return
+    }
+    if (editingUser) {
+      // 14.1 编辑：用户名不可改
+      updateMutation.mutate({
+        userId: editingUser.userId,
+        realName: form.realName.trim(),
+        deptName: form.deptName.trim() || undefined,
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        status: form.status,
+      })
+    } else {
+      // 14.2 新增
+      addMutation.mutate({
+        username: form.username.trim(),
+        realName: form.realName.trim(),
+        password: form.password.trim() || undefined,
+        deptName: form.deptName.trim() || undefined,
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        status: form.status,
+      })
+    }
+  }
+
+  // 15. 启停用户
+  const handleToggle = (user: UserVO) => {
+    const nextStatus = user.status === 1 ? 0 : 1
+    toggleMutation.mutate({ userId: user.userId, status: nextStatus })
+  }
+
+  // 16. 重置密码
+  const handleResetPassword = (user: UserVO) => {
+    if (
+      window.confirm(
+        `确认重置用户「${user.realName || user.username}」的密码？将恢复为默认密码 Finrpa@2026`,
+      )
+    ) {
+      resetPwdMutation.mutate({ userId: user.userId })
+    }
+  }
+
+  // 17. 删除用户
+  const handleDelete = (user: UserVO) => {
+    if (
+      window.confirm(`确认删除用户「${user.realName || user.username}」？`)
+    ) {
+      deleteMutation.mutate(user.userId)
+    }
+  }
+
+  // 18. 打开分配角色弹窗
+  const handleOpenRoles = (user: UserVO) => {
+    setRolesTarget(user)
+    // 18.1 根据用户当前 roleCode 反查 roleId 预选
+    const preSelected = (allRoles || [])
+      .filter((r) => user.roles.includes(r.roleCode))
+      .map((r) => r.roleId)
+    setSelectedRoleIds(preSelected)
+    setRolesError('')
+    setRolesModalOpen(true)
+  }
+
+  // 19. 提交分配角色
+  const handleSubmitRoles = () => {
+    if (!rolesTarget) return
+    setRolesError('')
+    if (selectedRoleIds.length === 0) {
+      setRolesError('至少需要分配一个角色')
+      return
+    }
+    // 19.1 三维度 RBAC：当前简化为不带部门/业务线维度（仅角色维度）
+    const relations = selectedRoleIds.map((roleId) => ({ roleId }))
+    assignRolesMutation.mutate({
+      userId: rolesTarget.userId,
+      relations,
+    })
+  }
+
+  // 20. 重置筛选
+  const handleResetFilters = () => {
+    setFilters({ keyword: '', status: undefined, current: 1, pageSize: 10 })
+  }
+
+  const isSubmitting = addMutation.isPending || updateMutation.isPending
+  const users = data?.records ?? []
 
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <div className="section-title">
-          用户管理
-          <span className="mock-data-badge">Mock 数据 · 后端 TODO</span>
-        </div>
-        <button type="button" className="btn btn-primary btn-sm">
+        <div className="section-title">用户管理</div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={handleAdd}>
           <svg className="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
@@ -283,6 +566,41 @@ function UsersSection() {
           <span>加载用户列表失败：{error.message}</span>
         </div>
       )}
+
+      {/* region 筛选栏 */}
+      <div className="filter-bar" style={{ marginBottom: 'var(--space-md)' }}>
+        <div className="flex gap-sm" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            className="input"
+            style={{ width: 200 }}
+            placeholder="用户名 / 真实姓名"
+            value={filters.keyword ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, keyword: e.target.value, current: 1 }))
+            }
+          />
+          <select
+            className="select"
+            style={{ width: 130 }}
+            value={filters.status ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                status: e.target.value === '' ? undefined : Number(e.target.value),
+                current: 1,
+              }))
+            }
+          >
+            <option value="">全部状态</option>
+            <option value="1">启用</option>
+            <option value="0">禁用</option>
+          </select>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={handleResetFilters}>
+            重置
+          </button>
+        </div>
+      </div>
+      {/* endregion */}
 
       <div className="table-wrap">
         <table className="data-table">
@@ -303,15 +621,15 @@ function UsersSection() {
                 </td>
               </tr>
             )}
-            {!isLoading && users && users.length === 0 && (
+            {!isLoading && users.length === 0 && (
               <tr>
                 <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   暂无用户数据
                 </td>
               </tr>
             )}
-            {users?.map((user) => {
-              // 2. 取首字符作为头像
+            {users.map((user) => {
+              // 21. 取首字符作为头像
               const avatarChar = (user.realName || user.username || '?').charAt(0).toUpperCase()
               const avatarBg = AVATAR_COLORS[user.realName?.charAt(0)] || '#1A3A5C'
               return (
@@ -329,47 +647,84 @@ function UsersSection() {
                       >
                         {avatarChar}
                       </div>
-                      <span className="mono">{user.username}</span>
+                      <div>
+                        <div className="mono">{user.username}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {user.realName}
+                        </div>
+                      </div>
                     </div>
                   </td>
-                  <td>{user.deptName}</td>
+                  <td>{user.deptName || '—'}</td>
                   <td>
-                    {user.roles.map((role) => (
-                      <span
-                        key={role}
-                        className={`badge ${
-                          ROLE_BADGE_CLASS[role] || 'badge-info'
-                        }`}
-                        style={{ marginRight: 4 }}
-                      >
-                        {role}
-                      </span>
-                    ))}
+                    {user.roles.length === 0 ? (
+                      <span style={{ color: 'var(--text-muted)' }}>未分配</span>
+                    ) : (
+                      user.roles.map((role) => (
+                        <span
+                          key={role}
+                          className={`badge ${
+                            ROLE_BADGE_CLASS[role] || 'badge-info'
+                          }`}
+                          style={{ marginRight: 4 }}
+                        >
+                          {role}
+                        </span>
+                      ))
+                    )}
                   </td>
                   <td>
-                    {user.enabled ? (
+                    {user.status === 1 ? (
                       <span className="badge badge-success">启用</span>
                     ) : (
                       <span className="badge badge-muted">已禁用</span>
                     )}
                   </td>
                   <td>
-                    <button type="button" className="btn-link">
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => handleEdit(user)}
+                    >
                       编辑
                     </button>
-                    <button type="button" className="btn-link">
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => handleOpenRoles(user)}
+                    >
+                      分配角色
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => handleResetPassword(user)}
+                      disabled={resetPwdMutation.isPending}
+                    >
                       重置密码
                     </button>
                     <button
                       type="button"
                       className="btn-link"
                       style={{
-                        color: user.enabled
-                          ? 'var(--accent-danger)'
-                          : 'var(--accent-success)',
+                        color:
+                          user.status === 1
+                            ? 'var(--accent-danger)'
+                            : 'var(--accent-success)',
                       }}
+                      onClick={() => handleToggle(user)}
+                      disabled={toggleMutation.isPending}
                     >
-                      {user.enabled ? '禁用' : '启用'}
+                      {user.status === 1 ? '禁用' : '启用'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-link"
+                      style={{ color: 'var(--accent-danger)' }}
+                      onClick={() => handleDelete(user)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      删除
                     </button>
                   </td>
                 </tr>
@@ -378,30 +733,468 @@ function UsersSection() {
           </tbody>
         </table>
       </div>
+
+      {/* region 分页 */}
+      {data && data.total > 0 && (
+        <div className="pagination" style={{ marginTop: 'var(--space-md)' }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={filters.current === 1}
+            onClick={() => setFilters((f) => ({ ...f, current: 1 }))}
+          >
+            首页
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={filters.current === 1}
+            onClick={() =>
+              setFilters((f) => ({ ...f, current: Math.max(1, f.current! - 1) }))
+            }
+          >
+            上一页
+          </button>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            第 {filters.current} / {data.pages} 页 · 共 {data.total} 条
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={filters.current === data.pages}
+            onClick={() =>
+              setFilters((f) => ({ ...f, current: f.current! + 1 }))
+            }
+          >
+            下一页
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={filters.current === data.pages}
+            onClick={() => setFilters((f) => ({ ...f, current: data.pages }))}
+          >
+            末页
+          </button>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region 新增/编辑用户弹窗 */}
+      {modalOpen && (
+        <div className="modal-overlay" onClick={() => setModalOpen(false)}>
+          <div
+            className="glass-card-static modal-card"
+            style={{ maxWidth: 520 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div className="modal-title">
+                {editingUser ? '编辑用户' : '新增用户'}
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-form">
+              <div className="form-group">
+                <label className="label">
+                  用户名<span className="required">*</span>
+                </label>
+                <input
+                  className="input"
+                  value={form.username}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, username: e.target.value }))
+                  }
+                  disabled={!!editingUser}
+                  placeholder="3-32 位字母数字下划线"
+                />
+                {editingUser && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                    用户名创建后不可修改
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
+                <label className="label">
+                  真实姓名<span className="required">*</span>
+                </label>
+                <input
+                  className="input"
+                  value={form.realName}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, realName: e.target.value }))
+                  }
+                />
+              </div>
+              {!editingUser && (
+                <div className="form-group">
+                  <label className="label">
+                    密码
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+                      （留空使用默认密码 Finrpa@2026）
+                    </span>
+                  </label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={form.password}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, password: e.target.value }))
+                    }
+                    placeholder="留空使用默认密码"
+                  />
+                </div>
+              )}
+              <div className="form-group">
+                <label className="label">所属部门名称</label>
+                <input
+                  className="input"
+                  value={form.deptName}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, deptName: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">邮箱</label>
+                <input
+                  className="input"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, email: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">手机号</label>
+                <input
+                  className="input"
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, phone: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">状态</label>
+                <label className="switch" style={{ display: 'inline-flex' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.status === 1}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, status: e.target.checked ? 1 : 0 }))
+                    }
+                  />
+                  <span className="switch-slider"></span>
+                  <span style={{ marginLeft: 8, fontSize: 13 }}>
+                    {form.status === 1 ? '启用' : '禁用'}
+                  </span>
+                </label>
+              </div>
+              {formError && (
+                <div className="alert-danger" style={{ marginBottom: 12 }}>
+                  <span>{formError}</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region 分配角色弹窗 */}
+      {rolesModalOpen && rolesTarget && (
+        <div className="modal-overlay" onClick={() => setRolesModalOpen(false)}>
+          <div
+            className="glass-card-static modal-card"
+            style={{ maxWidth: 480 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div className="modal-title">
+                分配角色 · {rolesTarget.realName || rolesTarget.username}
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setRolesModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-form">
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                勾选要分配的角色（全量替换，提交后原有关联将被清空）
+              </div>
+              <div className="check-list">
+                {(allRoles || []).map((role) => (
+                  <label key={role.roleId} className="check-item">
+                    <input
+                      type="checkbox"
+                      checked={selectedRoleIds.includes(role.roleId)}
+                      onChange={(e) => {
+                        setSelectedRoleIds((prev) =>
+                          e.target.checked
+                            ? [...prev, role.roleId]
+                            : prev.filter((id) => id !== role.roleId),
+                        )
+                      }}
+                    />
+                    <div className="check-label">
+                      <div>
+                        <span
+                          className={`badge ${
+                            ROLE_BADGE_CLASS[role.roleCode] || 'badge-info'
+                          }`}
+                          style={{ marginRight: 6 }}
+                        >
+                          {role.roleCode}
+                        </span>
+                        {role.roleName}
+                      </div>
+                      {role.description && (
+                        <div className="check-desc">{role.description}</div>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {rolesError && (
+                <div className="alert-danger" style={{ marginBottom: 12 }}>
+                  <span>{rolesError}</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setRolesModalOpen(false)}
+                disabled={assignRolesMutation.isPending}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleSubmitRoles}
+                disabled={assignRolesMutation.isPending}
+              >
+                {assignRolesMutation.isPending ? '保存中…' : '保存分配'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* endregion */}
     </div>
   )
 }
 
 // ============================================================
-// 角色管理区块
+// 角色管理区块（P1 USR-2，完整 CRUD + 启停，内置角色保护）
 // ============================================================
 
-/** 角色管理区块（Mock 数据，后端 RoleController 待开发） */
+/** 角色表单空状态 */
+const EMPTY_ROLE_FORM: RoleFormState = {
+  roleCode: '',
+  roleName: '',
+  description: '',
+  isCrossOrgRead: 0,
+  isCrossOrgApprove: 0,
+  status: 1,
+}
+
+/** 角色表单状态 */
+interface RoleFormState {
+  roleCode: string
+  roleName: string
+  description: string
+  isCrossOrgRead: number
+  isCrossOrgApprove: number
+  status: number
+}
+
+/** 角色管理区块（P1 USR-2） */
 function RolesSection() {
-  // 1. 查询角色列表
-  const { data: roles, isLoading, error } = useQuery<RoleVO[], ApiError>({
-    queryKey: ['settings', 'roles'],
-    queryFn: settingsApi.listRoles,
+  const queryClient = useQueryClient()
+
+  // 1. 筛选状态
+  const [filters, setFilters] = useState<RoleQueryRequest>({
+    keyword: '',
+    status: undefined,
+    current: 1,
+    pageSize: 10,
   })
+
+  // 2. 新增/编辑弹窗状态
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingRole, setEditingRole] = useState<RoleVO | null>(null)
+  const [form, setForm] = useState<RoleFormState>(EMPTY_ROLE_FORM)
+  const [formError, setFormError] = useState('')
+
+  // 3. 查询角色列表（分页）
+  const { data, isLoading, error } = useQuery<IPage<RoleVO>, ApiError>({
+    queryKey: ['settings', 'roles', filters],
+    queryFn: () => settingsApi.listRoles(filters),
+  })
+
+  // 4. 新增 mutation
+  const addMutation = useMutation<string, ApiError, RoleAddRequest>({
+    mutationFn: settingsApi.addRole,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'roles'] })
+      queryClient.invalidateQueries({ queryKey: ['settings', 'roles-all'] })
+      setModalOpen(false)
+    },
+    onError: (err) => setFormError(err.message),
+  })
+
+  // 5. 编辑 mutation
+  const updateMutation = useMutation<boolean, ApiError, RoleUpdateRequest>({
+    mutationFn: settingsApi.updateRole,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'roles'] })
+      queryClient.invalidateQueries({ queryKey: ['settings', 'roles-all'] })
+      setModalOpen(false)
+    },
+    onError: (err) => setFormError(err.message),
+  })
+
+  // 6. 启停 mutation
+  const toggleMutation = useMutation<
+    boolean,
+    ApiError,
+    { roleId: string; status: number }
+  >({
+    mutationFn: ({ roleId, status }) =>
+      settingsApi.toggleRoleStatus(roleId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'roles'] })
+    },
+  })
+
+  // 7. 删除 mutation
+  const deleteMutation = useMutation<boolean, ApiError, string>({
+    mutationFn: settingsApi.deleteRole,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'roles'] })
+      queryClient.invalidateQueries({ queryKey: ['settings', 'roles-all'] })
+    },
+  })
+
+  // 8. 打开新增弹窗
+  const handleAdd = () => {
+    setEditingRole(null)
+    setForm(EMPTY_ROLE_FORM)
+    setFormError('')
+    setModalOpen(true)
+  }
+
+  // 9. 打开编辑弹窗
+  const handleEdit = (role: RoleVO) => {
+    setEditingRole(role)
+    setForm({
+      roleCode: role.roleCode,
+      roleName: role.roleName,
+      description: role.description ?? '',
+      isCrossOrgRead: role.isCrossOrgRead ?? 0,
+      isCrossOrgApprove: role.isCrossOrgApprove ?? 0,
+      status: role.status,
+    })
+    setFormError('')
+    setModalOpen(true)
+  }
+
+  // 10. 提交表单
+  const handleSubmit = () => {
+    setFormError('')
+    if (!form.roleCode.trim()) {
+      setFormError('角色编码不能为空')
+      return
+    }
+    if (!form.roleName.trim()) {
+      setFormError('角色名称不能为空')
+      return
+    }
+    if (editingRole) {
+      // 10.1 编辑：roleCode 不可改；内置角色仅可改 description / status
+      updateMutation.mutate({
+        roleId: editingRole.roleId,
+        roleName: form.roleName.trim(),
+        description: form.description.trim() || undefined,
+        isCrossOrgRead: form.isCrossOrgRead,
+        isCrossOrgApprove: form.isCrossOrgApprove,
+        status: form.status,
+      })
+    } else {
+      // 10.2 新增
+      addMutation.mutate({
+        roleCode: form.roleCode.trim(),
+        roleName: form.roleName.trim(),
+        description: form.description.trim() || undefined,
+        isCrossOrgRead: form.isCrossOrgRead,
+        isCrossOrgApprove: form.isCrossOrgApprove,
+        status: form.status,
+      })
+    }
+  }
+
+  // 11. 启停角色
+  const handleToggle = (role: RoleVO) => {
+    const nextStatus = role.status === 1 ? 0 : 1
+    toggleMutation.mutate({ roleId: role.roleId, status: nextStatus })
+  }
+
+  // 12. 删除角色
+  const handleDelete = (role: RoleVO) => {
+    if (role.builtIn) {
+      window.alert(`内置角色「${role.roleCode}」不可删除`)
+      return
+    }
+    if (window.confirm(`确认删除角色「${role.roleName}」？`)) {
+      deleteMutation.mutate(role.roleId)
+    }
+  }
+
+  // 13. 重置筛选
+  const handleResetFilters = () => {
+    setFilters({ keyword: '', status: undefined, current: 1, pageSize: 10 })
+  }
+
+  const isSubmitting = addMutation.isPending || updateMutation.isPending
+  const roles = data?.records ?? []
 
   return (
     <div className="settings-section">
       <div className="settings-section-header">
-        <div className="section-title">
-          角色管理
-          <span className="mock-data-badge">Mock 数据 · 后端 TODO</span>
-        </div>
-        <button type="button" className="btn btn-primary btn-sm">
+        <div className="section-title">角色管理</div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={handleAdd}>
           <svg className="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
@@ -416,32 +1209,68 @@ function RolesSection() {
         </div>
       )}
 
+      {/* region 筛选栏 */}
+      <div className="filter-bar" style={{ marginBottom: 'var(--space-md)' }}>
+        <div className="flex gap-sm" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            className="input"
+            style={{ width: 200 }}
+            placeholder="角色名称 / 编码"
+            value={filters.keyword ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, keyword: e.target.value, current: 1 }))
+            }
+          />
+          <select
+            className="select"
+            style={{ width: 130 }}
+            value={filters.status ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                status: e.target.value === '' ? undefined : Number(e.target.value),
+                current: 1,
+              }))
+            }
+          >
+            <option value="">全部状态</option>
+            <option value="1">启用</option>
+            <option value="0">禁用</option>
+          </select>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={handleResetFilters}>
+            重置
+          </button>
+        </div>
+      </div>
+      {/* endregion */}
+
       <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
               <th>角色</th>
-              <th>权限范围</th>
-              <th>互斥约束</th>
+              <th>描述</th>
+              <th>跨组织权限</th>
+              <th>状态</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   加载中…
                 </td>
               </tr>
             )}
-            {!isLoading && roles && roles.length === 0 && (
+            {!isLoading && roles.length === 0 && (
               <tr>
-                <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   暂无角色数据
                 </td>
               </tr>
             )}
-            {roles?.map((role) => (
+            {roles.map((role) => (
               <tr key={role.roleId}>
                 <td>
                   <span
@@ -451,6 +1280,15 @@ function RolesSection() {
                   >
                     {role.roleCode}
                   </span>
+                  {role.builtIn && (
+                    <span
+                      className="badge badge-muted"
+                      style={{ marginLeft: 4 }}
+                      title="内置角色，受保护"
+                    >
+                      内置
+                    </span>
+                  )}
                   <div
                     style={{
                       fontSize: 11,
@@ -461,25 +1299,65 @@ function RolesSection() {
                     {role.roleName}
                   </div>
                 </td>
-                <td>{role.permissionScope}</td>
-                <td>
-                  {role.mutualExclusion ? (
-                    <span className="badge badge-warning">
-                      {role.mutualExclusion}
+                <td style={{ fontSize: 12 }}>{role.description || '—'}</td>
+                <td style={{ fontSize: 12 }}>
+                  {role.isCrossOrgRead === 1 && (
+                    <span className="badge badge-info" style={{ marginRight: 4 }}>
+                      跨组织读
                     </span>
-                  ) : (
-                    <span className="badge badge-success">无约束</span>
+                  )}
+                  {role.isCrossOrgApprove === 1 && (
+                    <span className="badge badge-warning">跨组织审批</span>
+                  )}
+                  {role.isCrossOrgRead !== 1 && role.isCrossOrgApprove !== 1 && (
+                    <span style={{ color: 'var(--text-muted)' }}>无</span>
                   )}
                 </td>
                 <td>
-                  <button type="button" className="btn-link">
-                    编辑权限
+                  {role.status === 1 ? (
+                    <span className="badge badge-success">启用</span>
+                  ) : (
+                    <span className="badge badge-muted">已禁用</span>
+                  )}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => handleEdit(role)}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    style={{
+                      color:
+                        role.status === 1
+                          ? 'var(--accent-danger)'
+                          : 'var(--accent-success)',
+                    }}
+                    onClick={() => handleToggle(role)}
+                    disabled={
+                      toggleMutation.isPending ||
+                      (role.status === 1 &&
+                        ['super_admin', 'org_admin'].includes(role.roleCode))
+                    }
+                    title={
+                      role.status === 1 &&
+                      ['super_admin', 'org_admin'].includes(role.roleCode)
+                        ? '内置管理员角色禁止禁用'
+                        : undefined
+                    }
+                  >
+                    {role.status === 1 ? '禁用' : '启用'}
                   </button>
                   <button
                     type="button"
                     className="btn-link"
                     style={{ color: 'var(--accent-danger)' }}
-                    disabled={role.builtIn}
+                    onClick={() => handleDelete(role)}
+                    disabled={deleteMutation.isPending || role.builtIn}
                     title={role.builtIn ? '内置角色不可删除' : undefined}
                   >
                     删除
@@ -490,6 +1368,203 @@ function RolesSection() {
           </tbody>
         </table>
       </div>
+
+      {/* region 分页 */}
+      {data && data.total > 0 && (
+        <div className="pagination" style={{ marginTop: 'var(--space-md)' }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={filters.current === 1}
+            onClick={() => setFilters((f) => ({ ...f, current: 1 }))}
+          >
+            首页
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={filters.current === 1}
+            onClick={() =>
+              setFilters((f) => ({ ...f, current: Math.max(1, f.current! - 1) }))
+            }
+          >
+            上一页
+          </button>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            第 {filters.current} / {data.pages} 页 · 共 {data.total} 条
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={filters.current === data.pages}
+            onClick={() =>
+              setFilters((f) => ({ ...f, current: f.current! + 1 }))
+            }
+          >
+            下一页
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={filters.current === data.pages}
+            onClick={() => setFilters((f) => ({ ...f, current: data.pages }))}
+          >
+            末页
+          </button>
+        </div>
+      )}
+      {/* endregion */}
+
+      {/* region 新增/编辑角色弹窗 */}
+      {modalOpen && (
+        <div className="modal-overlay" onClick={() => setModalOpen(false)}>
+          <div
+            className="glass-card-static modal-card"
+            style={{ maxWidth: 500 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div className="modal-title">
+                {editingRole ? '编辑角色' : '新建角色'}
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-form">
+              <div className="form-group">
+                <label className="label">
+                  角色编码<span className="required">*</span>
+                </label>
+                <input
+                  className="input"
+                  value={form.roleCode}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, roleCode: e.target.value }))
+                  }
+                  disabled={!!editingRole}
+                  placeholder="字母开头，仅允许字母数字下划线"
+                />
+                {editingRole && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                    角色编码创建后不可修改
+                  </div>
+                )}
+                {!editingRole && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                    内置编码（super_admin / org_admin / operator / approver / viewer）禁止新增
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
+                <label className="label">
+                  角色名称<span className="required">*</span>
+                </label>
+                <input
+                  className="input"
+                  value={form.roleName}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, roleName: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">角色描述 / 权限范围</label>
+                <input
+                  className="input"
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, description: e.target.value }))
+                  }
+                  placeholder="如：任务执行 · Skill 调用 · 数据查看"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">跨组织读取</label>
+                <label className="switch" style={{ display: 'inline-flex' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.isCrossOrgRead === 1}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        isCrossOrgRead: e.target.checked ? 1 : 0,
+                      }))
+                    }
+                  />
+                  <span className="switch-slider"></span>
+                  <span style={{ marginLeft: 8, fontSize: 13 }}>
+                    {form.isCrossOrgRead === 1 ? '允许' : '禁止'}
+                  </span>
+                </label>
+              </div>
+              <div className="form-group">
+                <label className="label">跨组织审批</label>
+                <label className="switch" style={{ display: 'inline-flex' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.isCrossOrgApprove === 1}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        isCrossOrgApprove: e.target.checked ? 1 : 0,
+                      }))
+                    }
+                  />
+                  <span className="switch-slider"></span>
+                  <span style={{ marginLeft: 8, fontSize: 13 }}>
+                    {form.isCrossOrgApprove === 1 ? '允许' : '禁止'}
+                  </span>
+                </label>
+              </div>
+              <div className="form-group">
+                <label className="label">状态</label>
+                <label className="switch" style={{ display: 'inline-flex' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.status === 1}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, status: e.target.checked ? 1 : 0 }))
+                    }
+                  />
+                  <span className="switch-slider"></span>
+                  <span style={{ marginLeft: 8, fontSize: 13 }}>
+                    {form.status === 1 ? '启用' : '禁用'}
+                  </span>
+                </label>
+              </div>
+              {formError && (
+                <div className="alert-danger" style={{ marginBottom: 12 }}>
+                  <span>{formError}</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* endregion */}
     </div>
   )
 }
@@ -2226,6 +3301,1774 @@ function SkillsSection() {
 }
 
 // ============================================================
+// 风控配置区块（P1 RSK-1 审批超时 + P1 RSK-3 审批人映射）
+// ============================================================
+
+/** 风险等级 → 中文标签映射 */
+const RISK_LEVEL_LABEL: Record<string, string> = {
+  high: '高风险',
+  critical: '严重风险',
+}
+
+/** 风险等级 → 徽章 class 映射 */
+const RISK_LEVEL_BADGE_CLASS: Record<string, string> = {
+  high: 'badge-warning',
+  critical: 'badge-danger',
+}
+
+/** 审批人映射表单空状态 */
+const EMPTY_ROUTE_FORM: RouteFormState = {
+  riskLevel: 'high',
+  businessLineId: '',
+  approverUserId: '',
+  departmentId: '',
+  description: '',
+  enabled: 1,
+}
+
+/** 审批人映射表单状态 */
+interface RouteFormState {
+  riskLevel: string
+  businessLineId: string
+  approverUserId: string
+  departmentId: string
+  description: string
+  enabled: number
+}
+
+/**
+ * 风控配置区块
+ *
+ * 功能：
+ * - 上半区：审批超时阈值配置（high / critical 两条，行内编辑）
+ * - 下半区：审批人映射列表（风险等级 × 业务线 → 审批人，CRUD + 启停）
+ *
+ * @author <a href="https://github.com/TheChosenOne666">小楼</a>
+ * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
+ */
+function RiskControlSection() {
+  const queryClient = useQueryClient()
+
+  // 1. 审批超时配置查询
+  const { data: timeoutConfigs, isLoading: timeoutLoading } = useQuery<
+    ApprovalTimeoutConfigVO[],
+    ApiError
+  >({
+    queryKey: ['settings', 'approval-timeout'],
+    queryFn: settingsApi.listApprovalTimeoutConfigs,
+  })
+
+  // 2. 审批超时本地编辑态（riskLevel → timeoutMinutes/description/enabled）
+  const [timeoutEdits, setTimeoutEdits] = useState<
+    Record<string, { timeoutMinutes: number; description: string; enabled: number }>
+  >({})
+  const [timeoutSavingLevel, setTimeoutSavingLevel] = useState<string>('')
+  const [timeoutError, setTimeoutError] = useState('')
+
+  // 3. 同步后端数据到本地编辑态
+  useEffect(() => {
+    if (timeoutConfigs) {
+      const next: typeof timeoutEdits = {}
+      timeoutConfigs.forEach((c) => {
+        next[c.riskLevel] = {
+          timeoutMinutes: c.timeoutMinutes,
+          description: c.description ?? '',
+          enabled: c.enabled,
+        }
+      })
+      setTimeoutEdits(next)
+    }
+  }, [timeoutConfigs])
+
+  // 4. 审批超时更新 mutation
+  const updateTimeoutMutation = useMutation<
+    ApprovalTimeoutConfigVO,
+    ApiError,
+    { riskLevel: string; body: ApprovalTimeoutConfigUpdateRequest }
+  >({
+    mutationFn: ({ riskLevel, body }) =>
+      settingsApi.updateApprovalTimeoutConfig(riskLevel, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'approval-timeout'] })
+      setTimeoutSavingLevel('')
+      setTimeoutError('')
+    },
+    onError: (err) => {
+      setTimeoutError(err.message)
+      setTimeoutSavingLevel('')
+    },
+  })
+
+  // 5. 保存审批超时配置
+  const handleSaveTimeout = (riskLevel: string) => {
+    const edit = timeoutEdits[riskLevel]
+    if (!edit) return
+    setTimeoutError('')
+    if (edit.timeoutMinutes < 1 || edit.timeoutMinutes > 1440) {
+      setTimeoutError('超时分钟数应在 1-1440 之间')
+      return
+    }
+    setTimeoutSavingLevel(riskLevel)
+    updateTimeoutMutation.mutate({
+      riskLevel,
+      body: {
+        timeoutMinutes: edit.timeoutMinutes,
+        description: edit.description || undefined,
+        enabled: edit.enabled,
+      },
+    })
+  }
+
+  // 6. 审批人映射筛选状态
+  const [routeFilters, setRouteFilters] = useState<ApprovalRouteConfigQueryRequest>({
+    current: 1,
+    pageSize: 10,
+    riskLevel: '',
+    businessLineId: '',
+    enabled: undefined,
+  })
+
+  // 7. 审批人映射列表查询
+  const { data: routePage, isLoading: routeLoading, error: routeError } = useQuery<
+    IPage<ApprovalRouteConfigVO>,
+    ApiError
+  >({
+    queryKey: ['settings', 'approval-routes', routeFilters],
+    queryFn: () => settingsApi.listApprovalRouteConfigs(routeFilters),
+  })
+
+  // 8. 业务线 / 用户下拉数据（用于新增 / 编辑弹窗）
+  const { data: businessLines } = useQuery<BusinessLineVO[], ApiError>({
+    queryKey: ['tenant', 'business-lines'],
+    queryFn: tenantApi.listBusinessLines,
+  })
+  const { data: usersPage } = useQuery<IPage<UserVO>, ApiError>({
+    queryKey: ['settings', 'users', { current: 1, pageSize: 1000 }],
+    queryFn: () =>
+      settingsApi.listUsers({ current: 1, pageSize: 1000 }),
+  })
+  const approverOptions = (usersPage?.records ?? []).filter((u) => u.status === 1)
+
+  // 9. 新增 / 编辑弹窗状态
+  const [routeModalOpen, setRouteModalOpen] = useState(false)
+  const [editingRoute, setEditingRoute] = useState<ApprovalRouteConfigVO | null>(null)
+  const [routeForm, setRouteForm] = useState<RouteFormState>(EMPTY_ROUTE_FORM)
+  const [routeFormError, setRouteFormError] = useState('')
+
+  // 10. 新增 mutation
+  const addRouteMutation = useMutation<string, ApiError, ApprovalRouteConfigAddRequest>({
+    mutationFn: settingsApi.addApprovalRouteConfig,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'approval-routes'] })
+      setRouteModalOpen(false)
+    },
+    onError: (err) => setRouteFormError(err.message),
+  })
+
+  // 11. 更新 mutation
+  const updateRouteMutation = useMutation<
+    boolean,
+    ApiError,
+    { configId: string; body: ApprovalRouteConfigUpdateRequest }
+  >({
+    mutationFn: ({ configId, body }) =>
+      settingsApi.updateApprovalRouteConfig(configId, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'approval-routes'] })
+      setRouteModalOpen(false)
+    },
+    onError: (err) => setRouteFormError(err.message),
+  })
+
+  // 12. 删除 mutation
+  const deleteRouteMutation = useMutation<boolean, ApiError, string>({
+    mutationFn: settingsApi.deleteApprovalRouteConfig,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'approval-routes'] })
+    },
+  })
+
+  // 13. 启停 mutation（直接调 update）
+  const toggleRouteMutation = useMutation<
+    boolean,
+    ApiError,
+    { route: ApprovalRouteConfigVO; enabled: number }
+  >({
+    mutationFn: ({ route, enabled }) =>
+      settingsApi.updateApprovalRouteConfig(route.configId, { enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'approval-routes'] })
+    },
+  })
+
+  // 14. 打开新增弹窗
+  const handleAddRoute = () => {
+    setEditingRoute(null)
+    setRouteForm(EMPTY_ROUTE_FORM)
+    setRouteFormError('')
+    setRouteModalOpen(true)
+  }
+
+  // 15. 打开编辑弹窗（riskLevel / businessLineId 不可改）
+  const handleEditRoute = (route: ApprovalRouteConfigVO) => {
+    setEditingRoute(route)
+    setRouteForm({
+      riskLevel: route.riskLevel,
+      businessLineId: route.businessLineId ?? '',
+      approverUserId: route.approverUserId,
+      departmentId: route.departmentId ?? '',
+      description: route.description ?? '',
+      enabled: route.enabled,
+    })
+    setRouteFormError('')
+    setRouteModalOpen(true)
+  }
+
+  // 16. 提交表单
+  const handleSubmitRoute = () => {
+    setRouteFormError('')
+    if (!routeForm.riskLevel) {
+      setRouteFormError('请选择风险等级')
+      return
+    }
+    if (!routeForm.approverUserId) {
+      setRouteFormError('请选择审批人')
+      return
+    }
+    if (editingRoute) {
+      updateRouteMutation.mutate({
+        configId: editingRoute.configId,
+        body: {
+          approverUserId: routeForm.approverUserId,
+          departmentId: routeForm.departmentId || undefined,
+          description: routeForm.description || undefined,
+          enabled: routeForm.enabled,
+        },
+      })
+    } else {
+      addRouteMutation.mutate({
+        riskLevel: routeForm.riskLevel,
+        businessLineId: routeForm.businessLineId || undefined,
+        approverUserId: routeForm.approverUserId,
+        departmentId: routeForm.departmentId || undefined,
+        description: routeForm.description || undefined,
+        enabled: routeForm.enabled,
+      })
+    }
+  }
+
+  // 17. 删除审批人映射
+  const handleDeleteRoute = (route: ApprovalRouteConfigVO) => {
+    if (
+      window.confirm(
+        `确认删除该审批人映射？\n风险等级：${RISK_LEVEL_LABEL[route.riskLevel] ?? route.riskLevel}\n业务线：${route.businessLineName ?? '默认路由'}\n审批人：${route.approverName ?? route.approverUserId}`,
+      )
+    ) {
+      deleteRouteMutation.mutate(route.configId)
+    }
+  }
+
+  // 18. 启停审批人映射
+  const handleToggleRoute = (route: ApprovalRouteConfigVO) => {
+    const next = route.enabled === 1 ? 0 : 1
+    toggleRouteMutation.mutate({ route, enabled: next })
+  }
+
+  // 19. 重置筛选
+  const handleResetRouteFilters = () => {
+    setRouteFilters({
+      current: 1,
+      pageSize: 10,
+      riskLevel: '',
+      businessLineId: '',
+      enabled: undefined,
+    })
+  }
+
+  const routeRecords = routePage?.records ?? []
+  const isRouteSubmitting = addRouteMutation.isPending || updateRouteMutation.isPending
+
+  return (
+    <div className="settings-section">
+      <div className="section-title">风控配置</div>
+
+      {/* region 审批超时阈值配置 */}
+      <div className="glass-card-static" style={{ padding: 20, marginBottom: 20 }}>
+        <div
+          className="flex items-center justify-between"
+          style={{ marginBottom: 12 }}
+        >
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>
+              审批超时阈值配置
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+              高风险 / 严重风险审批超时后任务自动终止并通知对应审批人
+            </div>
+          </div>
+        </div>
+
+        {timeoutError && (
+          <div className="alert-danger" style={{ marginBottom: 12 }}>
+            <span>{timeoutError}</span>
+          </div>
+        )}
+
+        {timeoutLoading && (
+          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>加载中…</div>
+        )}
+
+        {timeoutConfigs &&
+          timeoutConfigs.map((cfg) => {
+            const edit = timeoutEdits[cfg.riskLevel] ?? {
+              timeoutMinutes: cfg.timeoutMinutes,
+              description: cfg.description ?? '',
+              enabled: cfg.enabled,
+            }
+            return (
+              <div
+                key={cfg.riskLevel}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '120px 160px 1fr 120px auto',
+                  gap: 12,
+                  alignItems: 'center',
+                  padding: '12px 0',
+                  borderTop: '1px solid var(--border-subtle)',
+                }}
+              >
+                <span
+                  className={`badge ${RISK_LEVEL_BADGE_CLASS[cfg.riskLevel] ?? 'badge-info'}`}
+                >
+                  {RISK_LEVEL_LABEL[cfg.riskLevel] ?? cfg.riskLevel}
+                </span>
+                <div className="flex items-center gap-sm">
+                  <input
+                    type="number"
+                    className="input"
+                    style={{ width: 90 }}
+                    min={1}
+                    max={1440}
+                    value={edit.timeoutMinutes}
+                    onChange={(e) =>
+                      setTimeoutEdits((s) => ({
+                        ...s,
+                        [cfg.riskLevel]: {
+                          ...s[cfg.riskLevel],
+                          timeoutMinutes: Number(e.target.value),
+                        },
+                      }))
+                    }
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    分钟
+                  </span>
+                </div>
+                <input
+                  className="input"
+                  placeholder="描述说明"
+                  value={edit.description}
+                  onChange={(e) =>
+                    setTimeoutEdits((s) => ({
+                      ...s,
+                      [cfg.riskLevel]: {
+                        ...s[cfg.riskLevel],
+                        description: e.target.value,
+                      },
+                    }))
+                  }
+                />
+                <label className="switch" style={{ display: 'inline-flex' }}>
+                  <input
+                    type="checkbox"
+                    checked={edit.enabled === 1}
+                    onChange={(e) =>
+                      setTimeoutEdits((s) => ({
+                        ...s,
+                        [cfg.riskLevel]: {
+                          ...s[cfg.riskLevel],
+                          enabled: e.target.checked ? 1 : 0,
+                        },
+                      }))
+                    }
+                  />
+                  <span className="switch-slider"></span>
+                  <span style={{ marginLeft: 8, fontSize: 12 }}>
+                    {edit.enabled === 1 ? '启用' : '禁用'}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => handleSaveTimeout(cfg.riskLevel)}
+                  disabled={timeoutSavingLevel === cfg.riskLevel}
+                >
+                  {timeoutSavingLevel === cfg.riskLevel ? '保存中…' : '保存'}
+                </button>
+              </div>
+            )
+          })}
+      </div>
+      {/* endregion */}
+
+      {/* region 审批人映射配置 */}
+      <div className="settings-section-header">
+        <div className="section-title" style={{ fontSize: 15 }}>
+          审批人映射配置
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={handleAddRoute}>
+          <svg
+            className="icon-sm"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          新增映射
+        </button>
+      </div>
+
+      {routeError && (
+        <div className="alert-danger" style={{ marginBottom: 12 }}>
+          <span>加载审批人映射失败：{routeError.message}</span>
+        </div>
+      )}
+
+      {/* 筛选栏 */}
+      <div className="filter-bar" style={{ marginBottom: 'var(--space-md)' }}>
+        <div
+          className="flex gap-sm"
+          style={{ flexWrap: 'wrap', alignItems: 'center' }}
+        >
+          <select
+            className="select"
+            style={{ width: 140 }}
+            value={routeFilters.riskLevel ?? ''}
+            onChange={(e) =>
+              setRouteFilters((f) => ({
+                ...f,
+                riskLevel: e.target.value || undefined,
+                current: 1,
+              }))
+            }
+          >
+            <option value="">全部风险等级</option>
+            <option value="high">高风险</option>
+            <option value="critical">严重风险</option>
+          </select>
+          <select
+            className="select"
+            style={{ width: 160 }}
+            value={routeFilters.businessLineId ?? ''}
+            onChange={(e) =>
+              setRouteFilters((f) => ({
+                ...f,
+                businessLineId: e.target.value || undefined,
+                current: 1,
+              }))
+            }
+          >
+            <option value="">全部业务线</option>
+            {(businessLines ?? []).map((bl) => (
+              <option key={bl.businessLineId} value={bl.businessLineId}>
+                {bl.businessLineName}
+              </option>
+            ))}
+          </select>
+          <select
+            className="select"
+            style={{ width: 130 }}
+            value={
+              routeFilters.enabled === undefined ? '' : String(routeFilters.enabled)
+            }
+            onChange={(e) =>
+              setRouteFilters((f) => ({
+                ...f,
+                enabled:
+                  e.target.value === '' ? undefined : Number(e.target.value),
+                current: 1,
+              }))
+            }
+          >
+            <option value="">全部状态</option>
+            <option value="1">启用</option>
+            <option value="0">禁用</option>
+          </select>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={handleResetRouteFilters}
+          >
+            重置
+          </button>
+        </div>
+      </div>
+
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>风险等级</th>
+              <th>业务线</th>
+              <th>审批人</th>
+              <th>说明</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {routeLoading && (
+              <tr>
+                <td
+                  colSpan={6}
+                  style={{ textAlign: 'center', color: 'var(--text-muted)' }}
+                >
+                  加载中…
+                </td>
+              </tr>
+            )}
+            {!routeLoading && routeRecords.length === 0 && (
+              <tr>
+                <td
+                  colSpan={6}
+                  style={{ textAlign: 'center', color: 'var(--text-muted)' }}
+                >
+                  暂无审批人映射数据
+                </td>
+              </tr>
+            )}
+            {routeRecords.map((route) => (
+              <tr key={route.configId}>
+                <td>
+                  <span
+                    className={`badge ${RISK_LEVEL_BADGE_CLASS[route.riskLevel] ?? 'badge-info'}`}
+                  >
+                    {RISK_LEVEL_LABEL[route.riskLevel] ?? route.riskLevel}
+                  </span>
+                </td>
+                <td>{route.businessLineName ?? '默认路由'}</td>
+                <td>{route.approverName ?? route.approverUserId}</td>
+                <td>{route.description || '—'}</td>
+                <td>
+                  {route.enabled === 1 ? (
+                    <span className="badge badge-success">启用</span>
+                  ) : (
+                    <span className="badge badge-muted">已禁用</span>
+                  )}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => handleEditRoute(route)}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    style={{
+                      color:
+                        route.enabled === 1
+                          ? 'var(--accent-danger)'
+                          : 'var(--accent-success)',
+                    }}
+                    onClick={() => handleToggleRoute(route)}
+                    disabled={toggleRouteMutation.isPending}
+                  >
+                    {route.enabled === 1 ? '禁用' : '启用'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    style={{ color: 'var(--accent-danger)' }}
+                    onClick={() => handleDeleteRoute(route)}
+                    disabled={deleteRouteMutation.isPending}
+                  >
+                    删除
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 分页 */}
+      {routePage && routePage.total > 0 && (
+        <div className="pagination" style={{ marginTop: 'var(--space-md)' }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={routeFilters.current === 1}
+            onClick={() => setRouteFilters((f) => ({ ...f, current: 1 }))}
+          >
+            首页
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={routeFilters.current === 1}
+            onClick={() =>
+              setRouteFilters((f) => ({
+                ...f,
+                current: Math.max(1, (f.current ?? 1) - 1),
+              }))
+            }
+          >
+            上一页
+          </button>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            第 {routeFilters.current} / {routePage.pages} 页 · 共 {routePage.total} 条
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={routeFilters.current === routePage.pages}
+            onClick={() =>
+              setRouteFilters((f) => ({ ...f, current: (f.current ?? 1) + 1 }))
+            }
+          >
+            下一页
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={routeFilters.current === routePage.pages}
+            onClick={() =>
+              setRouteFilters((f) => ({ ...f, current: routePage.pages }))
+            }
+          >
+            末页
+          </button>
+        </div>
+      )}
+
+      {/* 新增 / 编辑审批人映射弹窗 */}
+      {routeModalOpen && (
+        <div className="modal-overlay" onClick={() => setRouteModalOpen(false)}>
+          <div
+            className="glass-card-static modal-card"
+            style={{ maxWidth: 520 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div className="modal-title">
+                {editingRoute ? '编辑审批人映射' : '新增审批人映射'}
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setRouteModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-form">
+              <div className="form-group">
+                <label className="label">
+                  风险等级<span className="required">*</span>
+                </label>
+                <select
+                  className="select"
+                  value={routeForm.riskLevel}
+                  onChange={(e) =>
+                    setRouteForm((f) => ({ ...f, riskLevel: e.target.value }))
+                  }
+                  disabled={!!editingRoute}
+                >
+                  <option value="high">高风险</option>
+                  <option value="critical">严重风险</option>
+                </select>
+                {editingRoute && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--text-muted)',
+                      marginTop: 4,
+                    }}
+                  >
+                    风险等级创建后不可修改
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
+                <label className="label">业务线</label>
+                <select
+                  className="select"
+                  value={routeForm.businessLineId}
+                  onChange={(e) =>
+                    setRouteForm((f) => ({ ...f, businessLineId: e.target.value }))
+                  }
+                  disabled={!!editingRoute}
+                >
+                  <option value="">默认路由（未命中精确匹配时回退）</option>
+                  {(businessLines ?? []).map((bl) => (
+                    <option key={bl.businessLineId} value={bl.businessLineId}>
+                      {bl.businessLineName}
+                    </option>
+                  ))}
+                </select>
+                {editingRoute && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--text-muted)',
+                      marginTop: 4,
+                    }}
+                  >
+                    业务线创建后不可修改
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
+                <label className="label">
+                  审批人<span className="required">*</span>
+                </label>
+                <select
+                  className="select"
+                  value={routeForm.approverUserId}
+                  onChange={(e) =>
+                    setRouteForm((f) => ({ ...f, approverUserId: e.target.value }))
+                  }
+                >
+                  <option value="">请选择审批人</option>
+                  {approverOptions.map((u) => (
+                    <option key={u.userId} value={u.userId}>
+                      {u.realName}（{u.username}）
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="label">审批人所属部门 ID</label>
+                <input
+                  className="input"
+                  placeholder="可选，留空表示不指定"
+                  value={routeForm.departmentId}
+                  onChange={(e) =>
+                    setRouteForm((f) => ({ ...f, departmentId: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">描述说明</label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  placeholder="可选"
+                  value={routeForm.description}
+                  onChange={(e) =>
+                    setRouteForm((f) => ({ ...f, description: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">状态</label>
+                <label className="switch" style={{ display: 'inline-flex' }}>
+                  <input
+                    type="checkbox"
+                    checked={routeForm.enabled === 1}
+                    onChange={(e) =>
+                      setRouteForm((f) => ({
+                        ...f,
+                        enabled: e.target.checked ? 1 : 0,
+                      }))
+                    }
+                  />
+                  <span className="switch-slider"></span>
+                  <span style={{ marginLeft: 8, fontSize: 13 }}>
+                    {routeForm.enabled === 1 ? '启用' : '禁用'}
+                  </span>
+                </label>
+              </div>
+              {routeFormError && (
+                <div className="alert-danger" style={{ marginBottom: 12 }}>
+                  <span>{routeFormError}</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setRouteModalOpen(false)}
+                disabled={isRouteSubmitting}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleSubmitRoute}
+                disabled={isRouteSubmitting}
+              >
+                {isRouteSubmitting ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* endregion */}
+    </div>
+  )
+}
+
+// ============================================================
+// P2 SEC-1 安全策略 · 密码策略配置
+// ============================================================
+
+/** 密码策略本地编辑态（同步自后端 PasswordPolicyVO） */
+type PasswordPolicyForm = {
+  minLength: number
+  requireUppercase: number
+  requireLowercase: number
+  requireDigit: number
+  requireSpecial: number
+  specialChars: string
+  expireDays: number
+  historyCount: number
+  enabled: number
+}
+
+/** 密码策略区块（P2 SEC-1） */
+function SecurityPolicySection() {
+  const queryClient = useQueryClient()
+
+  // 1. 查询当前密码策略
+  const { data: policy, isLoading } = useQuery<
+    PasswordPolicyVO | null,
+    ApiError
+  >({
+    queryKey: ['settings', 'password-policy'],
+    queryFn: settingsApi.getPasswordPolicy,
+  })
+
+  // 2. 本地编辑态
+  const [form, setForm] = useState<PasswordPolicyForm>({
+    minLength: 8,
+    requireUppercase: 1,
+    requireLowercase: 1,
+    requireDigit: 1,
+    requireSpecial: 1,
+    specialChars: '!@#$%^&*()_+-=[]{}|;:,.<>?',
+    expireDays: 90,
+    historyCount: 5,
+    enabled: 1,
+  })
+  const [formError, setFormError] = useState('')
+
+  // 3. 同步后端数据到本地编辑态（仅首次加载时同步）
+  useEffect(() => {
+    if (policy) {
+      setForm({
+        minLength: policy.minLength,
+        requireUppercase: policy.requireUppercase,
+        requireLowercase: policy.requireLowercase,
+        requireDigit: policy.requireDigit,
+        requireSpecial: policy.requireSpecial,
+        specialChars: policy.specialChars,
+        expireDays: policy.expireDays,
+        historyCount: policy.historyCount,
+        enabled: policy.enabled,
+      })
+    }
+  }, [policy])
+
+  // 4. 更新 mutation
+  const updateMutation = useMutation<
+    PasswordPolicyVO,
+    ApiError,
+    PasswordPolicyUpdateRequest
+  >({
+    mutationFn: settingsApi.updatePasswordPolicy,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['settings', 'password-policy'],
+      })
+      setFormError('')
+    },
+    onError: (err) => setFormError(err.message),
+  })
+
+  // 5. 保存密码策略
+  const handleSave = () => {
+    setFormError('')
+    if (form.minLength < 4 || form.minLength > 64) {
+      setFormError('最小长度应在 4-64 之间')
+      return
+    }
+    if (form.expireDays < 0 || form.expireDays > 365) {
+      setFormError('过期天数应在 0-365 之间（0 表示不过期）')
+      return
+    }
+    if (form.historyCount < 0 || form.historyCount > 24) {
+      setFormError('历史密码检查数量应在 0-24 之间（0 表示不检查）')
+      return
+    }
+    if (
+      form.requireSpecial === 1 &&
+      !form.specialChars.trim()
+    ) {
+      setFormError('启用特殊字符要求时，特殊字符集合不能为空')
+      return
+    }
+    updateMutation.mutate({
+      minLength: form.minLength,
+      requireUppercase: form.requireUppercase,
+      requireLowercase: form.requireLowercase,
+      requireDigit: form.requireDigit,
+      requireSpecial: form.requireSpecial,
+      specialChars: form.specialChars,
+      expireDays: form.expireDays,
+      historyCount: form.historyCount,
+      enabled: form.enabled,
+    })
+  }
+
+  // 6. 切换策略启停
+  const handleToggleEnabled = (checked: boolean) => {
+    setForm((f) => ({ ...f, enabled: checked ? 1 : 0 }))
+  }
+
+  // 7. 切换字符要求开关
+  const handleToggleRequire = (
+    key: 'requireUppercase' | 'requireLowercase' | 'requireDigit' | 'requireSpecial',
+    checked: boolean,
+  ) => {
+    setForm((f) => ({ ...f, [key]: checked ? 1 : 0 }))
+  }
+
+  return (
+    <div className="settings-section">
+      <div className="section-title">安全策略 · 密码策略</div>
+
+      {isLoading && (
+        <div className="glass-card-static" style={{ padding: 16, color: 'var(--text-muted)' }}>
+          加载中…
+        </div>
+      )}
+
+      {!isLoading && (
+        <div className="glass-card-static password-policy-card">
+          {/* region 策略启停 */}
+          <div className="password-policy-header">
+            <div>
+              <div className="sub-block-title" style={{ marginBottom: 4 }}>
+                密码策略总开关
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                关闭后，新增 / 重置密码时不校验强度、过期与历史密码
+              </div>
+            </div>
+            <label className="switch" style={{ display: 'inline-flex' }}>
+              <input
+                type="checkbox"
+                checked={form.enabled === 1}
+                onChange={(e) => handleToggleEnabled(e.target.checked)}
+              />
+              <span className="switch-slider"></span>
+              <span style={{ marginLeft: 8, fontSize: 13 }}>
+                {form.enabled === 1 ? '启用' : '禁用'}
+              </span>
+            </label>
+          </div>
+          {/* endregion */}
+
+          {/* region 密码强度规则 */}
+          <div className="sub-block-title" style={{ marginTop: 'var(--space-md)' }}>
+            密码强度规则
+          </div>
+          <div className="password-policy-grid">
+            <div className="form-group">
+              <label className="label">最小密码长度</label>
+              <input
+                className="input"
+                type="number"
+                min={4}
+                max={64}
+                value={form.minLength}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    minLength: Number(e.target.value),
+                  }))
+                }
+                disabled={form.enabled === 0}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                范围 4-64
+              </div>
+            </div>
+            <label className="check-item">
+              <input
+                type="checkbox"
+                checked={form.requireUppercase === 1}
+                onChange={(e) =>
+                  handleToggleRequire('requireUppercase', e.target.checked)
+                }
+                disabled={form.enabled === 0}
+              />
+              <div className="check-label">
+                <div>必须包含大写字母</div>
+                <div className="check-desc">A-Z</div>
+              </div>
+            </label>
+            <label className="check-item">
+              <input
+                type="checkbox"
+                checked={form.requireLowercase === 1}
+                onChange={(e) =>
+                  handleToggleRequire('requireLowercase', e.target.checked)
+                }
+                disabled={form.enabled === 0}
+              />
+              <div className="check-label">
+                <div>必须包含小写字母</div>
+                <div className="check-desc">a-z</div>
+              </div>
+            </label>
+            <label className="check-item">
+              <input
+                type="checkbox"
+                checked={form.requireDigit === 1}
+                onChange={(e) =>
+                  handleToggleRequire('requireDigit', e.target.checked)
+                }
+                disabled={form.enabled === 0}
+              />
+              <div className="check-label">
+                <div>必须包含数字</div>
+                <div className="check-desc">0-9</div>
+              </div>
+            </label>
+            <label className="check-item">
+              <input
+                type="checkbox"
+                checked={form.requireSpecial === 1}
+                onChange={(e) =>
+                  handleToggleRequire('requireSpecial', e.target.checked)
+                }
+                disabled={form.enabled === 0}
+              />
+              <div className="check-label">
+                <div>必须包含特殊字符</div>
+                <div className="check-desc">从下方字符集合中取</div>
+              </div>
+            </label>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="label">特殊字符集合</label>
+              <input
+                className="input mono"
+                value={form.specialChars}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, specialChars: e.target.value }))
+                }
+                disabled={form.enabled === 0 || form.requireSpecial === 0}
+                placeholder="!@#$%^&*()_+-=[]{}|;:,.<>?"
+              />
+            </div>
+          </div>
+          {/* endregion */}
+
+          {/* region 密码过期 & 历史密码 */}
+          <div className="sub-block-title" style={{ marginTop: 'var(--space-md)' }}>
+            密码过期与历史检查
+          </div>
+          <div className="password-policy-grid">
+            <div className="form-group">
+              <label className="label">密码过期天数</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={365}
+                value={form.expireDays}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    expireDays: Number(e.target.value),
+                  }))
+                }
+                disabled={form.enabled === 0}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                0 表示不过期；超过天数后登录时强制改密
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="label">历史密码检查数量</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={24}
+                value={form.historyCount}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    historyCount: Number(e.target.value),
+                  }))
+                }
+                disabled={form.enabled === 0}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                0 表示不检查；改密时禁止复用最近 N 次密码
+              </div>
+            </div>
+          </div>
+          {/* endregion */}
+
+          {/* region 错误提示 */}
+          {formError && (
+            <div
+              className="alert-danger"
+              style={{ marginTop: 'var(--space-md)' }}
+            >
+              <span>{formError}</span>
+            </div>
+          )}
+          {updateMutation.isError && !formError && (
+            <div
+              className="alert-danger"
+              style={{ marginTop: 'var(--space-md)' }}
+            >
+              <span>保存失败：{updateMutation.error?.message}</span>
+            </div>
+          )}
+          {/* endregion */}
+
+          {/* region 底部保存栏 */}
+          <div className="notification-config-footer">
+            <div className="notification-config-footer-hint">
+              {policy?.updateTime
+                ? `最后保存于 ${dayjs(policy.updateTime).format('YYYY-MM-DD HH:mm:ss')}`
+                : '尚未保存'}
+            </div>
+            <div className="flex gap-sm">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => policy && setForm({
+                  minLength: policy.minLength,
+                  requireUppercase: policy.requireUppercase,
+                  requireLowercase: policy.requireLowercase,
+                  requireDigit: policy.requireDigit,
+                  requireSpecial: policy.requireSpecial,
+                  specialChars: policy.specialChars,
+                  expireDays: policy.expireDays,
+                  historyCount: policy.historyCount,
+                  enabled: policy.enabled,
+                })}
+                disabled={updateMutation.isPending}
+              >
+                重置
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleSave}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? '保存中…' : '保存配置'}
+              </button>
+            </div>
+          </div>
+          {/* endregion */}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// P2 SEC-2 安全策略 · 登录安全策略
+// ============================================================
+
+/** 登录策略本地编辑态（同步自后端 LoginPolicyVO） */
+type LoginPolicyForm = {
+  maxLoginAttempts: number
+  lockMinutes: number
+  ipWhitelist: string
+  ipBlacklist: string
+  allowMultiLogin: number
+  sessionTimeoutMinutes: number
+  enabled: number
+}
+
+/** 登录安全策略区块（P2 SEC-2） */
+function LoginPolicySection() {
+  const queryClient = useQueryClient()
+
+  // 1. 查询当前登录策略
+  const { data: policy, isLoading } = useQuery<
+    LoginPolicyVO | null,
+    ApiError
+  >({
+    queryKey: ['settings', 'login-policy'],
+    queryFn: settingsApi.getLoginPolicy,
+  })
+
+  // 2. 本地编辑态
+  const [form, setForm] = useState<LoginPolicyForm>({
+    maxLoginAttempts: 5,
+    lockMinutes: 30,
+    ipWhitelist: '',
+    ipBlacklist: '',
+    allowMultiLogin: 0,
+    sessionTimeoutMinutes: 30,
+    enabled: 1,
+  })
+  const [formError, setFormError] = useState('')
+
+  // 3. 同步后端数据到本地编辑态（仅首次加载时同步）
+  useEffect(() => {
+    if (policy) {
+      setForm({
+        maxLoginAttempts: policy.maxLoginAttempts,
+        lockMinutes: policy.lockMinutes,
+        ipWhitelist: policy.ipWhitelist ?? '',
+        ipBlacklist: policy.ipBlacklist ?? '',
+        allowMultiLogin: policy.allowMultiLogin,
+        sessionTimeoutMinutes: policy.sessionTimeoutMinutes,
+        enabled: policy.enabled,
+      })
+    }
+  }, [policy])
+
+  // 4. 更新 mutation
+  const updateMutation = useMutation<
+    LoginPolicyVO,
+    ApiError,
+    LoginPolicyUpdateRequest
+  >({
+    mutationFn: settingsApi.updateLoginPolicy,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['settings', 'login-policy'],
+      })
+      setFormError('')
+    },
+    onError: (err) => setFormError(err.message),
+  })
+
+  // 5. 保存登录策略
+  const handleSave = () => {
+    setFormError('')
+    if (form.maxLoginAttempts < 1 || form.maxLoginAttempts > 20) {
+      setFormError('最大登录失败次数应在 1-20 之间')
+      return
+    }
+    if (form.lockMinutes < 1 || form.lockMinutes > 1440) {
+      setFormError('账号锁定时长应在 1-1440 分钟之间')
+      return
+    }
+    if (
+      form.sessionTimeoutMinutes < 1 ||
+      form.sessionTimeoutMinutes > 1440
+    ) {
+      setFormError('会话空闲超时应在 1-1440 分钟之间')
+      return
+    }
+    updateMutation.mutate({
+      maxLoginAttempts: form.maxLoginAttempts,
+      lockMinutes: form.lockMinutes,
+      ipWhitelist: form.ipWhitelist.trim() || undefined,
+      ipBlacklist: form.ipBlacklist.trim() || undefined,
+      allowMultiLogin: form.allowMultiLogin,
+      sessionTimeoutMinutes: form.sessionTimeoutMinutes,
+      enabled: form.enabled,
+    })
+  }
+
+  return (
+    <div className="settings-section">
+      <div className="section-title">安全策略 · 登录安全</div>
+
+      {isLoading && (
+        <div className="glass-card-static" style={{ padding: 16, color: 'var(--text-muted)' }}>
+          加载中…
+        </div>
+      )}
+
+      {!isLoading && (
+        <div className="glass-card-static login-policy-card">
+          {/* region 策略启停 */}
+          <div className="password-policy-header">
+            <div>
+              <div className="sub-block-title" style={{ marginBottom: 4 }}>
+                登录策略总开关
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                关闭后，账号锁定 / IP 限制 / 并发登录限制均不生效
+              </div>
+            </div>
+            <label className="switch" style={{ display: 'inline-flex' }}>
+              <input
+                type="checkbox"
+                checked={form.enabled === 1}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, enabled: e.target.checked ? 1 : 0 }))
+                }
+              />
+              <span className="switch-slider"></span>
+              <span style={{ marginLeft: 8, fontSize: 13 }}>
+                {form.enabled === 1 ? '启用' : '禁用'}
+              </span>
+            </label>
+          </div>
+          {/* endregion */}
+
+          {/* region 账号锁定规则 */}
+          <div className="sub-block-title" style={{ marginTop: 'var(--space-md)' }}>
+            账号锁定规则
+          </div>
+          <div className="password-policy-grid">
+            <div className="form-group">
+              <label className="label">最大连续登录失败次数</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={20}
+                value={form.maxLoginAttempts}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    maxLoginAttempts: Number(e.target.value),
+                  }))
+                }
+                disabled={form.enabled === 0}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                范围 1-20；达到阈值后自动锁定账号
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="label">账号锁定时长（分钟）</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={1440}
+                value={form.lockMinutes}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    lockMinutes: Number(e.target.value),
+                  }))
+                }
+                disabled={form.enabled === 0}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                范围 1-1440；到期后自动解锁
+              </div>
+            </div>
+          </div>
+          {/* endregion */}
+
+          {/* region IP 限制 */}
+          <div className="sub-block-title" style={{ marginTop: 'var(--space-md)' }}>
+            IP 白 / 黑名单
+          </div>
+          <div className="password-policy-grid">
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="label">IP 白名单</label>
+              <input
+                className="input mono"
+                value={form.ipWhitelist}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, ipWhitelist: e.target.value }))
+                }
+                disabled={form.enabled === 0}
+                placeholder="192.168.1.1,10.0.0.0/24（逗号分隔，留空表示不限制）"
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                配置后只有白名单内 IP 可登录；同时配置时白名单优先
+              </div>
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="label">IP 黑名单</label>
+              <input
+                className="input mono"
+                value={form.ipBlacklist}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, ipBlacklist: e.target.value }))
+                }
+                disabled={form.enabled === 0}
+                placeholder="1.2.3.4,5.6.7.8（逗号分隔，命中即拒绝）"
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                黑名单内的 IP 一律拒绝登录
+              </div>
+            </div>
+          </div>
+          {/* endregion */}
+
+          {/* region 会话策略 */}
+          <div className="sub-block-title" style={{ marginTop: 'var(--space-md)' }}>
+            会话与并发登录
+          </div>
+          <div className="password-policy-grid">
+            <div className="form-group">
+              <label className="label">会话空闲超时（分钟）</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={1440}
+                value={form.sessionTimeoutMinutes}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    sessionTimeoutMinutes: Number(e.target.value),
+                  }))
+                }
+                disabled={form.enabled === 0}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                范围 1-1440；超过未操作自动下线（P2 SEC-3 会话管理使用）
+              </div>
+            </div>
+            <label className="check-item">
+              <input
+                type="checkbox"
+                checked={form.allowMultiLogin === 1}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    allowMultiLogin: e.target.checked ? 1 : 0,
+                  }))
+                }
+                disabled={form.enabled === 0}
+              />
+              <div className="check-label">
+                <div>允许多端并发登录</div>
+                <div className="check-desc">
+                  关闭后，新登录会踢掉同账号旧会话（P2 SEC-3 会话管理使用）
+                </div>
+              </div>
+            </label>
+          </div>
+          {/* endregion */}
+
+          {/* region 错误提示 */}
+          {formError && (
+            <div
+              className="alert-danger"
+              style={{ marginTop: 'var(--space-md)' }}
+            >
+              <span>{formError}</span>
+            </div>
+          )}
+          {updateMutation.isError && !formError && (
+            <div
+              className="alert-danger"
+              style={{ marginTop: 'var(--space-md)' }}
+            >
+              <span>保存失败：{updateMutation.error?.message}</span>
+            </div>
+          )}
+          {/* endregion */}
+
+          {/* region 底部保存栏 */}
+          <div className="notification-config-footer">
+            <div className="notification-config-footer-hint">
+              {policy?.updateTime
+                ? `最后保存于 ${dayjs(policy.updateTime).format('YYYY-MM-DD HH:mm:ss')}`
+                : '尚未保存'}
+            </div>
+            <div className="flex gap-sm">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => policy && setForm({
+                  maxLoginAttempts: policy.maxLoginAttempts,
+                  lockMinutes: policy.lockMinutes,
+                  ipWhitelist: policy.ipWhitelist ?? '',
+                  ipBlacklist: policy.ipBlacklist ?? '',
+                  allowMultiLogin: policy.allowMultiLogin,
+                  sessionTimeoutMinutes: policy.sessionTimeoutMinutes,
+                  enabled: policy.enabled,
+                })}
+                disabled={updateMutation.isPending}
+              >
+                重置
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleSave}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? '保存中…' : '保存配置'}
+              </button>
+            </div>
+          </div>
+          {/* endregion */}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// 在线会话管理区块（P2 SEC-3，查询 + 踢人下线）
+// ============================================================
+
+/** User-Agent → 设备类型简短标签（用于表格展示） */
+function parseDevice(ua: string | undefined): string {
+  if (!ua) return '未知设备'
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS'
+  if (/Android/i.test(ua)) return 'Android'
+  if (/Macintosh|Mac OS X/i.test(ua)) return 'macOS'
+  if (/Windows/i.test(ua)) return 'Windows'
+  if (/Linux/i.test(ua)) return 'Linux'
+  return '其他'
+}
+
+/** User-Agent → 浏览器简短标签 */
+function parseBrowser(ua: string | undefined): string {
+  if (!ua) return '未知'
+  if (/Edg\//i.test(ua)) return 'Edge'
+  if (/Chrome\//i.test(ua) && !/Chromium\//i.test(ua)) return 'Chrome'
+  if (/Chromium\//i.test(ua)) return 'Chromium'
+  if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) return 'Safari'
+  if (/Firefox\//i.test(ua)) return 'Firefox'
+  return '其他'
+}
+
+/** 在线会话管理区块（P2 SEC-3） */
+function SessionManagementSection() {
+  const queryClient = useQueryClient()
+
+  // 1. 查询参数（含分页 + 筛选）
+  const [query, setQuery] = useState<SessionQueryRequest>({
+    current: 1,
+    pageSize: 10,
+    username: '',
+    userId: '',
+  })
+
+  // 2. 查询在线会话列表
+  const { data, isLoading } = useQuery<
+    IPage<SessionVO>,
+    ApiError
+  >({
+    queryKey: ['settings', 'sessions', query],
+    queryFn: () => settingsApi.listSessions(query),
+  })
+
+  // 3. 踢人 mutation
+  const killMutation = useMutation<boolean, ApiError, string>({
+    mutationFn: settingsApi.killSession,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['settings', 'sessions'],
+      })
+    },
+  })
+
+  // 4. 踢人确认
+  const handleKill = (sessionId: string, username: string) => {
+    if (!window.confirm(`确认将会话 ${username}（${sessionId.slice(0, 8)}…）强制下线？`)) {
+      return
+    }
+    killMutation.mutate(sessionId)
+  }
+
+  // 5. 切换页码
+  const handlePageChange = (newCurrent: number) => {
+    setQuery((prev) => ({ ...prev, current: newCurrent }))
+  }
+
+  // 6. 应用筛选
+  const handleApplyFilter = () => {
+    setQuery((prev) => ({ ...prev, current: 1 }))
+  }
+
+  // 7. 重置筛选
+  const handleResetFilter = () => {
+    setQuery({ current: 1, pageSize: 10, username: '', userId: '' })
+  }
+
+  const sessions = data?.records ?? []
+  const total = data?.total ?? 0
+  const current = data?.current ?? query.current ?? 1
+  const pageSize = data?.size ?? query.pageSize ?? 10
+  const totalPages = data?.pages ?? (Math.ceil(total / pageSize) || 1)
+
+  return (
+    <div className="settings-section">
+      <div className="section-title">安全策略 · 在线会话</div>
+
+      {isLoading && (
+        <div className="glass-card-static" style={{ padding: 16, color: 'var(--text-muted)' }}>
+          加载中…
+        </div>
+      )}
+
+      {!isLoading && (
+        <div className="glass-card-static session-management-card">
+          {/* region 筛选栏 */}
+          <div className="session-filter-bar">
+            <div className="session-filter-item">
+              <label>用户名</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="模糊匹配"
+                value={query.username ?? ''}
+                onChange={(e) =>
+                  setQuery((prev) => ({ ...prev, username: e.target.value }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleApplyFilter()
+                }}
+              />
+            </div>
+            <div className="session-filter-item">
+              <label>用户 ID</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="精确匹配"
+                value={query.userId ?? ''}
+                onChange={(e) =>
+                  setQuery((prev) => ({ ...prev, userId: e.target.value }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleApplyFilter()
+                }}
+              />
+            </div>
+            <div className="flex gap-sm">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={handleResetFilter}
+              >
+                重置
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleApplyFilter}
+              >
+                查询
+              </button>
+            </div>
+            <div className="session-count-badge">
+              在线 {total} 个会话
+            </div>
+          </div>
+          {/* endregion */}
+
+          {/* region 会话表格 */}
+          <div className="session-table-wrapper">
+            <table className="session-table">
+              <thead>
+                <tr>
+                  <th>用户名</th>
+                  <th>用户 ID</th>
+                  <th>登录 IP</th>
+                  <th>设备 / 浏览器</th>
+                  <th>登录时间</th>
+                  <th>最后访问</th>
+                  <th>过期时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="session-empty-row">
+                      暂无在线会话
+                    </td>
+                  </tr>
+                )}
+                {sessions.map((s) => {
+                  const isExpired =
+                    new Date(s.expiresAt).getTime() < Date.now()
+                  return (
+                    <tr key={s.sessionId}>
+                      <td className="session-username-cell">{s.username}</td>
+                      <td className="session-userid-cell">{s.userId}</td>
+                      <td>{s.loginIp ?? '-'}</td>
+                      <td>
+                        <span className="session-device-badge">
+                          {parseDevice(s.userAgent)}
+                        </span>
+                        <span className="session-browser-text">
+                          {parseBrowser(s.userAgent)}
+                        </span>
+                      </td>
+                      <td>{dayjs(s.loginTime).format('YYYY-MM-DD HH:mm:ss')}</td>
+                      <td>{dayjs(s.lastAccessTime).format('YYYY-MM-DD HH:mm:ss')}</td>
+                      <td>
+                        <span
+                          className={`session-expires-text ${
+                            isExpired ? 'expired' : ''
+                          }`}
+                        >
+                          {dayjs(s.expiresAt).format('HH:mm:ss')}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm"
+                          onClick={() => handleKill(s.sessionId, s.username)}
+                          disabled={killMutation.isPending}
+                        >
+                          踢下线
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {/* endregion */}
+
+          {/* region 分页 */}
+          {totalPages > 1 && (
+            <div className="session-pagination">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => handlePageChange(Math.max(1, current - 1))}
+                disabled={current <= 1}
+              >
+                上一页
+              </button>
+              <span className="session-pagination-info">
+                第 {current} / {totalPages} 页（共 {total} 条）
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => handlePageChange(Math.min(totalPages, current + 1))}
+                disabled={current >= totalPages}
+              >
+                下一页
+              </button>
+            </div>
+          )}
+          {/* endregion */}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
 // 占位区块
 // ============================================================
 
@@ -2253,6 +5096,131 @@ function PlaceholderSection({ title, desc }: { title: string; desc: string }) {
         </div>
         <div className="settings-placeholder-title">敬请期待</div>
         <div className="settings-placeholder-desc">{desc}</div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// 系统健康检查区块（P2 OPS-1，一键检测 DB / Redis / Python AI / MinIO）
+// ============================================================
+
+/** 健康状态 → 状态徽章 CSS class */
+function healthStatusClass(status: string | undefined): string {
+  if (status === 'UP') return 'health-up'
+  if (status === 'DOWN') return 'health-down'
+  return 'health-unknown'
+}
+
+/** 健康状态 → 中文展示 */
+function healthStatusText(status: string | undefined): string {
+  if (status === 'UP') return '正常'
+  if (status === 'DOWN') return '异常'
+  if (status === 'DEGRADED') return '降级'
+  return '未知'
+}
+
+/** 整体状态 → CSS class */
+function overallStatusClass(status: string | undefined): string {
+  if (status === 'UP') return 'health-overall-up'
+  if (status === 'DEGRADED') return 'health-overall-degraded'
+  if (status === 'DOWN') return 'health-overall-down'
+  return 'health-overall-unknown'
+}
+
+/** 系统健康检查区块（P2 OPS-1） */
+function SystemHealthSection() {
+  // 1. 查询状态（enabled: false 不自动查询，手动触发）
+  const { data, isLoading, refetch, isFetching } = useQuery<
+    SystemHealthVO,
+    ApiError
+  >({
+    queryKey: ['settings', 'system-health'],
+    queryFn: settingsApi.checkSystemHealth,
+    enabled: false,
+  })
+
+  // 2. 一键检测
+  const handleCheck = () => {
+    refetch()
+  }
+
+  // 3. 组件列表
+  const components = data?.components ?? []
+  const hasResult = !!data
+
+  return (
+    <div className="settings-section">
+      <div className="section-title">安全策略 · 系统健康</div>
+
+      <div className="glass-card-static system-health-card">
+        {/* region 操作栏 */}
+        <div className="system-health-toolbar">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleCheck}
+            disabled={isFetching}
+          >
+            {isFetching ? '检测中…' : '一键检测'}
+          </button>
+          {hasResult && (
+            <>
+              <div
+                className={`system-health-overall ${overallStatusClass(data?.overallStatus)}`}
+              >
+                整体状态：{healthStatusText(data?.overallStatus)}
+              </div>
+              <div className="system-health-meta">
+                检查时间：
+                {dayjs(data?.checkedAt).format('YYYY-MM-DD HH:mm:ss')}
+                · 耗时 {data?.durationMs}ms
+              </div>
+            </>
+          )}
+        </div>
+        {/* endregion */}
+
+        {/* region 结果展示 */}
+        {!hasResult && !isLoading && (
+          <div className="system-health-placeholder">
+            点击「一键检测」检查 DB / Redis / Python AI / MinIO 连通性
+          </div>
+        )}
+
+        {hasResult && (
+          <div className="system-health-grid">
+            {components.map((c) => (
+              <div key={c.name} className="system-health-item">
+                <div className="system-health-item-header">
+                  <span className="system-health-item-name">{c.displayName}</span>
+                  <span
+                    className={`system-health-item-status ${healthStatusClass(c.status)}`}
+                  >
+                    {healthStatusText(c.status)}
+                  </span>
+                </div>
+                <div className="system-health-item-detail">
+                  {c.status === 'UP' ? (
+                    <>
+                      <span className="system-health-item-latency">
+                        {c.latencyMs}ms
+                      </span>
+                      {c.detail && (
+                        <span className="system-health-item-info">{c.detail}</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="system-health-item-error">
+                      {c.errorMessage}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* endregion */}
       </div>
     </div>
   )

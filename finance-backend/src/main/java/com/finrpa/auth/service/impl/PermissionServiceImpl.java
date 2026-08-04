@@ -227,6 +227,18 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     /**
+     * 判断用户是否为超级管理员（super_admin）
+     *
+     * @param userId 用户 ID
+     * @return 是否为超级管理员
+     */
+    @Override
+    public boolean isSuperAdmin(String userId) {
+        List<String> roleCodes = getUserRoles(userId);
+        return roleCodes.contains("super_admin");
+    }
+
+    /**
      * 获取用户关联的业务线 ID 集合（M7.6 三维度 RBAC）
      *
      * <p>从 sys_user_role 关联中提取该用户所有非 NULL 的 business_line_id。

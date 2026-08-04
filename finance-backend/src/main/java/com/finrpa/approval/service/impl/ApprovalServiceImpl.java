@@ -15,8 +15,10 @@ import com.finrpa.approval.entity.ApprovalRequestEO;
 import com.finrpa.approval.enums.ApprovalStatusEnum;
 import com.finrpa.approval.mapper.ApprovalRequestMapper;
 import com.finrpa.approval.service.ApprovalPubSubService;
+import com.finrpa.approval.service.ApprovalRouteConfigService;
 import com.finrpa.approval.service.ApprovalRouteService;
 import com.finrpa.approval.service.ApprovalService;
+import com.finrpa.approval.service.ApprovalTimeoutConfigService;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
@@ -81,24 +83,34 @@ public class ApprovalServiceImpl implements ApprovalService {
     @Resource
     private UserMapper userMapper;
 
+    /** 审批超时阈值配置服务（P1 RSK-1：替代写死的常量超时阈值） */
+    @Resource
+    private ApprovalTimeoutConfigService approvalTimeoutConfigService;
+
+    /** 审批人映射配置服务（P1 RSK-3：按风险等级 × 业务线路由审批人） */
+    @Resource
+    private ApprovalRouteConfigService approvalRouteConfigService;
+
     // region 创建审批
 
     /**
      * 创建审批请求
      *
-     * @param taskId        任务 ID
-     * @param orgId         组织 ID
-     * @param workflowId    工作流模板 ID
-     * @param userId        触发用户 ID
-     * @param riskLevel     风险等级（high / critical）
-     * @param riskReasoning 风险判断理由
-     * @param requestPayload 请求负载 JSON
+     * @param taskId          任务 ID
+     * @param orgId           组织 ID
+     * @param workflowId      工作流模板 ID
+     * @param userId          触发用户 ID
+     * @param riskLevel       风险等级（high / critical）
+     * @param businessLineId  业务线业务 ID（可空，用于按业务线路由审批人）
+     * @param riskReasoning   风险判断理由
+     * @param requestPayload  请求负载 JSON
      * @return 审批请求实体
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ApprovalRequestEO createApproval(Long taskId, Long orgId, Long workflowId, Long userId,
-                                             String riskLevel, String riskReasoning, String requestPayload) {
+                                             String riskLevel, Long businessLineId,
+                                             String riskReasoning, String requestPayload) {
         // 1. 路由判定
         ApprovalRouteEnum route = approvalRouteService.routeByRiskLevel(riskLevel);
         ThrowUtils.throwIf(!ApprovalRouteEnum.needsHumanApproval(route.getValue()),
@@ -115,7 +127,7 @@ public class ApprovalServiceImpl implements ApprovalService {
         approval.setStatus(ApprovalConstant.APPROVAL_STATUS_PENDING);
         approval.setRiskReasoning(riskReasoning);
         approval.setRequestPayload(requestPayload);
-        // 按风险等级设置超时时间：high=30min / critical=60min（M6.4）
+        // 按风险等级读取超时配置（P1 RSK-1：从配置表读取，回退到常量默认值）
         long timeoutMinutes = getTimeoutMinutesByRiskLevel(riskLevel);
         approval.setTimeoutMinutes((int) timeoutMinutes);
 
@@ -123,15 +135,27 @@ public class ApprovalServiceImpl implements ApprovalService {
         long timeoutMs = timeoutMinutes * 60 * 1000;
         approval.setTimeoutAt(new Timestamp(Instant.now().toEpochMilli() + timeoutMs));
 
-        // 3. 持久化
+        // 3. 按风险等级 × 业务线路由审批人（P1 RSK-3）
+        // 精确匹配 → 默认路由 fallback → 仍找不到时 approver_id 留空（审批中心手动认领）
+        Long approverId = approvalRouteConfigService.getApproverUserId(orgId, riskLevel, businessLineId);
+        approval.setApproverId(approverId);
+        if (approverId != null) {
+            log.info("审批单路由到指定审批人: approverId={}, riskLevel={}, businessLineId={}",
+                    approverId, riskLevel, businessLineId);
+        } else {
+            log.warn("未找到匹配的审批人映射配置，审批单待手动认领: taskId={}, riskLevel={}, businessLineId={}",
+                    taskId, riskLevel, businessLineId);
+        }
+
+        // 4. 持久化
         approvalRequestMapper.insert(approval);
         log.info("审批单已创建: approvalId={}, taskId={}, riskLevel={}, route={}, timeoutAt={}",
                 approval.getApprovalId(), taskId, riskLevel, route.getValue(), approval.getTimeoutAt());
 
-        // 4. 发布 Pub/Sub 通知（新审批单）
+        // 5. 发布 Pub/Sub 通知（新审批单）
         approvalPubSubService.publishRequest(approval);
 
-        // 5. 推送通知（M6.6 APPROVAL_PENDING：企微 → 钉钉 Fallback → 重试队列）
+        // 6. 推送通知（M6.6 APPROVAL_PENDING：企微 → 钉钉 Fallback → 重试队列）
         notifyApprovalPending(approval);
 
         return approval;
@@ -501,20 +525,14 @@ public class ApprovalServiceImpl implements ApprovalService {
     /**
      * 根据风险等级获取审批超时时间（分钟）
      *
-     * <p>M6.4 超时阈值：high=30min（部门审批）/ critical=60min（合规审计部审批）。
-     * 其他风险等级使用默认值 30 分钟（理论上不会进入审批流程）。</p>
+     * <p>P1 RSK-1 起改为读取 {@link ApprovalTimeoutConfigService#getTimeoutMinutesByRiskLevel(String)}
+     * 配置表。配置缺失或被禁用时，回退到 {@link ApprovalConstant} 默认值：high=30 / critical=60 / 其他=30。</p>
      *
      * @param riskLevel 风险等级
      * @return 超时时间（分钟）
      */
     private long getTimeoutMinutesByRiskLevel(String riskLevel) {
-        if ("critical".equalsIgnoreCase(riskLevel)) {
-            return ApprovalConstant.CRITICAL_APPROVAL_TIMEOUT_MINUTES;
-        }
-        if ("high".equalsIgnoreCase(riskLevel)) {
-            return ApprovalConstant.HIGH_APPROVAL_TIMEOUT_MINUTES;
-        }
-        return ApprovalConstant.DEFAULT_APPROVAL_TIMEOUT_MINUTES;
+        return approvalTimeoutConfigService.getTimeoutMinutesByRiskLevel(riskLevel);
     }
 
     /**

@@ -27,4 +27,33 @@ public interface UserRoleMapper extends BaseMapper<UserRoleEO> {
      */
     @Select("SELECT * FROM finrpa.sys_user_role WHERE user_id = #{userId} ORDER BY id ASC")
     List<UserRoleEO> selectByUserId(@Param("userId") Long userId);
+
+    /**
+     * 根据用户业务 ID 物理删除其所有角色关联（用于全量替换语义）
+     *
+     * <p>sys_user_role 表无逻辑删除字段，分配角色时采用"先删后插"策略保证原子性。</p>
+     *
+     * @param userId 用户业务 ID
+     * @return 删除行数
+     */
+    @org.apache.ibatis.annotations.Delete(
+            "DELETE FROM finrpa.sys_user_role WHERE user_id = #{userId}"
+    )
+    int deleteByUserId(@Param("userId") Long userId);
+
+    /**
+     * 批量插入用户-角色关联（用于全量替换语义）
+     *
+     * @param relations 用户-角色关联列表
+     * @return 插入行数
+     */
+    @org.apache.ibatis.annotations.Insert({
+            "<script>",
+            "INSERT INTO finrpa.sys_user_role (user_id, role_id, department_id, business_line_id) VALUES",
+            "<foreach item='item' collection='relations' separator=','>",
+            "(#{item.userId}, #{item.roleId}, #{item.departmentId}, #{item.businessLineId})",
+            "</foreach>",
+            "</script>"
+    })
+    int insertBatch(@Param("relations") List<UserRoleEO> relations);
 }

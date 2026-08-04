@@ -67,6 +67,10 @@ public class UserEO {
     @TableField("deleted")
     private Integer deleted;
 
+    /** 密码最后修改时间（用于密码过期校验，P2 SEC-1） */
+    @TableField("pwd_changed_at")
+    private Timestamp pwdChangedAt;
+
     /** 创建时间（由数据库 DEFAULT CURRENT_TIMESTAMP 自动填充） */
     @TableField("create_time")
     private Timestamp createTime;

@@ -517,14 +517,142 @@ export function mockServerPlugin(): Plugin {
             if (pathname === '/api/tenant/business-lines' && method === 'GET') {
               return handleListBusinessLines(res)
             }
-            // 用户列表：/api/users（P4 settings 原型对齐，Mock 数据）
+            // 用户列表：/api/users（P1 USR-1，分页查询）
             if (pathname === '/api/users' && method === 'GET') {
-              return handleListUsers(res)
+              return handleListUsers(req, res)
             }
-            // 角色列表：/api/roles（P4 settings 原型对齐，Mock 数据）
+            // 新增用户：/api/users（P1 USR-1）
+            if (pathname === '/api/users' && method === 'POST') {
+              return handleAddUser(req, res)
+            }
+            // 编辑用户：/api/users（P1 USR-1，PUT 无 :id）
+            if (pathname === '/api/users' && method === 'PUT') {
+              return handleUpdateUser(req, res)
+            }
+            // 重置密码：/api/users/reset-password（P1 USR-1，必须先于 /users/:userId 匹配）
+            if (pathname === '/api/users/reset-password' && method === 'PUT') {
+              return handleResetPassword(req, res)
+            }
+            // 分配角色：/api/users/roles（P1 USR-1，必须先于 /users/:userId 匹配）
+            if (pathname === '/api/users/roles' && method === 'POST') {
+              return handleAssignUserRoles(req, res)
+            }
+            // 用户详情 / 启停 / 删除：/api/users/{userId}（P1 USR-1）
+            const userMatch = pathname.match(/^\/api\/users\/([^/]+)$/)
+            if (userMatch && method === 'GET') {
+              return handleGetUser(res, userMatch[1])
+            }
+            if (userMatch && method === 'DELETE') {
+              return handleDeleteUser(res, userMatch[1])
+            }
+            // 用户启停：/api/users/{userId}/status（P1 USR-1）
+            const userStatusMatch = pathname.match(
+              /^\/api\/users\/([^/]+)\/status$/,
+            )
+            if (userStatusMatch && method === 'PUT') {
+              return handleToggleUserStatus(req, res, userStatusMatch[1])
+            }
+
+            // 角色列表：/api/roles（P1 USR-2，分页查询）
             if (pathname === '/api/roles' && method === 'GET') {
-              return handleListRoles(res)
+              return handleListRoles(req, res)
             }
+            // 全部角色：/api/roles/all（P1 USR-2，不分页，必须先于 /roles/:roleId 匹配）
+            if (pathname === '/api/roles/all' && method === 'GET') {
+              return handleListAllRoles(res)
+            }
+            // 新增角色：/api/roles（P1 USR-2）
+            if (pathname === '/api/roles' && method === 'POST') {
+              return handleAddRole(req, res)
+            }
+            // 编辑角色：/api/roles（P1 USR-2，PUT 无 :id）
+            if (pathname === '/api/roles' && method === 'PUT') {
+              return handleUpdateRole(req, res)
+            }
+            // 角色详情 / 删除：/api/roles/{roleId}（P1 USR-2）
+            const roleMatch = pathname.match(/^\/api\/roles\/([^/]+)$/)
+            if (roleMatch && method === 'GET') {
+              return handleGetRole(res, roleMatch[1])
+            }
+            if (roleMatch && method === 'DELETE') {
+              return handleDeleteRole(res, roleMatch[1])
+            }
+            // 角色启停：/api/roles/{roleId}/status（P1 USR-2）
+            const roleStatusMatch = pathname.match(
+              /^\/api\/roles\/([^/]+)\/status$/,
+            )
+            if (roleStatusMatch && method === 'PUT') {
+              return handleToggleRoleStatus(req, res, roleStatusMatch[1])
+            }
+
+            // 审批超时配置列表：/api/approval-timeout（P1 RSK-1）
+            if (pathname === '/api/approval-timeout' && method === 'GET') {
+              return handleListApprovalTimeoutConfigs(res)
+            }
+            // 更新审批超时配置：/api/approval-timeout/{riskLevel}（P1 RSK-1）
+            const timeoutMatch = pathname.match(
+              /^\/api\/approval-timeout\/([^/]+)$/,
+            )
+            if (timeoutMatch && method === 'PUT') {
+              return handleUpdateApprovalTimeoutConfig(
+                req,
+                res,
+                timeoutMatch[1],
+              )
+            }
+
+            // 审批人映射列表：/api/approval-routes（P1 RSK-3，分页查询）
+            if (pathname === '/api/approval-routes' && method === 'GET') {
+              return handleListApprovalRouteConfigs(req, res)
+            }
+            // 新增审批人映射：/api/approval-routes（P1 RSK-3）
+            if (pathname === '/api/approval-routes' && method === 'POST') {
+              return handleAddApprovalRouteConfig(req, res)
+            }
+            // 更新 / 删除审批人映射：/api/approval-routes/{configId}（P1 RSK-3）
+            const routeMatch = pathname.match(
+              /^\/api\/approval-routes\/([^/]+)$/,
+            )
+            if (routeMatch && method === 'PUT') {
+              return handleUpdateApprovalRouteConfig(req, res, routeMatch[1])
+            }
+            if (routeMatch && method === 'DELETE') {
+              return handleDeleteApprovalRouteConfig(res, routeMatch[1])
+            }
+
+            // 密码策略查询：/api/password-policy（P2 SEC-1）
+            if (pathname === '/api/password-policy' && method === 'GET') {
+              return handleGetPasswordPolicy(res)
+            }
+            // 密码策略更新：/api/password-policy（P2 SEC-1）
+            if (pathname === '/api/password-policy' && method === 'PUT') {
+              return handleUpdatePasswordPolicy(req, res)
+            }
+
+            // 登录安全策略查询：/api/login-policy（P2 SEC-2）
+            if (pathname === '/api/login-policy' && method === 'GET') {
+              return handleGetLoginPolicy(res)
+            }
+            // 登录安全策略更新：/api/login-policy（P2 SEC-2）
+            if (pathname === '/api/login-policy' && method === 'PUT') {
+              return handleUpdateLoginPolicy(req, res)
+            }
+
+            // 在线会话列表：/api/sessions（P2 SEC-3，分页查询）
+            if (pathname === '/api/sessions' && method === 'GET') {
+              return handleListSessions(req, res)
+            }
+            // 踢人下线：/api/sessions/{sessionId}（P2 SEC-3）
+            const sessionMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/)
+            if (sessionMatch && method === 'DELETE') {
+              return handleKillSession(res, sessionMatch[1])
+            }
+
+            // 系统健康检查：/api/system-health（P2 OPS-1，一键检测）
+            if (pathname === '/api/system-health' && method === 'GET') {
+              return handleCheckSystemHealth(res)
+            }
+
             // 通知通道列表：/api/notification/channels（P4 settings 原型对齐，含 webhookUrl/enabled）
             if (pathname === '/api/notification/channels' && method === 'GET') {
               return handleListNotificationChannels(res)
@@ -3100,7 +3228,13 @@ function handleListBusinessLines(res: ServerResponse): void {
 // P4 settings 原型对齐：用户/角色/通知配置 Mock 数据
 // ============================================================
 
-/** Mock 用户列表（对齐原型 08-settings.html 用户管理表格：4 行示例） */
+/**
+ * Mock 用户列表（P1 USR-1，对齐后端 UserVO）
+ *
+ * 字段说明：
+ * - status: 0-禁用 1-启用（替代旧版 enabled 布尔）
+ * - roles: 角色编码列表（联表 sys_role.role_code）
+ */
 const MOCK_USERS = [
   {
     userId: '100001',
@@ -3108,8 +3242,9 @@ const MOCK_USERS = [
     realName: '张三',
     deptName: '对公信贷部',
     roles: ['operator'],
-    enabled: true,
+    status: 1,
     createTime: '2026-06-01T09:00:00.000Z',
+    updateTime: '2026-06-01T09:00:00.000Z',
   },
   {
     userId: '100002',
@@ -3117,8 +3252,9 @@ const MOCK_USERS = [
     realName: '李四',
     deptName: '个人金融部',
     roles: ['approver'],
-    enabled: true,
+    status: 1,
     createTime: '2026-06-05T14:30:00.000Z',
+    updateTime: '2026-06-05T14:30:00.000Z',
   },
   {
     userId: '100003',
@@ -3126,8 +3262,9 @@ const MOCK_USERS = [
     realName: '王五',
     deptName: '保险业务部',
     roles: ['viewer'],
-    enabled: true,
+    status: 1,
     createTime: '2026-06-10T10:15:00.000Z',
+    updateTime: '2026-06-10T10:15:00.000Z',
   },
   {
     userId: '100004',
@@ -3135,40 +3272,80 @@ const MOCK_USERS = [
     realName: '赵六',
     deptName: '对公信贷部',
     roles: ['operator'],
-    enabled: false,
+    status: 0,
     createTime: '2026-06-15T16:45:00.000Z',
+    updateTime: '2026-07-20T09:00:00.000Z',
   },
 ]
 
-/** Mock 角色列表（对齐原型 08-settings.html 角色管理表格：3 行示例） */
+/** 用户 ID 自增计数器（Mock 用） */
+let mockUserIdSeq = 100005
+
+/**
+ * Mock 角色列表（P1 USR-2，对齐后端 RoleVO）
+ *
+ * 字段说明：
+ * - builtIn: 内置角色标记（super_admin / org_admin / operator / approver / viewer）
+ * - permissionScope / mutualExclusion: 原型对齐字段（仅前端展示用，后端 RoleVO 不返回）
+ */
 const MOCK_ROLES = [
   {
     roleId: '200001',
     roleCode: 'operator',
     roleName: '操作员',
+    description: '任务执行 · Skill 调用 · 数据查看',
+    orgId: null,
+    isCrossOrgRead: 0,
+    isCrossOrgApprove: 0,
+    status: 1,
+    builtIn: true,
     permissionScope: '任务执行 · Skill 调用 · 数据查看',
     mutualExclusion: '不可兼任 approver',
-    builtIn: true,
     createTime: '2026-06-01T09:00:00.000Z',
+    updateTime: '2026-06-01T09:00:00.000Z',
   },
   {
     roleId: '200002',
     roleCode: 'approver',
     roleName: '审批员',
+    description: '审批处理 · 风险查看 · 审计日志',
+    orgId: null,
+    isCrossOrgRead: 0,
+    isCrossOrgApprove: 0,
+    status: 1,
+    builtIn: true,
     permissionScope: '审批处理 · 风险查看 · 审计日志',
     mutualExclusion: '不可兼任 operator',
-    builtIn: true,
     createTime: '2026-06-01T09:00:00.000Z',
+    updateTime: '2026-06-01T09:00:00.000Z',
   },
   {
     roleId: '200003',
     roleCode: 'viewer',
     roleName: '观察员',
+    description: '数据查看 · 报表导出',
+    orgId: null,
+    isCrossOrgRead: 0,
+    isCrossOrgApprove: 0,
+    status: 1,
+    builtIn: true,
     permissionScope: '数据查看 · 报表导出',
     mutualExclusion: '',
-    builtIn: true,
     createTime: '2026-06-01T09:00:00.000Z',
+    updateTime: '2026-06-01T09:00:00.000Z',
   },
+]
+
+/** 角色 ID 自增计数器（Mock 用） */
+let mockRoleIdSeq = 200004
+
+/** 内置角色编码保护列表（对齐后端 RoleConstant.BUILT_IN_ROLE_CODES） */
+const BUILT_IN_ROLE_CODES = [
+  'super_admin',
+  'org_admin',
+  'operator',
+  'approver',
+  'viewer',
 ]
 
 /**
@@ -3231,14 +3408,841 @@ const MOCK_NOTIFICATION_TEMPLATES = [
 /** 通知配置最后保存时间（Mock 内存状态，每次保存更新） */
 let notificationConfigSavedAt = '2026-07-26T06:00:00.000Z'
 
-/** GET /api/users */
-function handleListUsers(res: ServerResponse): void {
-  sendJson(res, 200, { code: 0, data: MOCK_USERS, message: 'ok' })
+// ============================================================
+// P1 USR-1 用户管理 Mock handlers（对齐 UserController）
+// ============================================================
+
+/** GET /api/users（分页查询，对齐 UserQueryRequest） */
+function handleListUsers(req: IncomingMessage, res: ServerResponse): void {
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const current = Number(url.searchParams.get('current') ?? '1')
+  const pageSize = Number(url.searchParams.get('pageSize') ?? '10')
+  const keyword = url.searchParams.get('keyword') ?? ''
+  const status = url.searchParams.get('status') ?? ''
+
+  let records = MOCK_USERS.filter((u) => {
+    if (keyword && !u.username.includes(keyword) && !u.realName.includes(keyword)) {
+      return false
+    }
+    if (status !== '' && String(u.status) !== status) return false
+    return true
+  })
+
+  const total = records.length
+  const pages = Math.ceil(total / pageSize) || 1
+  const start = (current - 1) * pageSize
+  records = records.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: { records, total, current, size: pageSize, pages },
+    message: 'ok',
+  })
 }
 
-/** GET /api/roles */
-function handleListRoles(res: ServerResponse): void {
-  sendJson(res, 200, { code: 0, data: MOCK_ROLES, message: 'ok' })
+/** GET /api/users/{userId} */
+function handleGetUser(res: ServerResponse, userId: string): void {
+  const target = MOCK_USERS.find((u) => u.userId === userId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `用户不存在: ${userId}` })
+    return
+  }
+  sendJson(res, 200, { code: 0, data: target, message: 'ok' })
+}
+
+/** POST /api/users（新增） */
+async function handleAddUser(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  const username = body.username as string
+  if (!username) {
+    sendJson(res, 200, { code: 40000, data: null, message: '用户名不能为空' })
+    return
+  }
+  if (MOCK_USERS.some((u) => u.username === username)) {
+    sendJson(res, 200, { code: 50001, data: null, message: `用户名已存在: ${username}` })
+    return
+  }
+  const now = nowIso()
+  const newUser = {
+    userId: String(mockUserIdSeq++),
+    username,
+    realName: (body.realName as string) ?? '',
+    deptName: (body.deptName as string) ?? '',
+    roles: [] as string[],
+    status: body.status !== undefined ? Number(body.status) : 1,
+    createTime: now,
+    updateTime: now,
+  }
+  MOCK_USERS.unshift(newUser)
+  sendJson(res, 200, { code: 0, data: newUser.userId, message: 'ok' })
+}
+
+/** PUT /api/users（编辑，对齐 UserUpdateRequest） */
+async function handleUpdateUser(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  const userId = body.userId as string
+  const target = MOCK_USERS.find((u) => u.userId === userId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `用户不存在: ${userId}` })
+    return
+  }
+  if (body.realName !== undefined) target.realName = body.realName as string
+  if (body.deptName !== undefined) target.deptName = body.deptName as string
+  if (body.email !== undefined) (target as { email?: string }).email = body.email as string
+  if (body.phone !== undefined) (target as { phone?: string }).phone = body.phone as string
+  if (body.status !== undefined) target.status = Number(body.status)
+  target.updateTime = nowIso()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** PUT /api/users/{userId}/status（启停） */
+async function handleToggleUserStatus(
+  req: IncomingMessage,
+  res: ServerResponse,
+  userId: string,
+): Promise<void> {
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const status = Number(url.searchParams.get('status') ?? '1')
+  const target = MOCK_USERS.find((u) => u.userId === userId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `用户不存在: ${userId}` })
+    return
+  }
+  target.status = status
+  target.updateTime = nowIso()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** PUT /api/users/reset-password */
+async function handleResetPassword(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  const userId = body.userId as string
+  const target = MOCK_USERS.find((u) => u.userId === userId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `用户不存在: ${userId}` })
+    return
+  }
+  // Mock 端不存储密码，仅返回成功
+  target.updateTime = nowIso()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** DELETE /api/users/{userId} */
+function handleDeleteUser(res: ServerResponse, userId: string): void {
+  const idx = MOCK_USERS.findIndex((u) => u.userId === userId)
+  if (idx < 0) {
+    sendJson(res, 200, { code: 40400, data: null, message: `用户不存在: ${userId}` })
+    return
+  }
+  MOCK_USERS.splice(idx, 1)
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** POST /api/users/roles（分配角色，全量替换语义） */
+async function handleAssignUserRoles(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  const userId = body.userId as string
+  const target = MOCK_USERS.find((u) => u.userId === userId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `用户不存在: ${userId}` })
+    return
+  }
+  const relations = (body.relations as Array<{ roleId: string }>) || []
+  // 1. 全量替换：根据 roleId 反查 roleCode
+  const roleCodes: string[] = []
+  for (const rel of relations) {
+    const role = MOCK_ROLES.find((r) => r.roleId === rel.roleId)
+    if (role) roleCodes.push(role.roleCode)
+  }
+  target.roles = roleCodes
+  target.updateTime = nowIso()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+// ============================================================
+// P1 USR-2 角色管理 Mock handlers（对齐 RoleController）
+// ============================================================
+
+/** GET /api/roles（分页查询，对齐 RoleQueryRequest） */
+function handleListRoles(req: IncomingMessage, res: ServerResponse): void {
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const current = Number(url.searchParams.get('current') ?? '1')
+  const pageSize = Number(url.searchParams.get('pageSize') ?? '10')
+  const keyword = url.searchParams.get('keyword') ?? ''
+  const status = url.searchParams.get('status') ?? ''
+
+  let records = MOCK_ROLES.filter((r) => {
+    if (keyword && !r.roleName.includes(keyword) && !r.roleCode.includes(keyword)) {
+      return false
+    }
+    if (status !== '' && String(r.status) !== status) return false
+    return true
+  })
+
+  const total = records.length
+  const pages = Math.ceil(total / pageSize) || 1
+  const start = (current - 1) * pageSize
+  records = records.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: { records, total, current, size: pageSize, pages },
+    message: 'ok',
+  })
+}
+
+/** GET /api/roles/all（不分页，用于分配角色下拉选项） */
+function handleListAllRoles(res: ServerResponse): void {
+  const enabledRoles = MOCK_ROLES.filter((r) => r.status === 1)
+  sendJson(res, 200, { code: 0, data: enabledRoles, message: 'ok' })
+}
+
+/** GET /api/roles/{roleId} */
+function handleGetRole(res: ServerResponse, roleId: string): void {
+  const target = MOCK_ROLES.find((r) => r.roleId === roleId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `角色不存在: ${roleId}` })
+    return
+  }
+  sendJson(res, 200, { code: 0, data: target, message: 'ok' })
+}
+
+/** POST /api/roles（新增，内置角色编码保护） */
+async function handleAddRole(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  const roleCode = body.roleCode as string
+  const roleName = body.roleName as string
+  if (!roleCode || !roleName) {
+    sendJson(res, 200, { code: 40000, data: null, message: '角色编码 / 名称不能为空' })
+    return
+  }
+  if (BUILT_IN_ROLE_CODES.includes(roleCode)) {
+    sendJson(res, 200, { code: 50001, data: null, message: `内置角色编码禁止新增: ${roleCode}` })
+    return
+  }
+  if (MOCK_ROLES.some((r) => r.roleCode === roleCode)) {
+    sendJson(res, 200, { code: 50001, data: null, message: `角色编码已存在: ${roleCode}` })
+    return
+  }
+  const now = nowIso()
+  const newRole = {
+    roleId: String(mockRoleIdSeq++),
+    roleCode,
+    roleName,
+    description: (body.description as string) ?? '',
+    orgId: (body.orgId as string) ?? null,
+    isCrossOrgRead: body.isCrossOrgRead !== undefined ? Number(body.isCrossOrgRead) : 0,
+    isCrossOrgApprove: body.isCrossOrgApprove !== undefined ? Number(body.isCrossOrgApprove) : 0,
+    status: body.status !== undefined ? Number(body.status) : 1,
+    builtIn: false,
+    permissionScope: (body.description as string) ?? '',
+    mutualExclusion: '',
+    createTime: now,
+    updateTime: now,
+  }
+  MOCK_ROLES.unshift(newRole)
+  sendJson(res, 200, { code: 0, data: newRole.roleId, message: 'ok' })
+}
+
+/** PUT /api/roles（编辑，对齐 RoleUpdateRequest） */
+async function handleUpdateRole(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  const roleId = body.roleId as string
+  const target = MOCK_ROLES.find((r) => r.roleId === roleId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `角色不存在: ${roleId}` })
+    return
+  }
+  if (body.roleName !== undefined) target.roleName = body.roleName as string
+  if (body.description !== undefined) {
+    target.description = body.description as string
+    target.permissionScope = body.description as string
+  }
+  if (body.isCrossOrgRead !== undefined) target.isCrossOrgRead = Number(body.isCrossOrgRead)
+  if (body.isCrossOrgApprove !== undefined) target.isCrossOrgApprove = Number(body.isCrossOrgApprove)
+  if (body.status !== undefined) target.status = Number(body.status)
+  target.updateTime = nowIso()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** PUT /api/roles/{roleId}/status（启停，super_admin / org_admin 禁止禁用） */
+async function handleToggleRoleStatus(
+  req: IncomingMessage,
+  res: ServerResponse,
+  roleId: string,
+): Promise<void> {
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const status = Number(url.searchParams.get('status') ?? '1')
+  const target = MOCK_ROLES.find((r) => r.roleId === roleId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `角色不存在: ${roleId}` })
+    return
+  }
+  if (status === 0 && ['super_admin', 'org_admin'].includes(target.roleCode)) {
+    sendJson(res, 200, { code: 50001, data: null, message: `内置管理员角色禁止禁用: ${target.roleCode}` })
+    return
+  }
+  target.status = status
+  target.updateTime = nowIso()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** DELETE /api/roles/{roleId}（内置角色 + 有用户关联的角色禁止删除） */
+function handleDeleteRole(res: ServerResponse, roleId: string): void {
+  const target = MOCK_ROLES.find((r) => r.roleId === roleId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `角色不存在: ${roleId}` })
+    return
+  }
+  if (target.builtIn) {
+    sendJson(res, 200, { code: 50001, data: null, message: `内置角色不可删除: ${target.roleCode}` })
+    return
+  }
+  if (MOCK_USERS.some((u) => u.roles.includes(target.roleCode))) {
+    sendJson(res, 200, { code: 50001, data: null, message: `角色已关联用户，不可删除: ${target.roleCode}` })
+    return
+  }
+  const idx = MOCK_ROLES.findIndex((r) => r.roleId === roleId)
+  MOCK_ROLES.splice(idx, 1)
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+// ============================================================
+// P1 RSK-1 审批超时阈值配置 Mock（对齐 ApprovalTimeoutConfigController）
+// ============================================================
+
+/**
+ * Mock 审批超时配置列表
+ *
+ * 字段说明：
+ * - riskLevel: high / critical（low / medium 无需审批，无超时配置）
+ * - timeoutMinutes: 超时分钟数（对齐 ApprovalConstant 默认值：high=30, critical=60）
+ */
+const MOCK_APPROVAL_TIMEOUT_CONFIGS = [
+  {
+    configId: '500001',
+    riskLevel: 'high',
+    timeoutMinutes: 30,
+    description: '高风险审批超时阈值（默认 30 分钟，超时后任务自动终止）',
+    enabled: 1,
+    createTime: '2026-06-01T08:00:00.000Z',
+    updateTime: '2026-06-01T08:00:00.000Z',
+  },
+  {
+    configId: '500002',
+    riskLevel: 'critical',
+    timeoutMinutes: 60,
+    description: '严重风险审批超时阈值（默认 60 分钟，超时后任务自动终止并通知合规）',
+    enabled: 1,
+    createTime: '2026-06-01T08:00:00.000Z',
+    updateTime: '2026-06-01T08:00:00.000Z',
+  },
+]
+
+/** GET /api/approval-timeout */
+function handleListApprovalTimeoutConfigs(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: MOCK_APPROVAL_TIMEOUT_CONFIGS,
+    message: 'ok',
+  })
+}
+
+/** PUT /api/approval-timeout/{riskLevel} */
+async function handleUpdateApprovalTimeoutConfig(
+  req: IncomingMessage,
+  res: ServerResponse,
+  riskLevel: string,
+): Promise<void> {
+  const body = await readBody(req)
+  const target = MOCK_APPROVAL_TIMEOUT_CONFIGS.find((c) => c.riskLevel === riskLevel)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `超时配置不存在: ${riskLevel}` })
+    return
+  }
+  if (body.timeoutMinutes !== undefined) {
+    const minutes = Number(body.timeoutMinutes)
+    if (minutes < 1 || minutes > 1440) {
+      sendJson(res, 200, { code: 40000, data: null, message: '超时分钟数应在 1-1440 之间' })
+      return
+    }
+    target.timeoutMinutes = minutes
+  }
+  if (body.description !== undefined) target.description = body.description as string
+  if (body.enabled !== undefined) target.enabled = Number(body.enabled)
+  target.updateTime = nowIso()
+  sendJson(res, 200, { code: 0, data: target, message: 'ok' })
+}
+
+// ============================================================
+// P1 RSK-3 审批人映射配置 Mock（对齐 ApprovalRouteConfigController）
+// ============================================================
+
+/**
+ * Mock 审批人映射列表
+ *
+ * 字段说明：
+ * - riskLevel: high / critical
+ * - businessLineId: null 表示默认路由（精确匹配未命中时回退）
+ * - approverUserId / approverName: 审批人用户 ID 与姓名
+ */
+const MOCK_APPROVAL_ROUTE_CONFIGS = [
+  {
+    configId: '600001',
+    orgId: '100',
+    riskLevel: 'high',
+    businessLineId: null,
+    businessLineName: '默认路由',
+    approverUserId: '100002',
+    approverName: '李四',
+    departmentId: null,
+    description: '高风险默认审批人（部门审批人）',
+    enabled: 1,
+    createTime: '2026-06-01T08:00:00.000Z',
+    updateTime: '2026-06-01T08:00:00.000Z',
+  },
+  {
+    configId: '600002',
+    orgId: '100',
+    riskLevel: 'critical',
+    businessLineId: null,
+    businessLineName: '默认路由',
+    approverUserId: '100003',
+    approverName: '王五',
+    departmentId: null,
+    description: '严重风险默认审批人（合规审计部）',
+    enabled: 1,
+    createTime: '2026-06-01T08:00:00.000Z',
+    updateTime: '2026-06-01T08:00:00.000Z',
+  },
+  {
+    configId: '600003',
+    orgId: '100',
+    riskLevel: 'high',
+    businessLineId: '201',
+    businessLineName: '对公信贷',
+    approverUserId: '100002',
+    approverName: '李四',
+    departmentId: '301',
+    description: '对公信贷业务线高风险审批人',
+    enabled: 1,
+    createTime: '2026-07-10T10:00:00.000Z',
+    updateTime: '2026-07-10T10:00:00.000Z',
+  },
+]
+
+/** 审批人映射 ID 自增计数器 */
+let mockApprovalRouteIdSeq = 600004
+
+/** GET /api/approval-routes（分页查询） */
+function handleListApprovalRouteConfigs(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const current = Number(url.searchParams.get('current') ?? '1')
+  const pageSize = Number(url.searchParams.get('pageSize') ?? '10')
+  const riskLevel = url.searchParams.get('riskLevel') ?? ''
+  const businessLineId = url.searchParams.get('businessLineId') ?? ''
+  const enabled = url.searchParams.get('enabled') ?? ''
+
+  let records = MOCK_APPROVAL_ROUTE_CONFIGS.filter((c) => {
+    if (riskLevel && c.riskLevel !== riskLevel) return false
+    if (businessLineId && (c.businessLineId ?? '') !== businessLineId) return false
+    if (enabled !== '' && String(c.enabled) !== enabled) return false
+    return true
+  })
+
+  const total = records.length
+  const pages = Math.ceil(total / pageSize) || 1
+  const start = (current - 1) * pageSize
+  records = records.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: { records, total, current, size: pageSize, pages },
+    message: 'ok',
+  })
+}
+
+/** POST /api/approval-routes（新增） */
+async function handleAddApprovalRouteConfig(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  const riskLevel = body.riskLevel as string
+  const approverUserId = body.approverUserId as string
+  if (!riskLevel || !approverUserId) {
+    sendJson(res, 200, { code: 40000, data: null, message: '风险等级 / 审批人不能为空' })
+    return
+  }
+  // 1. 唯一性校验：同 riskLevel + businessLineId 不能重复
+  const businessLineId = (body.businessLineId as string) ?? null
+  const duplicate = MOCK_APPROVAL_ROUTE_CONFIGS.find(
+    (c) => c.riskLevel === riskLevel && (c.businessLineId ?? null) === businessLineId,
+  )
+  if (duplicate) {
+    sendJson(res, 200, { code: 50001, data: null, message: '同风险等级 × 业务线的映射已存在' })
+    return
+  }
+  // 2. 反查审批人姓名
+  const approver = MOCK_USERS.find((u) => u.userId === approverUserId)
+  const now = nowIso()
+  const newConfig = {
+    configId: String(mockApprovalRouteIdSeq++),
+    orgId: '100',
+    riskLevel,
+    businessLineId,
+    businessLineName: businessLineId ? '自定义业务线' : '默认路由',
+    approverUserId,
+    approverName: approver?.realName ?? '',
+    departmentId: (body.departmentId as string) ?? null,
+    description: (body.description as string) ?? '',
+    enabled: body.enabled !== undefined ? Number(body.enabled) : 1,
+    createTime: now,
+    updateTime: now,
+  }
+  MOCK_APPROVAL_ROUTE_CONFIGS.unshift(newConfig)
+  sendJson(res, 200, { code: 0, data: newConfig.configId, message: 'ok' })
+}
+
+/** PUT /api/approval-routes/{configId} */
+async function handleUpdateApprovalRouteConfig(
+  req: IncomingMessage,
+  res: ServerResponse,
+  configId: string,
+): Promise<void> {
+  const body = await readBody(req)
+  const target = MOCK_APPROVAL_ROUTE_CONFIGS.find((c) => c.configId === configId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `映射配置不存在: ${configId}` })
+    return
+  }
+  if (body.approverUserId !== undefined) {
+    target.approverUserId = body.approverUserId as string
+    const approver = MOCK_USERS.find((u) => u.userId === target.approverUserId)
+    target.approverName = approver?.realName ?? ''
+  }
+  if (body.departmentId !== undefined) target.departmentId = (body.departmentId as string) ?? null
+  if (body.description !== undefined) target.description = body.description as string
+  if (body.enabled !== undefined) target.enabled = Number(body.enabled)
+  target.updateTime = nowIso()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** DELETE /api/approval-routes/{configId} */
+function handleDeleteApprovalRouteConfig(
+  res: ServerResponse,
+  configId: string,
+): void {
+  const idx = MOCK_APPROVAL_ROUTE_CONFIGS.findIndex((c) => c.configId === configId)
+  if (idx < 0) {
+    sendJson(res, 200, { code: 40400, data: null, message: `映射配置不存在: ${configId}` })
+    return
+  }
+  MOCK_APPROVAL_ROUTE_CONFIGS.splice(idx, 1)
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+// ============================================================
+// P2 SEC-1 密码策略配置 Mock
+// ============================================================
+
+/** 密码策略 Mock 数据（全局单行配置） */
+const MOCK_PASSWORD_POLICY = {
+  policyId: '1751000000000000010',
+  minLength: 8,
+  requireUppercase: 1,
+  requireLowercase: 1,
+  requireDigit: 1,
+  requireSpecial: 1,
+  specialChars: '!@#$%^&*()_+-=[]{}|;:,.<>?',
+  expireDays: 90,
+  historyCount: 5,
+  enabled: 1,
+  createTime: '2026-08-04T00:00:00.000Z',
+  updateTime: '2026-08-04T00:00:00.000Z',
+}
+
+/** GET /api/password-policy */
+function handleGetPasswordPolicy(res: ServerResponse): void {
+  sendJson(res, 200, { code: 0, data: MOCK_PASSWORD_POLICY, message: 'ok' })
+}
+
+/** PUT /api/password-policy */
+async function handleUpdatePasswordPolicy(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody(req)
+  if (body.minLength !== undefined) MOCK_PASSWORD_POLICY.minLength = body.minLength
+  if (body.requireUppercase !== undefined)
+    MOCK_PASSWORD_POLICY.requireUppercase = body.requireUppercase
+  if (body.requireLowercase !== undefined)
+    MOCK_PASSWORD_POLICY.requireLowercase = body.requireLowercase
+  if (body.requireDigit !== undefined)
+    MOCK_PASSWORD_POLICY.requireDigit = body.requireDigit
+  if (body.requireSpecial !== undefined)
+    MOCK_PASSWORD_POLICY.requireSpecial = body.requireSpecial
+  if (body.specialChars !== undefined)
+    MOCK_PASSWORD_POLICY.specialChars = body.specialChars
+  if (body.expireDays !== undefined)
+    MOCK_PASSWORD_POLICY.expireDays = body.expireDays
+  if (body.historyCount !== undefined)
+    MOCK_PASSWORD_POLICY.historyCount = body.historyCount
+  if (body.enabled !== undefined) MOCK_PASSWORD_POLICY.enabled = body.enabled
+  MOCK_PASSWORD_POLICY.updateTime = new Date().toISOString()
+  sendJson(res, 200, { code: 0, data: MOCK_PASSWORD_POLICY, message: 'ok' })
+}
+
+// ============================================================
+// P2 SEC-2 登录安全策略 Mock
+// ============================================================
+
+/** 登录安全策略 Mock 数据（全局单行配置） */
+const MOCK_LOGIN_POLICY = {
+  policyId: '1751000000000000011',
+  maxLoginAttempts: 5,
+  lockMinutes: 30,
+  ipWhitelist: '',
+  ipBlacklist: '',
+  allowMultiLogin: 0,
+  sessionTimeoutMinutes: 30,
+  enabled: 1,
+  createTime: '2026-08-04T00:00:00.000Z',
+  updateTime: '2026-08-04T00:00:00.000Z',
+}
+
+/** GET /api/login-policy */
+function handleGetLoginPolicy(res: ServerResponse): void {
+  sendJson(res, 200, { code: 0, data: MOCK_LOGIN_POLICY, message: 'ok' })
+}
+
+/** PUT /api/login-policy */
+async function handleUpdateLoginPolicy(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody(req)
+  if (body.maxLoginAttempts !== undefined)
+    MOCK_LOGIN_POLICY.maxLoginAttempts = body.maxLoginAttempts
+  if (body.lockMinutes !== undefined)
+    MOCK_LOGIN_POLICY.lockMinutes = body.lockMinutes
+  if (body.ipWhitelist !== undefined)
+    MOCK_LOGIN_POLICY.ipWhitelist = body.ipWhitelist
+  if (body.ipBlacklist !== undefined)
+    MOCK_LOGIN_POLICY.ipBlacklist = body.ipBlacklist
+  if (body.allowMultiLogin !== undefined)
+    MOCK_LOGIN_POLICY.allowMultiLogin = body.allowMultiLogin
+  if (body.sessionTimeoutMinutes !== undefined)
+    MOCK_LOGIN_POLICY.sessionTimeoutMinutes = body.sessionTimeoutMinutes
+  if (body.enabled !== undefined) MOCK_LOGIN_POLICY.enabled = body.enabled
+  MOCK_LOGIN_POLICY.updateTime = new Date().toISOString()
+  sendJson(res, 200, { code: 0, data: MOCK_LOGIN_POLICY, message: 'ok' })
+}
+
+// ============================================================
+// P2 SEC-3 在线会话管理 Mock
+// ============================================================
+
+/**
+ * Mock 在线会话列表（内存存储）
+ *
+ * 模拟 4 个在线会话：3 个真实用户 + 1 个管理员，分布在不同 IP / 设备
+ */
+interface MockSession {
+  sessionId: string
+  userId: string
+  username: string
+  loginIp: string
+  loginTime: string
+  lastAccessTime: string
+  expiresAt: string
+  userAgent: string
+}
+
+const MOCK_SESSIONS: MockSession[] = [
+  {
+    sessionId: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    userId: '100001',
+    username: 'zhangsan',
+    loginIp: '192.168.1.101',
+    loginTime: new Date(Date.now() - 30 * 60_000).toISOString(),
+    lastAccessTime: new Date(Date.now() - 2 * 60_000).toISOString(),
+    expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  },
+  {
+    sessionId: 'b2c3d4e5f60718293a4b5c6d7e8f9011',
+    userId: '100002',
+    username: 'lisi',
+    loginIp: '192.168.1.102',
+    loginTime: new Date(Date.now() - 90 * 60_000).toISOString(),
+    lastAccessTime: new Date(Date.now() - 45 * 60_000).toISOString(),
+    expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+  },
+  {
+    sessionId: 'c3d4e5f60718293a4b5c6d7e8f901122',
+    userId: '100003',
+    username: 'wangwu',
+    loginIp: '10.0.0.5',
+    loginTime: new Date(Date.now() - 5 * 60_000).toISOString(),
+    lastAccessTime: new Date(Date.now() - 30_000).toISOString(),
+    expiresAt: new Date(Date.now() + 55 * 60_000).toISOString(),
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  },
+  {
+    sessionId: 'd4e5f60718293a4b5c6d7e8f90112233',
+    userId: '100001',
+    username: 'zhangsan',
+    loginIp: '192.168.1.201',
+    loginTime: new Date(Date.now() - 120 * 60_000).toISOString(),
+    lastAccessTime: new Date(Date.now() - 60 * 60_000).toISOString(),
+    expiresAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    userAgent:
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  },
+]
+
+/**
+ * GET /api/sessions（分页查询，支持 userId / username 筛选）
+ *
+ * 查询参数：current（默认 1）、pageSize（默认 10）、userId、username
+ */
+function handleListSessions(req: IncomingMessage, res: ServerResponse): void {
+  // 1. 解析 query
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const current = Number(url.searchParams.get('current') ?? '1') || 1
+  const pageSize = Number(url.searchParams.get('pageSize') ?? '10') || 10
+  const userId = url.searchParams.get('userId') ?? ''
+  const username = url.searchParams.get('username') ?? ''
+
+  // 2. 筛选
+  let list = [...MOCK_SESSIONS]
+  if (userId) {
+    list = list.filter((s) => s.userId === userId)
+  }
+  if (username) {
+    list = list.filter((s) => s.username.includes(username))
+  }
+
+  // 3. 按 loginTime 倒序
+  list.sort(
+    (a, b) =>
+      new Date(b.loginTime).getTime() - new Date(a.loginTime).getTime(),
+  )
+
+  // 4. 分页
+  const total = list.length
+  const start = (current - 1) * pageSize
+  const records = list.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      records,
+      total,
+      size: pageSize,
+      current,
+      pages: Math.ceil(total / pageSize) || 1,
+    },
+    message: 'ok',
+  })
+}
+
+/**
+ * DELETE /api/sessions/{sessionId}（踢人下线）
+ *
+ * 从内存列表中移除会话；找不到时返回 40404 业务码
+ */
+function handleKillSession(res: ServerResponse, sessionId: string): void {
+  const idx = MOCK_SESSIONS.findIndex((s) => s.sessionId === sessionId)
+  if (idx < 0) {
+    sendJson(res, 200, {
+      code: 40404,
+      data: null,
+      message: '会话不存在或已下线',
+    })
+    return
+  }
+  MOCK_SESSIONS.splice(idx, 1)
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+// ============================================================
+// P2 OPS-1 系统健康检查 Mock
+// ============================================================
+
+/**
+ * GET /api/system-health（一键检测 DB / Redis / Python AI / MinIO 连通性）
+ *
+ * 模拟全 UP 状态：4 个组件全部可达，整体耗时 80ms
+ */
+function handleCheckSystemHealth(res: ServerResponse): void {
+  const now = Date.now()
+  const data = {
+    overallStatus: 'UP',
+    checkedAt: new Date(now).toISOString(),
+    durationMs: 80,
+    components: [
+      {
+        name: 'database',
+        displayName: 'PostgreSQL',
+        status: 'UP',
+        latencyMs: 12,
+        errorMessage: null,
+        detail: 'SELECT 1 → 1',
+      },
+      {
+        name: 'redis',
+        displayName: 'Redis',
+        status: 'UP',
+        latencyMs: 3,
+        errorMessage: null,
+        detail: 'keys=42',
+      },
+      {
+        name: 'ai_service',
+        displayName: 'Python AI',
+        status: 'UP',
+        latencyMs: 45,
+        errorMessage: null,
+        detail: 'GET /api/v1/ai/skills OK',
+      },
+      {
+        name: 'minio',
+        displayName: 'MinIO',
+        status: 'UP',
+        latencyMs: 20,
+        errorMessage: null,
+        detail: 'buckets=3, endpoint=http://localhost:9000',
+      },
+    ],
+  }
+  sendJson(res, 200, { code: 0, data, message: 'ok' })
 }
 
 /** GET /api/notification/channels */

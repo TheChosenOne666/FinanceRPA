@@ -41,13 +41,21 @@ public class AuthController {
     /**
      * 用户登录
      *
-     * @param request 登录请求（含用户名和密码）
+     * @param request     登录请求（含用户名和密码）
+     * @param httpRequest HTTP 请求（用于提取客户端 IP / User-Agent）
      * @return 登录响应（含 token 和用户信息）
      */
     @PostMapping("/login")
     @Operation(summary = "登录", description = "用户登录获取token")
-    public BaseResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        LoginResponse response = authService.login(request.getUsername(), request.getPassword());
+    public BaseResponse<LoginResponse> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpRequest) {
+        // 1. 提取客户端 IP（P2 SEC-2 登录策略校验用）+ User-Agent（P2 SEC-3 会话记录用）
+        String clientIp = extractClientIp(httpRequest);
+        String userAgent = httpRequest.getHeader("User-Agent");
+        // 2. 调用登录服务（内部按策略校验 IP + 账号锁定 + 创建会话）
+        LoginResponse response = authService.login(
+                request.getUsername(), request.getPassword(), clientIp, userAgent);
         return ResultUtils.success(response);
     }
 
@@ -58,13 +66,19 @@ public class AuthController {
     /**
      * 刷新 token
      *
-     * @param request 刷新请求（含 refreshToken）
+     * @param request     刷新请求（含 refreshToken）
+     * @param httpRequest HTTP 请求（用于提取客户端 IP / User-Agent，P2 SEC-3 会话记录用）
      * @return 登录响应（含新的 token 和用户信息）
      */
     @PostMapping("/refresh")
     @Operation(summary = "刷新token", description = "使用refreshToken获取新的accessToken")
-    public BaseResponse<LoginResponse> refresh(@Valid @RequestBody RefreshRequest request) {
-        LoginResponse response = authService.refresh(request.getRefreshToken());
+    public BaseResponse<LoginResponse> refresh(
+            @Valid @RequestBody RefreshRequest request,
+            HttpServletRequest httpRequest) {
+        String clientIp = extractClientIp(httpRequest);
+        String userAgent = httpRequest.getHeader("User-Agent");
+        LoginResponse response = authService.refresh(
+                request.getRefreshToken(), clientIp, userAgent);
         return ResultUtils.success(response);
     }
 
@@ -133,12 +147,12 @@ public class AuthController {
      * @return 登出结果
      */
     @PostMapping("/logout")
-    @Operation(summary = "登出", description = "用户登出")
+    @Operation(summary = "登出", description = "用户登出（拉黑当前 token + 移除会话）")
     public BaseResponse<Void> logout(HttpServletRequest request) {
-        // 从请求头提取 token 并解析用户 ID
+        // 1. 从请求头提取 token
         String token = extractToken(request);
-        String userId = jwtUtil.getUserIdFromToken(token);
-        authService.logout(userId);
+        // 2. 委托给认证服务（内部调用 SessionService.destroySession 拉黑 + 移除会话）
+        authService.logout(token);
         return ResultUtils.success(null);
     }
 
@@ -156,5 +170,36 @@ public class AuthController {
             return bearerToken.substring(7);
         }
         throw new RuntimeException("未提供token");
+    }
+
+    /**
+     * 提取客户端 IP（P2 SEC-2 登录策略校验用）
+     *
+     * <p>优先级：X-Forwarded-For > X-Real-IP > Proxy-Client-IP > WL-Proxy-Client-IP > remoteAddr。
+     * X-Forwarded-For 含多个 IP 时取第一个（即最原始的客户端 IP）。</p>
+     *
+     * @param request HTTP 请求
+     * @return 客户端 IP，无法获取时返回 remoteAddr
+     */
+    private String extractClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+            // 多级代理时取第一个
+            int commaIdx = ip.indexOf(',');
+            return commaIdx > 0 ? ip.substring(0, commaIdx).trim() : ip.trim();
+        }
+        ip = request.getHeader("X-Real-IP");
+        if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+            return ip.trim();
+        }
+        ip = request.getHeader("Proxy-Client-IP");
+        if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+            return ip.trim();
+        }
+        ip = request.getHeader("WL-Proxy-Client-IP");
+        if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+            return ip.trim();
+        }
+        return request.getRemoteAddr();
     }
 }

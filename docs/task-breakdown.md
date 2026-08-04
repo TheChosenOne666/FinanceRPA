@@ -2122,3 +2122,146 @@ M{里程碑号}.{任务序号}
 - RSK-3 审批人映射（风险等级 × 业务线 → 审批人/审批部门）
 - USR-1 用户 CRUD（新增 / 编辑 / 禁用 / 重置密码 / 分配角色）
 - USR-2 角色 CRUD（新增 / 编辑 / 删除 / 分配权限）
+
+### 10.6 P1 设置功能扩展（2026-08-04）
+
+**背景**：P0 完成后用户确认进入 P1。P1 范围聚焦金融 RPA 核心风控配置与三维度 RBAC 用户/角色管理，需新建 2 张表 + 改 `ApprovalService` + 补 `UserController`/`RoleController`。
+
+**实施清单**：
+
+1. **后端 - RSK-1 审批超时阈值配置**
+   - 新建 [V22__create_approval_timeout_config_table.sql](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/resources/db/migration/V22__create_approval_timeout_config_table.sql)：`rpa_approval_timeout_config` 表（config_id / risk_level / timeout_minutes / description / enabled）
+   - 新建 `ApprovalTimeoutConfigController`（`@RequestMapping("/approval-timeout")`）：GET 列表 + PUT 按 riskLevel 更新
+   - 改 `ApprovalService`：从配置表读取超时阈值（替代 `ApprovalConstant` 硬编码 30/60 分钟）
+   - 加入 `TenantConstant.IGNORED_TABLES`（全局共享，无 org_id）
+   - 单元测试 `ApprovalTimeoutConfigServiceImplTest` PASS
+
+2. **后端 - RSK-3 审批人映射配置**
+   - 新建 [V23__create_approval_route_config_table.sql](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/resources/db/migration/V23__create_approval_route_config_table.sql)：`rpa_approval_route_config` 表
+   - 新建 `ApprovalRouteConfigController`（`@RequestMapping("/approval-routes")`）：GET 分页 + POST 新增 + PUT 更新 + DELETE 删除
+   - 改 `ApprovalService.createApproval`：先精确匹配 (riskLevel × businessLineId)，未命中回退默认路由
+   - 唯一性校验：同 riskLevel + businessLineId 不可重复
+   - 单元测试 `ApprovalRouteConfigServiceImplTest` PASS
+
+3. **后端 - USR-1 用户管理 CRUD**
+   - `UserController`（`@RequestMapping("/users")`）：GET 分页 / GET 详情 / POST 新增 / PUT 编辑 / PUT 启停 / PUT 重置密码 / DELETE 逻辑删除 / POST 分配角色
+   - 新增用户：用户名 + 真实姓名必填，密码可省略走默认 Finrpa@2026，BCrypt 加密
+   - 逻辑删除：同时清理用户-角色关联（事务）
+   - 分配角色：三维度 RBAC，全量替换语义
+   - 单元测试 `UserServiceImplTest` PASS
+
+4. **后端 - USR-2 角色管理 CRUD**
+   - `RoleController`（`@RequestMapping("/roles")`）：GET 分页 / GET all / GET 详情 / POST 新增 / PUT 编辑 / PUT 启停 / DELETE 逻辑删除
+   - 内置编码保护：super_admin / org_admin / operator / approver / viewer 禁止新增；super_admin / org_admin 禁止禁用；内置角色 + 有用户关联的角色禁止删除
+   - roleCode 创建后不可改
+   - 单元测试 `RoleServiceImplTest` PASS
+
+5. **前端 - RiskControlSection 风控配置区块**
+   - [Settings.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Settings.tsx) 新增 `RiskControlSection` 组件
+   - 上半区：审批超时阈值行内编辑（数字输入 1-1440 / 描述 / 启停开关 / 保存按钮），高风险默认 30 分钟，严重风险默认 60 分钟
+   - 下半区：审批人映射分页表格（风险等级 / 业务线 / 审批人 / 说明 / 状态 / 操作）+ 筛选栏（风险等级 + 业务线 + 启用状态）+ 新增/编辑弹窗（风险等级 + 业务线 + 审批人 + 部门 ID + 描述 + 状态，编辑时风险等级 + 业务线禁用）
+   - 子导航第 6 项「风控配置」接入
+
+6. **前端 - UsersSection / RolesSection 升级 CRUD**
+   - UsersSection：新增 / 编辑弹窗（用户名 / 真实姓名 / 密码 / 部门 / 邮箱 / 手机号 / 状态）+ 分配角色弹窗（多选全量替换）+ 重置密码 + 启停 + 删除
+   - RolesSection：新增 / 编辑弹窗（角色编码 / 角色名称 / 描述 / 跨组织读 / 跨组织批 / 状态）+ 启停 + 删除
+
+7. **前端 - API / 类型 / Mock 同步**
+   - [settings.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/settings.ts) 新增 16 个 API：用户 8 个 + 角色 7 个 + 审批超时 2 个 + 审批人映射 4 个
+   - [types.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/types.ts) 新增 `ApprovalTimeoutConfigVO` / `ApprovalRouteConfigVO` 及 4 个 Request 类型
+   - [mockServer.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/mock/mockServer.ts) 新增 19 个 mock handler + `MOCK_APPROVAL_TIMEOUT_CONFIGS`（2 条）+ `MOCK_APPROVAL_ROUTE_CONFIGS`（3 条）+ 扩展 `MOCK_USERS` / `MOCK_ROLES` 字段
+
+8. **修复 RolesSection 残留 bug**：`{editingUser && ...}` 应为 `{editingRole && ...}`（角色编码不可改提示条件错误）
+
+**验证结果**：
+- `tsc --noEmit` PASS（0 错误）
+- 内置浏览器验证 4 项功能 UI 全部 PASS：
+  - 用户管理：列表 + 添加用户弹窗完整字段
+  - 角色管理：列表 + 添加角色弹窗完整字段
+  - 风控配置 → 审批超时阈值：高风险 30 分钟 + 严重风险 60 分钟 + 行内编辑 + 保存按钮
+  - 风控配置 → 审批人映射：3 条数据 + 筛选栏 + 新增映射弹窗（6 字段：风险等级 / 业务线 / 审批人 / 部门 ID / 描述 / 状态）+ 编辑弹窗（风险等级 + 业务线正确禁用）+ ✕ 关闭按钮可关闭
+- 控制台无 JS 错误
+
+**文档同步**：
+- [settings-requirements.md](file:///d:/lingou-projects/financeRPA/docs/settings-requirements.md) v1.2：补充 P1 详细任务章节 + 4.2 P1 验收清单 + 变更记录
+- 本文档 10.6 节
+
+**下一步（P2/P3 规划，待用户确认）**：
+- P2：密码策略（SEC-1）/ 登录安全（SEC-2）/ 会话管理（SEC-3）/ 系统健康检查（OPS-1）
+- P3：权限矩阵可视化（USR-3）/ AI 服务在线配置（INT-1）/ MinIO 配置（INT-3）/ 定时任务配置（OPS-2）/ 系统参数开关（OPS-3）
+
+### 10.7 P2 设置功能扩展（2026-08-04）
+
+**背景**：P1 完成后用户确认进入 P2。P2 聚焦金融合规刚需：密码策略 / 登录安全策略 / 在线会话管理 + 运维监控的系统健康检查。需新建后端模块并接入登录流程与 JWT 过滤器。
+
+**实施清单**：
+
+1. **后端 - SEC-1 密码策略配置**
+   - 新建 [V21__create_security_policy_tables.sql](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/resources/db/migration/V21__create_security_policy_tables.sql)：`sys_password_policy` 表（最小长度 / 大小写 / 数字 / 特殊字符 / 过期天数 / 历史检查数 / 启用）
+   - 新建 `PasswordPolicyController`（`@RequestMapping("/password-policy")`）：GET 查询 + PUT 更新
+   - 新建 `PasswordPolicyService(Impl)`：字段范围校验（8-128 / 1-365 / 0-20）
+   - 登录流程接入：`AuthServiceImpl.login` 调用 `isPasswordExpired(user)` 校验密码过期，过期抛 `BusinessException`
+   - 加入 `TenantConstant.IGNORED_TABLES`（全局共享，无 org_id）
+   - 单元测试 `PasswordPolicyServiceImplTest` PASS
+
+2. **后端 - SEC-2 登录安全策略**
+   - 复用 V21 迁移脚本：`sys_login_policy` 表（最大失败次数 / 锁定时长 / IP 白名单 / IP 黑名单 / 空闲超时 / 允许并发登录 / 启用）
+   - 新建 `LoginPolicyController`（`@RequestMapping("/login-policy")`）：GET 查询 + PUT 更新
+   - 新建 `LoginPolicyService(Impl)`：
+     - `checkIpAllowed(ip)`：白名单优先，黑名单次之
+     - `checkAccountLocked(username)`：从 Redis 读 `finrpa:auth:lock:until:{username}` 判断锁定
+     - `recordLoginFailure(username)`：RAtomicLong 累加失败次数，超阈值写入锁定 bucket
+     - `resetLoginFailure(username)`：登录成功清零
+   - 登录流程接入：`AuthServiceImpl.login` 调用 `checkIpAllowed` + `checkAccountLocked` + 失败 `recordLoginFailure` + 成功 `resetLoginFailure`
+   - 单元测试 `LoginPolicyServiceImplTest` PASS（13 用例）
+
+3. **后端 - SEC-3 在线会话管理**
+   - 新建 `SessionController`（`@RequestMapping("/sessions")`）：GET 分页查询 + DELETE 踢人下线
+   - 新建 `SessionService(Impl)` + `SessionVO` / `SessionQueryRequest`
+   - Redis 数据结构：
+     - 黑名单：`finrpa:session:blacklist:{sessionId}` (String, TTL = token 剩余有效期)
+     - 用户会话集合：`finrpa:session:user:{userId}` (RMap<sessionId, SessionInfo>, TTL = access token 最大有效期)
+   - SessionId 生成：SHA-256(token) 前 32 位 hex，避免存储原始 token
+   - 并发登录控制：`allowMultiLogin=0` 时新登录踢掉同账号旧会话（加黑名单）
+   - 空闲超时：`touchSession` 校验 `lastAccessTime`，超阈值自动销毁 + 加黑名单
+   - JWT 过滤器接入：`JwtAuthenticationFilter.doFilterInternal` 每次请求调用 `sessionService.touchSession(token)` 校验会话状态
+   - 权限：仅 `org_admin` / `super_admin` 可访问
+   - 单元测试 `SessionServiceImplTest` PASS（11 用例）
+
+4. **后端 - OPS-1 系统健康检查**
+   - 新建 `SystemHealthController`（`@RequestMapping("/system-health")`）：GET 一键检测
+   - 新建 `SystemHealthService(Impl)` + `SystemHealthVO`（含 `ComponentHealth` 内部类）+ `SystemHealthMapper`
+   - 四组件检测：
+     - DB：`SystemHealthMapper.ping()`（`SELECT 1`）
+     - Redis：`redissonClient.getKeys().count()`（兼容 Single / Cluster）
+     - Python AI：`aiServiceClient.getSkills()`（HTTP Interface GET `/api/v1/ai/skills`）
+     - MinIO：`minioClient.listBuckets()`
+   - 设计原则：每组件独立 try-catch，单组件 DOWN 不影响其他；不抛异常聚合到 VO
+   - 整体状态：全 UP → UP；部分 DOWN → DEGRADED；全 DOWN → DOWN
+   - 权限：仅 `org_admin` / `super_admin` 可访问
+   - 单元测试 `SystemHealthServiceImplTest` PASS（11 用例，含 4 组件 UP/DOWN + 整体状态计算）
+
+5. **前端 - SecurityPolicySection 安全策略区块**
+   - [Settings.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Settings.tsx) 新增 `SecurityPolicySection` 组件，含 4 个子区块：
+     - `PasswordPolicyForm`：密码策略表单（最小长度 / 复杂度开关 / 过期天数 / 历史检查数 / 启用 / 保存 / 重置）
+     - `LoginPolicyForm`：登录策略表单（失败次数 / 锁定时长 / IP 白/黑名单 / 空闲超时 / 并发开关 / 启用 / 保存 / 重置）
+     - `SessionManagementSection`：在线会话列表（userId / username 筛选 + 分页 + 踢人下线按钮）
+     - `SystemHealthSection`：一键检测按钮 + 整体状态徽章 + 检查时间 / 耗时 + 组件卡片网格（DB / Redis / Python AI / MinIO）
+   - 子导航第 7 项「安全策略」接入
+
+6. **前端 - API / 类型 / Mock 同步**
+   - [settings.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/settings.ts) 新增 6 个 API：`getPasswordPolicy` / `updatePasswordPolicy` / `getLoginPolicy` / `updateLoginPolicy` / `listSessions` / `killSession` / `checkSystemHealth`
+   - [types.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/types.ts) 新增 `PasswordPolicyVO` / `LoginPolicyVO` / `SessionVO` / `SessionQueryRequest` / `SystemHealthVO`（含 `ComponentHealth`）
+   - [mockServer.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/mock/mockServer.ts) 新增 7 个 mock handler + `MOCK_SESSIONS`（4 条会话）+ `MOCK_SYSTEM_HEALTH`（4 组件全 UP）
+
+**验证结果**：
+- `mvnw test` PASS（4 个 Service 测试套件累计 46 用例：密码策略 / 登录策略 13 / 会话 11 / 系统健康 11）
+- `tsc --noEmit` PASS（0 错误）
+- 单元测试覆盖：DB / Redis / Python AI / MinIO 四组件 UP/DOWN + 整体状态 UP/DEGRADED/DOWN 计算
+
+**文档同步**：
+- [settings-requirements.md](file:///d:/lingou-projects/financeRPA/docs/settings-requirements.md) v1.3：补充 P2 详细任务章节 + 4.3 P2 验收清单 + 变更记录
+- 本文档 10.7 节
+
+**下一步（P3 规划，待用户确认）**：
+- P3：权限矩阵可视化（USR-3）/ AI 服务在线配置（INT-1）/ MinIO 配置（INT-3）/ 定时任务配置（OPS-2）/ 系统参数开关（OPS-3）

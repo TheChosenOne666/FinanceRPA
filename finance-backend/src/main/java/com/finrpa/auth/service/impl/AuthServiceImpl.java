@@ -5,7 +5,10 @@ import com.finrpa.auth.dto.response.UserInfoResponse;
 import com.finrpa.auth.entity.UserEO;
 import com.finrpa.auth.mapper.UserMapper;
 import com.finrpa.auth.service.AuthService;
+import com.finrpa.auth.service.LoginPolicyService;
+import com.finrpa.auth.service.PasswordPolicyService;
 import com.finrpa.auth.service.PermissionService;
+import com.finrpa.auth.service.SessionService;
 import com.finrpa.auth.util.JwtUtil;
 import com.finrpa.common.exception.BusinessException;
 import com.finrpa.common.response.ErrorCode;
@@ -32,33 +35,62 @@ public class AuthServiceImpl implements AuthService {
     private final PermissionService permissionService;
     /** 密码编码器 */
     private final PasswordEncoder passwordEncoder;
+    /** 密码策略服务（P2 SEC-1，密码过期校验） */
+    private final PasswordPolicyService passwordPolicyService;
+    /** 登录安全策略服务（P2 SEC-2，账号锁定 + IP 限制） */
+    private final LoginPolicyService loginPolicyService;
+    /** 会话管理服务（P2 SEC-3，登出黑名单 + 并发登录限制 + 空闲超时） */
+    private final SessionService sessionService;
 
     /**
      * 用户登录
      *
-     * @param username 用户名
-     * @param password 密码
+     * @param username  用户名
+     * @param password  密码
+     * @param clientIp  客户端 IP（用于登录策略 IP 白/黑名单校验，null 时跳过 IP 校验）
+     * @param userAgent 客户端 User-Agent（用于 SEC-3 会话信息记录）
      * @return 登录响应（含 token 和用户信息）
      */
     @Override
-    public LoginResponse login(String username, String password) {
-        // 1. 查询用户
+    public LoginResponse login(String username, String password, String clientIp, String userAgent) {
+        // 1. IP 白/黑名单校验（P2 SEC-2，clientIp 为 null 时跳过；策略禁用时跳过）
+        if (clientIp != null) {
+            loginPolicyService.checkIpAllowed(clientIp);
+        }
+
+        // 2. 账号锁定校验（P2 SEC-2，策略禁用时跳过）
+        loginPolicyService.checkAccountLocked(username);
+
+        // 3. 查询用户
         UserEO user = userMapper.selectByUsername(username);
         if (user == null) {
+            // 3.1 用户不存在也记录失败次数（防止通过错误提示枚举用户名）
+            loginPolicyService.recordLoginFailure(username);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户名或密码错误");
         }
 
-        // 2. 校验状态
+        // 4. 校验状态
         if (user.getStatus() != null && user.getStatus() != 1) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户已禁用");
         }
 
-        // 3. 校验密码
+        // 5. 校验密码
         if (!passwordEncoder.matches(password, user.getPassword())) {
+            // 5.1 密码错误记录失败次数（达到阈值会触发账号锁定）
+            loginPolicyService.recordLoginFailure(username);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户名或密码错误");
         }
 
-        // 4. 生成 token（userId/orgId 为 Long，JWT claim 序列化为 String）
+        // 5.1 密码过期校验（P2 SEC-1，策略禁用时自动跳过）
+        if (passwordPolicyService.isPasswordExpired(user)) {
+            throw new BusinessException(ErrorCode.PASSWORD_EXPIRED,
+                    "密码已过期，请联系管理员重置密码");
+        }
+
+        // 5.2 登录成功，重置失败计数（P2 SEC-2）
+        loginPolicyService.resetLoginFailure(username);
+
+        // 6. 生成 token（userId/orgId 为 Long，JWT claim 序列化为 String）
         String accessToken = jwtUtil.generateAccessToken(
                 user.getUserId().toString(),
                 user.getUsername(),
@@ -68,7 +100,10 @@ public class AuthServiceImpl implements AuthService {
 
         String refreshToken = jwtUtil.generateRefreshToken(user.getUserId().toString(), user.getUsername());
 
-        // 5. 构建响应
+        // 6.1 创建会话（P2 SEC-3：若策略启用 + allowMultiLogin=0 会踢掉旧会话）
+        sessionService.createSession(accessToken, clientIp, userAgent);
+
+        // 7. 构建响应
         LoginResponse response = new LoginResponse();
         response.setAccessToken(accessToken);
         response.setRefreshToken(refreshToken);
@@ -91,10 +126,12 @@ public class AuthServiceImpl implements AuthService {
      * 刷新 token
      *
      * @param refreshToken 刷新令牌
+     * @param clientIp     客户端 IP（用于 SEC-3 会话信息记录）
+     * @param userAgent    客户端 User-Agent（用于 SEC-3 会话信息记录）
      * @return 登录响应（含新的 token 和用户信息）
      */
     @Override
-    public LoginResponse refresh(String refreshToken) {
+    public LoginResponse refresh(String refreshToken, String clientIp, String userAgent) {
         // 1. 校验 token
         if (!jwtUtil.validateToken(refreshToken)) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "refreshToken无效或已过期");
@@ -122,6 +159,9 @@ public class AuthServiceImpl implements AuthService {
         );
 
         String newRefreshToken = jwtUtil.generateRefreshToken(user.getUserId().toString(), user.getUsername());
+
+        // 4.1 创建会话（P2 SEC-3：refresh 后新 access token 同样需要写入会话集合）
+        sessionService.createSession(accessToken, clientIp, userAgent);
 
         // 5. 构建响应
         LoginResponse response = new LoginResponse();
@@ -189,14 +229,13 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
-     * 用户登出
+     * 用户登出（P2 SEC-3：拉黑当前 token + 移除会话集合）
      *
-     * @param userId 用户 ID
+     * @param token JWT 访问令牌
      */
     @Override
-    public void logout(String userId) {
-        // 当前版本为无状态 JWT 认证，服务端无需存储 session
-        // 登出主要由前端清除 token 完成，此接口预留用于后续扩展（如黑名单机制）
-        log.info("用户登出: {}", userId);
+    public void logout(String token) {
+        // 委托给会话管理服务：拉黑 token + 从会话集合移除
+        sessionService.destroySession(token);
     }
 }

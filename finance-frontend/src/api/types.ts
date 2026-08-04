@@ -885,50 +885,527 @@ export interface NotificationConfigSaveRequest {
 }
 
 // ============================================================
-// 系统设置 - 用户/角色管理（P4 settings 原型对齐）
-// 说明：后端 com.finrpa.auth 包下仅有 UserMapper/RoleMapper/UserRoleMapper，
-// 无 UserController/RoleController/Service/DTO。下列类型仅用于前端展示，
-// 由 Mock 端提供数据；后端 CRUD 接口待开发，前端标注 TODO。
+// 系统设置 - 用户/角色管理（P1 USR-1/USR-2 后端已实现）
+// 对齐后端：UserController(@RequestMapping("/users")) / RoleController(@RequestMapping("/roles"))
 // ============================================================
 
 /**
- * 用户视图（P4 settings 原型对齐：08-settings.html 用户管理表格）
+ * 用户视图（对齐后端 com.finrpa.auth.dto.response.UserVO）
  */
 export interface UserVO {
-  /** 用户业务 ID */
+  /** 用户业务 ID（雪花算法 ID） */
   userId: string;
   /** 用户名（登录账号） */
   username: string;
   /** 真实姓名 */
   realName: string;
-  /** 所属部门名称（联表 sys_department.dept_name） */
-  deptName: string;
+  /** 头像地址 */
+  avatar?: string;
+  /** 邮箱 */
+  email?: string;
+  /** 手机号 */
+  phone?: string;
+  /** 所属组织 ID */
+  orgId?: string;
+  /** 所属组织名称 */
+  orgName?: string;
+  /** 所属部门名称 */
+  deptName?: string;
   /** 角色编码列表（联表 sys_role.role_code） */
   roles: string[];
-  /** 启用状态：true-启用 / false-已禁用 */
-  enabled: boolean;
+  /** 状态（0-禁用 1-启用） */
+  status: number;
   /** 创建时间（ISO 字符串） */
-  createTime: string;
+  createTime?: string;
+  /** 更新时间（ISO 字符串） */
+  updateTime?: string;
+}
+
+/** 兼容字段：enabled = status === 1 */
+export function isUserEnabled(user: UserVO): boolean {
+  return user.status === 1;
 }
 
 /**
- * 角色视图（P4 settings 原型对齐：08-settings.html 角色管理表格）
+ * 用户分页查询请求（对齐 UserQueryRequest）
  */
-export interface RoleVO {
+export interface UserQueryRequest {
+  /** 关键词（用户名 / 真实姓名 模糊匹配） */
+  keyword?: string;
+  /** 状态（0-禁用 1-启用） */
+  status?: number;
+  /** 组织业务 ID（super_admin 可指定） */
+  orgId?: string;
+  /** 当前页号 */
+  current?: number;
+  /** 每页数量 */
+  pageSize?: number;
+}
+
+/**
+ * 新增用户请求（对齐 UserAddRequest）
+ */
+export interface UserAddRequest {
+  /** 用户名（3-32 位字母数字下划线） */
+  username: string;
+  /** 真实姓名 */
+  realName: string;
+  /** 密码（空时使用默认密码 Finrpa@2026） */
+  password?: string;
+  /** 头像地址 */
+  avatar?: string;
+  /** 邮箱 */
+  email?: string;
+  /** 手机号 */
+  phone?: string;
+  /** 所属组织 ID（org_admin 自动填充；super_admin 可指定） */
+  orgId?: string;
+  /** 所属组织名称 */
+  orgName?: string;
+  /** 所属部门名称 */
+  deptName?: string;
+  /** 状态（0-禁用 1-启用），默认 1 */
+  status?: number;
+}
+
+/**
+ * 编辑用户请求（对齐 UserUpdateRequest）
+ */
+export interface UserUpdateRequest {
+  /** 用户业务 ID */
+  userId: string;
+  /** 真实姓名 */
+  realName?: string;
+  /** 头像地址 */
+  avatar?: string;
+  /** 邮箱 */
+  email?: string;
+  /** 手机号 */
+  phone?: string;
+  /** 所属部门名称 */
+  deptName?: string;
+  /** 状态（0-禁用 1-启用） */
+  status?: number;
+}
+
+/**
+ * 重置密码请求（对齐 PasswordResetRequest）
+ */
+export interface PasswordResetRequest {
+  /** 用户业务 ID */
+  userId: string;
+  /** 新密码（空时使用默认密码 Finrpa@2026） */
+  newPassword?: string;
+}
+
+/**
+ * 用户分配角色请求（三维度 RBAC，对齐 UserRoleAssignRequest）
+ */
+export interface UserRoleAssignRequest {
+  /** 用户业务 ID */
+  userId: string;
+  /** 角色关联列表（全量替换） */
+  relations: UserRoleRelation[];
+}
+
+/** 角色关联三元组 */
+export interface UserRoleRelation {
   /** 角色 ID */
   roleId: string;
+  /** 部门业务 ID（null 表示不限部门） */
+  departmentId?: string;
+  /** 业务线业务 ID（null 表示不限业务线） */
+  businessLineId?: string;
+}
+
+/**
+ * 角色视图（对齐后端 com.finrpa.auth.dto.response.RoleVO）
+ */
+export interface RoleVO {
+  /** 角色业务 ID（雪花算法 ID） */
+  roleId: string;
+  /** 角色名称 */
+  roleName: string;
   /** 角色编码（如 operator / approver / viewer） */
   roleCode: string;
-  /** 角色中文名（如 操作员 / 审批员 / 观察员） */
-  roleName: string;
-  /** 权限范围描述（用于表格"权限范围"列展示） */
-  permissionScope: string;
-  /** 互斥约束（如 "不可兼任 approver"，空字符串表示无约束） */
-  mutualExclusion: string;
-  /** 是否内置角色（内置角色不可删除） */
-  builtIn: boolean;
+  /** 角色描述 */
+  description?: string;
+  /** 所属组织 ID（null 表示全局内置角色） */
+  orgId?: string;
+  /** 是否允许跨组织读取（0-否 1-是） */
+  isCrossOrgRead?: number;
+  /** 是否允许跨组织审批（0-否 1-是） */
+  isCrossOrgApprove?: number;
+  /** 状态（0-禁用 1-启用） */
+  status: number;
+  /** 是否为内置角色（基于 roleCode 判定，true 时禁止删除/修改编码） */
+  builtIn?: boolean;
   /** 创建时间（ISO 字符串） */
-  createTime: string;
+  createTime?: string;
+  /** 更新时间（ISO 字符串） */
+  updateTime?: string;
+}
+
+/**
+ * 角色分页查询请求（对齐 RoleQueryRequest）
+ */
+export interface RoleQueryRequest {
+  /** 关键词（角色名称 / 编码 模糊匹配） */
+  keyword?: string;
+  /** 状态（0-禁用 1-启用） */
+  status?: number;
+  /** 组织业务 ID */
+  orgId?: string;
+  /** 当前页号 */
+  current?: number;
+  /** 每页数量 */
+  pageSize?: number;
+}
+
+/**
+ * 新增角色请求（对齐 RoleAddRequest）
+ */
+export interface RoleAddRequest {
+  /** 角色名称 */
+  roleName: string;
+  /** 角色编码（字母开头，仅允许字母数字下划线；内置编码受保护） */
+  roleCode: string;
+  /** 角色描述 */
+  description?: string;
+  /** 是否允许跨组织读取（0-否 1-是），默认 0 */
+  isCrossOrgRead?: number;
+  /** 是否允许跨组织审批（0-否 1-是），默认 0 */
+  isCrossOrgApprove?: number;
+  /** 所属组织 ID（null 表示全局角色） */
+  orgId?: string;
+  /** 状态（0-禁用 1-启用），默认 1 */
+  status?: number;
+}
+
+/**
+ * 编辑角色请求（对齐 RoleUpdateRequest）
+ */
+export interface RoleUpdateRequest {
+  /** 角色业务 ID */
+  roleId: string;
+  /** 角色名称（内置角色不可改） */
+  roleName?: string;
+  /** 角色描述 */
+  description?: string;
+  /** 是否允许跨组织读取（内置角色不可改） */
+  isCrossOrgRead?: number;
+  /** 是否允许跨组织审批（内置角色不可改） */
+  isCrossOrgApprove?: number;
+  /** 状态（0-禁用 1-启用；内置管理员角色禁止禁用） */
+  status?: number;
+}
+
+// ============================================================
+// 系统设置 - 风控配置（P1 RSK-1/RSK-3 后端已实现）
+// 对齐后端：ApprovalTimeoutConfigController(@RequestMapping("/approval-timeout"))
+//         ApprovalRouteConfigController(@RequestMapping("/approval-routes"))
+// ============================================================
+
+/**
+ * 审批超时阈值配置 VO（对齐 ApprovalTimeoutConfigVO）
+ */
+export interface ApprovalTimeoutConfigVO {
+  /** 配置业务 ID */
+  configId?: string;
+  /** 风险等级：high / critical */
+  riskLevel: string;
+  /** 超时分钟数 */
+  timeoutMinutes: number;
+  /** 描述说明 */
+  description?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled: number;
+  /** 创建时间 */
+  createTime?: string;
+  /** 更新时间 */
+  updateTime?: string;
+}
+
+/**
+ * 审批超时配置更新请求（对齐 ApprovalTimeoutConfigUpdateRequest）
+ */
+export interface ApprovalTimeoutConfigUpdateRequest {
+  /** 超时分钟数（1-1440） */
+  timeoutMinutes: number;
+  /** 描述说明 */
+  description?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled?: number;
+}
+
+// ============================================================
+// 密码策略配置（P2 SEC-1）
+// 对齐 com.finrpa.auth.dto.response.PasswordPolicyVO
+// ============================================================
+
+/**
+ * 密码策略配置 VO（对齐 PasswordPolicyVO）
+ */
+export interface PasswordPolicyVO {
+  /** 策略业务 ID */
+  policyId: string;
+  /** 密码最小长度 */
+  minLength: number;
+  /** 是否要求大写字母（0-不要求 1-要求） */
+  requireUppercase: number;
+  /** 是否要求小写字母（0-不要求 1-要求） */
+  requireLowercase: number;
+  /** 是否要求数字（0-不要求 1-要求） */
+  requireDigit: number;
+  /** 是否要求特殊字符（0-不要求 1-要求） */
+  requireSpecial: number;
+  /** 允许的特殊字符集 */
+  specialChars: string;
+  /** 密码过期天数（0 表示不过期） */
+  expireDays: number;
+  /** 密码历史记录数（0 表示不检查） */
+  historyCount: number;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled: number;
+  /** 创建时间 */
+  createTime?: string;
+  /** 更新时间 */
+  updateTime?: string;
+}
+
+/**
+ * 密码策略更新请求（对齐 PasswordPolicyUpdateRequest）
+ */
+export interface PasswordPolicyUpdateRequest {
+  /** 密码最小长度（6-128） */
+  minLength?: number;
+  /** 是否要求大写字母 */
+  requireUppercase?: number;
+  /** 是否要求小写字母 */
+  requireLowercase?: number;
+  /** 是否要求数字 */
+  requireDigit?: number;
+  /** 是否要求特殊字符 */
+  requireSpecial?: number;
+  /** 允许的特殊字符集 */
+  specialChars?: string;
+  /** 密码过期天数（0-365，0 表示不过期） */
+  expireDays?: number;
+  /** 密码历史记录数（0-20，0 表示不检查） */
+  historyCount?: number;
+  /** 启用状态 */
+  enabled?: number;
+}
+
+// ============================================================
+// 登录安全策略配置（P2 SEC-2）
+// 对齐 com.finrpa.auth.dto.response.LoginPolicyVO
+// ============================================================
+
+/**
+ * 登录安全策略配置 VO（对齐 LoginPolicyVO）
+ */
+export interface LoginPolicyVO {
+  /** 策略业务 ID */
+  policyId: string;
+  /** 最大连续登录失败次数 */
+  maxLoginAttempts: number;
+  /** 账号锁定时长（分钟） */
+  lockMinutes: number;
+  /** IP 白名单（逗号分隔，空表示不限制） */
+  ipWhitelist?: string;
+  /** IP 黑名单（逗号分隔） */
+  ipBlacklist?: string;
+  /** 是否允许多端并发登录（0-不允许 1-允许） */
+  allowMultiLogin: number;
+  /** 会话空闲超时分钟数 */
+  sessionTimeoutMinutes: number;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled: number;
+  /** 创建时间 */
+  createTime?: string;
+  /** 更新时间 */
+  updateTime?: string;
+}
+
+/**
+ * 登录策略更新请求（对齐 LoginPolicyUpdateRequest）
+ */
+export interface LoginPolicyUpdateRequest {
+  /** 最大连续登录失败次数（1-20） */
+  maxLoginAttempts?: number;
+  /** 账号锁定时长（1-1440 分钟） */
+  lockMinutes?: number;
+  /** IP 白名单（逗号分隔，空表示不限制） */
+  ipWhitelist?: string;
+  /** IP 黑名单（逗号分隔） */
+  ipBlacklist?: string;
+  /** 是否允许多端并发登录（0-不允许 1-允许） */
+  allowMultiLogin?: number;
+  /** 会话空闲超时分钟数（1-1440） */
+  sessionTimeoutMinutes?: number;
+  /** 启用状态 */
+  enabled?: number;
+}
+
+// ============================================================
+// 在线会话管理（P2 SEC-3）
+// 对齐 com.finrpa.auth.dto.response.SessionVO
+// ============================================================
+
+/**
+ * 在线会话视图对象（对齐 SessionVO）
+ *
+ * 由 GET /sessions 返回，用于设置页「安全策略 · 在线会话」展示与踢人操作
+ */
+export interface SessionVO {
+  /** 会话 ID（token SHA-256 前 32 hex） */
+  sessionId: string;
+  /** 用户业务 ID */
+  userId: string;
+  /** 用户名 */
+  username: string;
+  /** 登录客户端 IP */
+  loginIp?: string;
+  /** 登录时间 */
+  loginTime: string;
+  /** 最后访问时间（每次请求过滤器会刷新） */
+  lastAccessTime: string;
+  /** token 过期时间 */
+  expiresAt: string;
+  /** 客户端 User-Agent（用于识别设备类型） */
+  userAgent?: string;
+}
+
+/**
+ * 在线会话查询请求（对齐 SessionQueryRequest）
+ */
+export interface SessionQueryRequest {
+  /** 用户业务 ID 筛选（可选，精确匹配） */
+  userId?: string;
+  /** 用户名筛选（可选，模糊匹配） */
+  username?: string;
+  /** 当前页码（默认 1） */
+  current?: number;
+  /** 每页条数（默认 10） */
+  pageSize?: number;
+}
+
+// ============================================================
+// 系统健康检查（P2 OPS-1）
+// 对齐 com.finrpa.system.dto.response.SystemHealthVO
+// ============================================================
+
+/**
+ * 单个组件健康状态（对齐 SystemHealthVO.ComponentHealth）
+ */
+export interface ComponentHealth {
+  /** 组件名：database / redis / ai_service / minio */
+  name: string;
+  /** 组件展示名：PostgreSQL / Redis / Python AI / MinIO */
+  displayName: string;
+  /** 状态：UP / DOWN */
+  status: string;
+  /** 响应时延（毫秒，DOWN 时为 null） */
+  latencyMs?: number;
+  /** 错误信息（UP 时为 null） */
+  errorMessage?: string;
+  /** 关键信息（如版本号、连接池信息，可选） */
+  detail?: string;
+}
+
+/**
+ * 系统健康检查结果（对齐 SystemHealthVO）
+ *
+ * 由 GET /system-health 返回，用于设置页「安全策略 · 系统健康」一键检测展示
+ */
+export interface SystemHealthVO {
+  /** 整体状态：UP / DEGRADED / DOWN */
+  overallStatus: string;
+  /** 检查时间戳 */
+  checkedAt: string;
+  /** 检查耗时（毫秒） */
+  durationMs: number;
+  /** 各组件检查明细 */
+  components: ComponentHealth[];
+}
+
+/**
+ * 审批人映射配置 VO（对齐 ApprovalRouteConfigVO）
+ */
+export interface ApprovalRouteConfigVO {
+  /** 配置业务 ID */
+  configId: string;
+  /** 组织业务 ID */
+  orgId?: string;
+  /** 风险等级：high / critical */
+  riskLevel: string;
+  /** 业务线业务 ID（null 表示默认路由） */
+  businessLineId?: string;
+  /** 业务线名称（联表填充，默认路由时为「默认路由」） */
+  businessLineName?: string;
+  /** 审批人用户业务 ID */
+  approverUserId: string;
+  /** 审批人姓名（联表 sys_user.real_name） */
+  approverName?: string;
+  /** 审批人所属部门业务 ID */
+  departmentId?: string;
+  /** 描述说明 */
+  description?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled: number;
+  /** 创建时间 */
+  createTime?: string;
+  /** 更新时间 */
+  updateTime?: string;
+}
+
+/**
+ * 审批人映射查询请求（对齐 ApprovalRouteConfigQueryRequest）
+ */
+export interface ApprovalRouteConfigQueryRequest {
+  /** 风险等级：high / critical */
+  riskLevel?: string;
+  /** 业务线业务 ID */
+  businessLineId?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled?: number;
+  /** 当前页号 */
+  current?: number;
+  /** 每页数量 */
+  pageSize?: number;
+}
+
+/**
+ * 新增审批人映射请求（对齐 ApprovalRouteConfigAddRequest）
+ */
+export interface ApprovalRouteConfigAddRequest {
+  /** 风险等级：high / critical */
+  riskLevel: string;
+  /** 业务线业务 ID（null 表示默认路由） */
+  businessLineId?: string;
+  /** 审批人用户业务 ID */
+  approverUserId: string;
+  /** 审批人所属部门业务 ID */
+  departmentId?: string;
+  /** 描述说明 */
+  description?: string;
+  /** 启用状态（默认 1-启用） */
+  enabled?: number;
+}
+
+/**
+ * 更新审批人映射请求（对齐 ApprovalRouteConfigUpdateRequest）
+ */
+export interface ApprovalRouteConfigUpdateRequest {
+  /** 审批人用户业务 ID */
+  approverUserId?: string;
+  /** 审批人所属部门业务 ID */
+  departmentId?: string;
+  /** 描述说明 */
+  description?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled?: number;
 }
 
 /**

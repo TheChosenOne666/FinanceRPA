@@ -140,7 +140,7 @@ public class WorkflowTriggerServiceImpl implements WorkflowTriggerService {
 
             ApprovalRequestEO approval = approvalService.createApproval(
                     task.getTaskId(), orgId, workflowId, userId,
-                    finalRiskLevel, riskReasoning, requestPayload);
+                    finalRiskLevel, task.getBusinessLineId(), riskReasoning, requestPayload);
 
             WorkflowRunVO runVO = new WorkflowRunVO();
             runVO.setTaskId(task.getTaskId());

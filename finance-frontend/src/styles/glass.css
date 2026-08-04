@@ -6249,6 +6249,320 @@ table.data-table {
   color: var(--text-muted);
 }
 
+/* ---------- P2 SEC-1 密码策略卡片 ---------- */
+.password-policy-card {
+  padding: var(--space-lg);
+}
+
+.password-policy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.password-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-md) var(--space-lg);
+  margin-top: var(--space-sm);
+}
+
+.password-policy-grid .check-item {
+  grid-column: span 1;
+}
+
+@media (max-width: 900px) {
+  .password-policy-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- P2 SEC-3 在线会话管理卡片 ---------- */
+.session-management-card {
+  padding: var(--space-lg);
+}
+
+.session-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.session-filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-filter-item label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.session-filter-item .input {
+  width: 200px;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.session-filter-item .input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(4, 120, 87, 0.12);
+}
+
+.session-count-badge {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--risk-low);
+  background: rgba(16, 185, 129, 0.10);
+  border: 1px solid rgba(16, 185, 129, 0.24);
+  border-radius: var(--radius-pill);
+}
+
+.session-table-wrapper {
+  margin-top: var(--space-md);
+  overflow-x: auto;
+}
+
+.session-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.session-table thead th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.session-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.session-table tbody tr:hover {
+  background: rgba(4, 120, 87, 0.04);
+}
+
+.session-username-cell {
+  font-weight: 500;
+  color: var(--accent-primary);
+}
+
+.session-userid-cell {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.session-device-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-right: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  background: rgba(59, 130, 246, 0.10);
+  color: var(--status-running);
+  border: 1px solid rgba(59, 130, 246, 0.24);
+}
+
+.session-browser-text {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.session-expires-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.session-expires-text.expired {
+  color: var(--risk-high);
+  font-weight: 500;
+}
+
+.session-empty-row {
+  text-align: center;
+  padding: 32px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.session-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.session-pagination-info {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---------- P2 OPS-1 系统健康检查卡片 ---------- */
+.system-health-card {
+  padding: var(--space-lg);
+}
+
+.system-health-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.system-health-overall {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+}
+
+.system-health-overall-up {
+  color: var(--risk-low);
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.24);
+}
+
+.system-health-overall-degraded {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.system-health-overall-down {
+  color: var(--risk-high);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+}
+
+.system-health-overall-unknown {
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+}
+
+.system-health-meta {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.system-health-placeholder {
+  padding: var(--space-xl) 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.system-health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.system-health-item {
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.system-health-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.system-health-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.system-health-item-status {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-pill);
+}
+
+.system-health-item-status.health-up {
+  color: var(--risk-low);
+  background: rgba(16, 185, 129, 0.10);
+  border: 1px solid rgba(16, 185, 129, 0.24);
+}
+
+.system-health-item-status.health-down {
+  color: var(--risk-high);
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.24);
+}
+
+.system-health-item-status.health-unknown {
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+}
+
+.system-health-item-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.system-health-item-latency {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.system-health-item-info {
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.system-health-item-error {
+  color: var(--risk-high);
+  word-break: break-all;
+}
+
+@media (max-width: 720px) {
+  .system-health-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- 占位区块（未实现子导航内容） ---------- */
 .settings-placeholder {
   padding: 48px 24px;

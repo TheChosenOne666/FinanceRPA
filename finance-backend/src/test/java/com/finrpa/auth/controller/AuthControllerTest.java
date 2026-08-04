@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -49,7 +50,7 @@ class AuthControllerTest {
         userInfo.setRealName("张三");
         response.setUser(userInfo);
 
-        when(authService.login("admin", "password")).thenReturn(response);
+        when(authService.login(eq("admin"), eq("password"), any(), any())).thenReturn(response);
 
         mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -61,7 +62,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.user.userId").value(1))
                 .andExpect(jsonPath("$.data.user.username").value("admin"));
 
-        verify(authService, times(1)).login("admin", "password");
+        verify(authService, times(1)).login(eq("admin"), eq("password"), any(), any());
     }
 
     @Test
@@ -71,7 +72,7 @@ class AuthControllerTest {
         response.setAccessToken("new-access-token");
         response.setRefreshToken("new-refresh-token");
 
-        when(authService.refresh("old-refresh-token")).thenReturn(response);
+        when(authService.refresh(eq("old-refresh-token"), any(), any())).thenReturn(response);
 
         mockMvc.perform(post("/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -80,7 +81,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.accessToken").value("new-access-token"));
 
-        verify(authService, times(1)).refresh("old-refresh-token");
+        verify(authService, times(1)).refresh(eq("old-refresh-token"), any(), any());
     }
 
     @Test

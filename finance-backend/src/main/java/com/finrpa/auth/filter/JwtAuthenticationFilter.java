@@ -1,6 +1,7 @@
 package com.finrpa.auth.filter;
 
 import com.finrpa.agent.constant.AgentConstant;
+import com.finrpa.auth.service.SessionService;
 import com.finrpa.auth.util.JwtUtil;
 import com.finrpa.tenant.constant.TenantConstant;
 import jakarta.servlet.FilterChain;
@@ -37,8 +38,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     /** JWT 工具 */
     private final JwtUtil jwtUtil;
 
+    /** 会话管理服务（P2 SEC-3，校验黑名单 / 会话集合 / 空闲超时） */
+    private final SessionService sessionService;
+
     /**
      * 过滤器核心逻辑：提取并校验 token，解析用户信息后写入安全上下文
+     *
+     * <p>P2 SEC-3 新增：token 签名校验通过后，再调用 {@link SessionService#touchSession}
+     * 校验是否被拉黑 / 会话是否仍存在 / 是否空闲超时，任一不通过则清空 SecurityContext（等同未登录）。</p>
      *
      * @param request     HTTP 请求
      * @param response    HTTP 响应
@@ -53,9 +60,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 1. 提取 token
         String token = extractToken(request);
 
-        // 2. 校验 token
+        // 2. 校验 token 签名 + 过期
         if (StringUtils.hasText(token) && jwtUtil.validateToken(token)) {
             try {
+                // 2.1 P2 SEC-3：校验会话状态（黑名单 / 会话集合 / 空闲超时）
+                if (!sessionService.touchSession(token)) {
+                    // 会话已失效（登出 / 踢人 / 空闲超时），清空 SecurityContext 走未登录流程
+                    log.debug("会话校验未通过，token 已失效");
+                    SecurityContextHolder.clearContext();
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
                 // 3. 解析 userId 和 username
                 String userId = jwtUtil.getUserIdFromToken(token);
                 String username = jwtUtil.getUsernameFromToken(token);

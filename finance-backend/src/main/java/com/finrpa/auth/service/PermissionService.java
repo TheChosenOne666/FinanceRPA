@@ -72,6 +72,16 @@ public interface PermissionService {
     boolean isOrgAdmin(String userId);
 
     /**
+     * 判断用户是否为超级管理员（super_admin）
+     *
+     * <p>超级管理员可跨组织操作（如用户/角色管理时指定任意 orgId）。</p>
+     *
+     * @param userId 用户 ID
+     * @return 是否为超级管理员
+     */
+    boolean isSuperAdmin(String userId);
+
+    /**
      * 获取用户关联的业务线 ID 集合（M7.6 三维度 RBAC）
      *
      * <p>从 sys_user_role 关联中提取该用户所有非 NULL 的 business_line_id。

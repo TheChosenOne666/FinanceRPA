@@ -69,6 +69,17 @@ public interface TenantConstant {
             // 通知通道 Webhook 配置表：全局共享（无 org_id 字段），
             // 由运维通过设置页统一管理
             "rpa_notification_channel_config",
+            // 审批超时阈值配置表：全局共享（无 org_id 字段），由运维通过设置页统一管理
+            "rpa_approval_timeout_config",
+            // 审批人映射配置表：有 org_id 字段，但由 org_admin 通过设置页管理；
+            // 与 sys_user 同列处理，不参与自动租户过滤，对外 API 在 Service 层手动按 orgId 过滤
+            "rpa_approval_route_config",
+            // 密码策略配置表：全局共享单行配置（无 org_id 字段），由运维通过设置页统一管理
+            "sys_password_policy",
+            // 密码历史表：按 user_id 关联（无 org_id 字段），由系统自动写入
+            "sys_password_history",
+            // 登录安全策略配置表：全局共享单行配置（无 org_id 字段），由运维通过设置页统一管理
+            "sys_login_policy",
             // Skyvern 核心表（Python 侧 Alembic 管理，Java 侧不感知字段）
             "skyvern_*"
     );

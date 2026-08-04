@@ -36,6 +36,15 @@ class AuthServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private PasswordPolicyService passwordPolicyService;
+
+    @Mock
+    private LoginPolicyService loginPolicyService;
+
+    @Mock
+    private SessionService sessionService;
+
     @InjectMocks
     private AuthServiceImpl authService;
 
@@ -64,7 +73,7 @@ class AuthServiceTest {
         when(jwtUtil.getExpiresIn()).thenReturn(3600L);
         when(permissionService.getUserRoles("1")).thenReturn(List.of("super_admin"));
 
-        LoginResponse response = authService.login("admin", "password");
+        LoginResponse response = authService.login("admin", "password", null, null);
 
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
@@ -80,7 +89,7 @@ class AuthServiceTest {
     void login_UserNotExist_ShouldThrowException() {
         when(userMapper.selectByUsername("nonexistent")).thenReturn(null);
 
-        assertThatThrownBy(() -> authService.login("nonexistent", "password"))
+        assertThatThrownBy(() -> authService.login("nonexistent", "password", null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户名或密码错误");
     }
@@ -92,7 +101,7 @@ class AuthServiceTest {
 
         when(userMapper.selectByUsername("admin")).thenReturn(user);
 
-        assertThatThrownBy(() -> authService.login("admin", "password"))
+        assertThatThrownBy(() -> authService.login("admin", "password", null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户已禁用");
     }
@@ -105,7 +114,7 @@ class AuthServiceTest {
         when(userMapper.selectByUsername("admin")).thenReturn(user);
         when(passwordEncoder.matches("wrong-password", "encoded-password")).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.login("admin", "wrong-password"))
+        assertThatThrownBy(() -> authService.login("admin", "wrong-password", null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户名或密码错误");
     }
@@ -124,7 +133,7 @@ class AuthServiceTest {
         when(jwtUtil.getExpiresIn()).thenReturn(3600L);
         when(permissionService.getUserRoles("1")).thenReturn(List.of("super_admin"));
 
-        LoginResponse response = authService.refresh("valid-refresh-token");
+        LoginResponse response = authService.refresh("valid-refresh-token", null, null);
 
         assertThat(response.getAccessToken()).isEqualTo("new-access-token");
         assertThat(response.getRefreshToken()).isEqualTo("new-refresh-token");
@@ -136,7 +145,7 @@ class AuthServiceTest {
     void refresh_InvalidToken_ShouldThrowException() {
         when(jwtUtil.validateToken("invalid-token")).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.refresh("invalid-token"))
+        assertThatThrownBy(() -> authService.refresh("invalid-token", null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("refreshToken无效或已过期");
     }
@@ -147,7 +156,7 @@ class AuthServiceTest {
         when(jwtUtil.validateToken("access-token")).thenReturn(true);
         when(jwtUtil.getTokenTypeFromToken("access-token")).thenReturn("access");
 
-        assertThatThrownBy(() -> authService.refresh("access-token"))
+        assertThatThrownBy(() -> authService.refresh("access-token", null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("无效的refreshToken");
     }
@@ -160,7 +169,7 @@ class AuthServiceTest {
         when(jwtUtil.getUserIdFromToken("valid-refresh-token")).thenReturn("1");
         when(userMapper.selectByUserId(1L)).thenReturn(null);
 
-        assertThatThrownBy(() -> authService.refresh("valid-refresh-token"))
+        assertThatThrownBy(() -> authService.refresh("valid-refresh-token", null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户不存在");
     }
