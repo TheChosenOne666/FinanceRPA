@@ -5,13 +5,16 @@ import com.finrpa.notification.channels.NotificationChannel;
 import com.finrpa.notification.constant.NotificationConstant;
 import com.finrpa.notification.dispatcher.NotificationDispatcher;
 import com.finrpa.notification.dto.NotificationMessage;
+import com.finrpa.notification.dto.request.ChannelConfigSaveRequest;
 import com.finrpa.notification.dto.request.NotificationTestRequest;
 import com.finrpa.notification.dto.response.ChannelVO;
 import com.finrpa.notification.dto.response.NotificationSendResultVO;
 import com.finrpa.notification.dto.response.RetryQueueStatsVO;
+import com.finrpa.notification.entity.NotificationChannelConfigEO;
 import com.finrpa.notification.enums.NotificationChannelEnum;
 import com.finrpa.notification.enums.NotificationTemplateEnum;
 import com.finrpa.notification.service.NotificationAttemptService;
+import com.finrpa.notification.service.NotificationChannelConfigService;
 import com.finrpa.notification.templates.NotificationTemplateRenderer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -61,6 +64,9 @@ class NotificationServiceImplTest {
     @Mock
     private RList<String> retryQueue;
 
+    @Mock
+    private NotificationChannelConfigService channelConfigService;
+
     private NotificationServiceImpl notificationService;
 
     @BeforeEach
@@ -72,6 +78,7 @@ class NotificationServiceImplTest {
         ReflectionTestUtils.setField(notificationService, "dispatcher", dispatcher);
         ReflectionTestUtils.setField(notificationService, "attemptService", attemptService);
         ReflectionTestUtils.setField(notificationService, "redissonClient", redissonClient);
+        ReflectionTestUtils.setField(notificationService, "channelConfigService", channelConfigService);
 
         // 通用 stub：通道枚举返回
         lenient().when(weComChannel.getChannel()).thenReturn(NotificationChannelEnum.WECOM);
@@ -82,10 +89,17 @@ class NotificationServiceImplTest {
     // region listChannels
 
     @Test
-    @DisplayName("listChannels - 返回所有通道及配置状态")
+    @DisplayName("listChannels - 返回所有通道及配置状态（含脱敏 webhookUrl 与 enabled）")
     void listChannels_ReturnsAllChannels() {
-        // arrange
-        when(weComChannel.isConfigured()).thenReturn(true);
+        // arrange：模拟数据库已有 wecom 配置
+        NotificationChannelConfigEO wecomConfig = new NotificationChannelConfigEO();
+        wecomConfig.setChannel("wecom");
+        wecomConfig.setWebhookUrl("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret_token");
+        wecomConfig.setEnabled(1);
+        when(channelConfigService.getByChannel("wecom")).thenReturn(wecomConfig);
+
+        // dingtalk 数据库无记录，回退到通道 isConfigured
+        when(channelConfigService.getByChannel("dingtalk")).thenReturn(null);
         when(dingTalkChannel.isConfigured()).thenReturn(false);
 
         // act
@@ -93,12 +107,86 @@ class NotificationServiceImplTest {
 
         // assert
         assertEquals(2, result.size());
+
+        // wecom：数据库配置 + 脱敏
         ChannelVO weCom = result.stream().filter(c -> "wecom".equals(c.getChannel())).findFirst().orElseThrow();
         assertEquals("企业微信群机器人", weCom.getLabel());
         assertTrue(weCom.getConfigured());
+        assertTrue(weCom.getEnabled());
+        assertEquals("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=***", weCom.getWebhookUrl());
+
+        // dingtalk：无数据库配置，回退到 yml，webhookUrl 为空
         ChannelVO dingTalk = result.stream().filter(c -> "dingtalk".equals(c.getChannel())).findFirst().orElseThrow();
         assertEquals("钉钉群机器人", dingTalk.getLabel());
         assertFalse(dingTalk.getConfigured());
+        assertTrue(dingTalk.getEnabled()); // 无配置默认启用
+        assertEquals("", dingTalk.getWebhookUrl());
+    }
+
+    // endregion
+
+    // region saveChannelConfig
+
+    @Test
+    @DisplayName("saveChannelConfig - 保存成功返回脱敏通道信息")
+    void saveChannelConfig_ReturnsMaskedChannel() {
+        // arrange
+        ChannelConfigSaveRequest request = new ChannelConfigSaveRequest();
+        request.setWebhookUrl("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=new_token");
+        request.setSecret("");
+        request.setEnabled(true);
+
+        NotificationChannelConfigEO saved = new NotificationChannelConfigEO();
+        saved.setChannel("wecom");
+        saved.setWebhookUrl("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=new_token");
+        saved.setEnabled(1);
+        when(channelConfigService.saveConfig("wecom", request)).thenReturn(saved);
+
+        // act
+        ChannelVO result = notificationService.saveChannelConfig("wecom", request);
+
+        // assert
+        assertEquals("wecom", result.getChannel());
+        assertEquals("企业微信群机器人", result.getLabel());
+        assertTrue(result.getConfigured());
+        assertTrue(result.getEnabled());
+        assertEquals("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=***", result.getWebhookUrl());
+    }
+
+    @Test
+    @DisplayName("saveChannelConfig - 钉钉 access_token 脱敏")
+    void saveChannelConfig_DingTalkMasked() {
+        // arrange
+        ChannelConfigSaveRequest request = new ChannelConfigSaveRequest();
+        request.setWebhookUrl("https://oapi.dingtalk.com/robot/send?access_token=abc123");
+        request.setSecret("SEC456");
+        request.setEnabled(true);
+
+        NotificationChannelConfigEO saved = new NotificationChannelConfigEO();
+        saved.setChannel("dingtalk");
+        saved.setWebhookUrl("https://oapi.dingtalk.com/robot/send?access_token=abc123");
+        saved.setEnabled(1);
+        when(channelConfigService.saveConfig("dingtalk", request)).thenReturn(saved);
+
+        // act
+        ChannelVO result = notificationService.saveChannelConfig("dingtalk", request);
+
+        // assert
+        assertEquals("https://oapi.dingtalk.com/robot/send?access_token=***", result.getWebhookUrl());
+    }
+
+    @Test
+    @DisplayName("saveChannelConfig - 无效通道类型抛异常")
+    void saveChannelConfig_InvalidChannel() {
+        // arrange
+        ChannelConfigSaveRequest request = new ChannelConfigSaveRequest();
+        request.setWebhookUrl("");
+        request.setEnabled(false);
+
+        // act + assert
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> notificationService.saveChannelConfig("invalid", request));
+        assertEquals(40000, ex.getCode());
     }
 
     // endregion

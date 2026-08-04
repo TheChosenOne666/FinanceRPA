@@ -1919,9 +1919,9 @@ M{里程碑号}.{任务序号}
 | 5 | `05-approval-center.html` | [ApprovalCenter.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/ApprovalCenter.tsx) | ✅ 已完成 | 2026-08-04 | 双栏工作台重构（左卡片列表+右固定详情面板）、Tab 3 项含计数、面包屑、风险色边框卡片、倒计时、元信息网格、风险原因列表、任务参数表、执行截图占位、审批操作区 |
 | 6 | `06-audit-logs.html` | [AuditLogs.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/AuditLogs.tsx) | ✅ 已完成 | 2026-08-04 | 两栏布局 + 卡片列表 + 右侧详情面板 + 面包屑 + badge 4 色 + 筛选栏补全（含后端联表查询） |
 | 7 | `07-ai-monitoring.html` | [LlmMonitor.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/LlmMonitor.tsx) / [NeedsHuman.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/llm/NeedsHuman.tsx) | ✅ 已完成 | 2026-08-04 | 接管队列两栏布局+业务线筛选；LLM 监控 KPI 环比趋势+模型分布+成本趋势 SVG+调用记录表（含后端字段补充） |
-| 8 | `08-settings.html` | 无 | ⬜ 未实现 | — | 系统设置页（组织/用户/角色/部门/业务线/Skill 元数据/工作流模板等管理）后端部分已就绪，前端页面未创建 |
+| 8 | `08-settings.html` | [Settings.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Settings.tsx) | ✅ 已完成 | 2026-08-04 | 两栏布局+7 项子导航；用户管理/角色管理表格（Mock 数据 + TODO 徽章）；通知配置通道开关+模板勾选+保存（Mock 端持久化）；4 项占位「敬请期待」 |
 
-**汇总**：已完成 7 / 8 ｜ 未实现 1 / 8
+**汇总**：已完成 8 / 8 ｜ 未实现 0 / 8
 
 ### 10.2 建议优先级
 
@@ -2039,11 +2039,86 @@ M{里程碑号}.{任务序号}
   - 后端：`mvnw test -Dtest=LlmCallLogServiceImplTest,NeedsHumanServiceImplTest` 共 47 测试 PASS
   - 前端：`tsc --noEmit` 通过 + 浏览器验证 PASS（接管队列两栏布局/详情面板/三按钮；LLM 监控标题面包屑/时间筛选/KPI 趋势/模型分布/成本趋势 SVG/调用记录表 10 行数据）
 
+#### 10.3.6 08-settings.html → Settings.tsx（2026-08-04）
+
+**对比原型未对齐项**：本页为新建页面（前端完全未创建），原型 7 项子导航 + 3 个内容区块全部缺失。
+
+**对齐方案**：采用「前端完整对齐 + Mock 数据」方案（前 7 页 Option B 模式不适用，因本页涉及大量后端 CRUD 接口缺失，且用户管理 CRUD 是独立功能模块，不属于 UI 对齐范畴）。用户/角色区块使用 Mock 数据并明确标注「Mock 数据 · 后端 TODO」徽章，通知配置区块复用现有 notification API，不新增后端 Controller。
+
+**核心改动**：
+- **新建文件**：
+  - [Settings.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Settings.tsx)：系统设置页面主组件，含两栏布局（240px 子导航 + 1fr 内容区）、7 项子导航、3 个已实现区块（用户管理 / 角色管理 / 通知配置）、4 个占位区块（部门管理 / 业务线 / Skill 管理 / 权限矩阵）
+  - [settings.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/settings.ts)：系统设置 API 封装，含 `listUsers` / `listRoles` / `listNotificationChannels` / `listNotificationTemplates` / `saveNotificationConfig` 五个方法
+- **修改文件**：
+  - [types.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/types.ts)：扩展 `ChannelVO`（加 `webhookUrl` / `enabled` 可选字段），新增 `NotificationTemplateConfigVO` / `NotificationConfigSaveRequest` / `UserVO` / `RoleVO` 类型（标注后端 TODO）
+  - [mockServer.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/mock/mockServer.ts)：新增 5 个 Mock 端点（`/api/users` / `/api/roles` / `/api/notification/channels` / `/api/notification/templates` / `PUT /api/notification/config`），含通道开关与模板启停的内存持久化
+  - [router.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/router.tsx)：新增 `/settings` 路由
+  - [RootLayout.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/RootLayout.tsx)：「管理」分组新增「设置」入口（齿轮图标）
+  - [glass.css](file:///d:/lingou-projects/financeRPA/finance-frontend/src/styles/glass.css)：新增 P4 settings 样式区块（`settings-layout` / `settings-sub-nav` / `switch` / `check-list` / `btn-link` / `btn-test` / `channel-name` / `sub-block-title` / `notification-config-card` / `settings-placeholder` / `mock-data-badge` / `role-badge-*` 等）
+- **未实现后端接口（标注 TODO）**：
+  - 用户管理 CRUD：`GET /api/v1/users` / `POST /api/v1/users` / `PUT /api/v1/users/:id`（后端 com.finrpa.auth 包下仅有 UserMapper/RoleMapper/UserRoleMapper，无 Controller/Service/DTO）
+  - 角色管理 CRUD：`GET /api/v1/roles` / `POST /api/v1/roles` / `DELETE /api/v1/roles/:id`
+  - 通知配置保存：`PUT /api/v1/notification/config`（通道开关 + 模板启停持久化）
+  - 通知模板配置查询：`GET /api/v1/notification/templates`
+- **验证**：
+  - 前端：`tsc --noEmit` 通过 + 浏览器 8 项检查 PASS（页面标题面包屑 / 两栏布局 7 项子导航 / 用户管理表格 4 行+状态徽章+操作按钮+Mock 徽章 / 角色管理表格 3 行+互斥约束 badge+内置角色删除禁用 / 通知配置通道表格 2 行+开关+测试按钮 / 通知模板勾选 4 项+频率徽章 / 保存后「最后保存于」时间更新 / 部门管理占位「敬请期待」）
+
 ### 10.4 下一步
 
-按优先级 P0（dashboard）+ P1（audit-logs）+ P2（approval-center）+ P3（ai-monitoring）均已完成，下一目标 **P4（settings，08）**。每完成一个页面：
-1. 对照 `prototypes/0X-xxx.html` 逐项比对
-2. 修改前端代码 + 必要时补充后端字段
-3. tsc 检查 + 浏览器截图验证
-4. 更新本章节状态（✅ + 完成日期 + 改动摘要）
-5. git commit（`feat: XXX 页面 UI 原型对齐优化`）
+按优先级 P0（dashboard）+ P1（audit-logs）+ P2（approval-center）+ P3（ai-monitoring）+ P4（settings）均已完成，**8 / 8 原型页面 UI 对齐全部完成**。后续可选方向：
+1. 后端补充用户/角色管理 CRUD Controller/Service/Mapper/DTO/测试（settings 页用户/角色区块由 Mock 切换为真实数据）
+2. 后端补充通知配置保存接口（settings 页通知配置区块由 Mock 切换为真实数据）
+3. Skill 管理 / 权限矩阵 / 部门管理 / 业务线管理 4 个子导航的可视化编辑界面开发
+4. 各页面的真实后端联调测试（dev 模式 mock → 真实后端切换）
+5. git commit（`feat: 08-settings 系统设置页 UI 原型对齐`）
+
+### 10.5 P0 设置功能扩展（2026-08-04）
+
+**背景**：原型 UI 对齐完成后，盘点设置页缺失的重要功能（详见 [settings-requirements.md](file:///d:/lingou-projects/financeRPA/docs/settings-requirements.md)）。按 P0/P1/P2/P3 排定优先级，本次实施 P0（后端已就绪或仅需补 1 个接口，投入产出比最高）。
+
+**实施范围**：
+
+| 任务 | 后端 | 前端 | 状态 |
+|------|------|------|------|
+| P0-1 风险关键词库 | 复用 RiskKeywordController（无改动） | 新增 RiskKeywordsSection（CRUD + 筛选 + 启用切换 + 内置禁用规则） | ✅ 已完成 |
+| P0-2 Skill 元数据管理 | 复用 SkillController（无改动） | 新增 SkillsSection（CRUD + 筛选 + name 不可改 + 启用切换） | ✅ 已完成 |
+| P0-3 部门 / 业务线只读列表 | 复用 TenantController（无改动） | 新增 DepartmentsSection / BusinessLinesSection（只读表格 + 「只读」徽章） | ✅ 已完成 |
+| P0-4 通知通道 Webhook 保存 | 新增 PUT /notification/channels/{channel} + NotificationChannelConfigEO + Service + 单测 | NotificationSection 通道行新增「编辑 Webhook」按钮 + 弹窗（钉钉额外加签密钥） | ✅ 已完成 |
+
+**核心改动**：
+
+- **后端（P0-4）**：
+  - 新增 [NotificationChannelConfigEO.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/notification/entity/NotificationChannelConfigEO.java)：`rpa_notification_channel_config` 表实体（channel 唯一键 / webhook_url / secret / enabled），全局共享无 org_id
+  - 新增 [NotificationChannelConfigMapper.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/notification/mapper/NotificationChannelConfigMapper.java)
+  - 新增 [NotificationChannelConfigService.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/notification/service/NotificationChannelConfigService.java) + Impl：启动时从 DB 加载配置覆盖 NotificationProperties 内存值，热生效
+  - 扩展 [NotificationController.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/notification/controller/NotificationController.java)：新增 `PUT /notification/channels/{channel}` 端点
+  - 扩展 [ChannelVO.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/notification/dto/response/ChannelVO.java)：增加 `webhookUrl`（脱敏）+ `enabled` 字段
+  - 新增 [ChannelConfigSaveRequest.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/notification/dto/request/ChannelConfigSaveRequest.java)
+  - 新增 [NotificationChannelConfigServiceImplTest.java](file:///d:/lingou-projects/financeRPA/finance-backend/src/test/java/com/finrpa/notification/service/impl/NotificationChannelConfigServiceImplTest.java)：保存 / 查询 / 无效 channel 异常 单测
+  - 新增 V21 数据库迁移脚本（`rpa_notification_channel_config` 表）
+- **前端**：
+  - 修改 [Settings.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Settings.tsx)：
+    - 子导航新增「风险关键词」项（共 8 项）
+    - 新增 `RiskKeywordsSection`：分页表格 + 5 列筛选栏（关键词/行业/分类/风险类型/启用状态）+ 新增/编辑弹窗（内置关键词禁用 keyword/industry/category/riskType 字段）+ 删除确认 + 启用切换
+    - 新增 `SkillsSection`：分页表格 + 3 列筛选栏（搜索/分类/启用状态）+ 注册/编辑弹窗（编辑模式 name 字段禁用 + 徽章提示）+ 启用切换（按 name 路径参数更新）
+    - 新增 `DepartmentsSection` / `BusinessLinesSection`：只读表格 + 标题旁「只读」徽章
+    - `NotificationSection` 扩展：通道表格操作列新增「编辑 Webhook」按钮 + Webhook 编辑弹窗（Webhook URL + 启用状态 + 钉钉额外加签密钥字段）
+  - 修改 [settings.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/settings.ts)：新增 `listRiskKeywords` / `addRiskKeyword` / `updateRiskKeyword` / `deleteRiskKeyword` / `listSkills` / `registerSkill` / `updateSkill` / `saveChannelConfig` 8 个 API
+  - 修改 [types.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/types.ts)：新增 `RiskKeywordVO` / `RiskKeywordAddRequest` / `RiskKeywordQueryRequest` / `SkillVO` / `SkillAddRequest` / `SkillUpdateRequest` / `SkillQueryRequest` / `ChannelConfigSaveRequest` 8 个类型
+  - 修改 [tenant.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/tenant.ts)：修正 `listDepartments` / `listBusinessLines` URL 路径（移除 `/v1` 前缀对齐后端）
+  - 修改 [mockServer.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/mock/mockServer.ts)：新增 `/api/risk-keywords` / `/api/skills` / `PUT /api/notification/channels/{channel}` Mock 端点 + 8 条风险关键词 + 5 条 Skill mock 数据
+
+**验证**：
+- 后端：`mvnw test -Dtest=NotificationChannelConfigServiceImplTest,NotificationServiceImplTest` 全部 PASS
+- 前端：`tsc --noEmit` 通过（修复 1 处 RiskKeywordQueryRequest.enabled 类型不匹配 bug）
+- 浏览器：4 项子导航全部 PASS
+  - 风险关键词库：8 条数据 + 筛选栏 + 启用切换正常
+  - Skill 管理：5 条数据 + 注册弹窗完整字段 + 编辑弹窗 name 禁用 + 启用切换正常
+  - 部门管理 / 业务线：只读列表 + 「只读」徽章 + 多条数据正常渲染
+  - 通知配置：通道行「编辑 Webhook」按钮 + 企业微信弹窗（URL + 启用）+ 钉钉弹窗（额外加签密钥字段）
+
+**下一步（P1 规划，待用户确认）**：
+- RSK-1 审批超时阈值配置（high/critical 超时分钟数在线可配）
+- RSK-3 审批人映射（风险等级 × 业务线 → 审批人/审批部门）
+- USR-1 用户 CRUD（新增 / 编辑 / 禁用 / 重置密码 / 分配角色）
+- USR-2 角色 CRUD（新增 / 编辑 / 删除 / 分配权限）

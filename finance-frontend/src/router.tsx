@@ -16,6 +16,7 @@
  * - /notification    通知中心（M6.6）
  * - /audit-logs      审计日志（M7.5）
  * - /dashboard       运营大屏（M8.2）
+ * - /settings        系统设置（P4 settings 原型对齐）
  * - /403             403 无权限页
  *   - *                404 兜底
  *
@@ -39,6 +40,7 @@ import ApprovalCenter from '@/routes/enterprise/ApprovalCenter'
 import NotificationCenter from '@/routes/notification/NotificationCenter'
 import AuditLogs from '@/routes/enterprise/AuditLogs'
 import Dashboard from '@/routes/enterprise/Dashboard'
+import Settings from '@/routes/enterprise/Settings'
 
 /** 路由配置 */
 export const router = createBrowserRouter([
@@ -101,6 +103,10 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard',
         element: <Dashboard />,
+      },
+      {
+        path: 'settings',
+        element: <Settings />,
       },
       {
         path: '403',

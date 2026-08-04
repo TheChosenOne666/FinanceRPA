@@ -2,6 +2,7 @@ package com.finrpa.notification.controller;
 
 import com.finrpa.common.response.BaseResponse;
 import com.finrpa.common.response.ResultUtils;
+import com.finrpa.notification.dto.request.ChannelConfigSaveRequest;
 import com.finrpa.notification.dto.request.NotificationTestRequest;
 import com.finrpa.notification.dto.response.ChannelVO;
 import com.finrpa.notification.dto.response.NotificationSendResultVO;
@@ -13,7 +14,9 @@ import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,11 +24,12 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 通知管理控制器（对外 API）（M6.6）
+ * 通知管理控制器（对外 API）（M6.6 + P0-4 扩展）
  *
  * <p>对外端点（实际访问路径前缀 {@code /api/notification}）：
  * <ul>
  *   <li>GET /notification/channels —— 查询所有通道及其配置状态</li>
+ *   <li>PUT /notification/channels/{channel} —— 保存通道 Webhook 配置（P0-4）</li>
  *   <li>POST /notification/test —— 测试发送（指定通道 + 模板 + 参数）</li>
  *   <li>GET /notification/retry/queue —— 查询重试队列待处理任务数</li>
  *   <li>GET /notification/retry/stats —— 查询重试队列统计（成功率 / 失败次数 / 告警数）</li>
@@ -38,7 +42,7 @@ import java.util.List;
 @Slf4j
 @RestController
 @RequestMapping("/notification")
-@Tag(name = "通知管理", description = "通知通道查询 + 测试发送 + 重试队列统计")
+@Tag(name = "通知管理", description = "通知通道查询 + 配置保存 + 测试发送 + 重试队列统计")
 public class NotificationController {
 
     /** 通知服务 */
@@ -48,12 +52,32 @@ public class NotificationController {
     /**
      * 查询所有通知通道及其配置状态
      *
+     * <p>P0-4 扩展：返回字段含脱敏 webhookUrl 与 enabled。</p>
+     *
      * @return 通道列表
      */
     @GetMapping("/channels")
     @Operation(summary = "通道列表", description = "查询所有通知通道（企业微信 / 钉钉）及其 Webhook 配置状态")
     public BaseResponse<List<ChannelVO>> listChannels() {
         return ResultUtils.success(notificationService.listChannels());
+    }
+
+    /**
+     * 保存通道 Webhook 配置（P0-4）
+     *
+     * <p>持久化 Webhook URL、加签密钥（仅钉钉）、启用状态到数据库，
+     * 同步更新运行时 NotificationProperties 内存值，热生效。</p>
+     *
+     * @param channel 通道类型：wecom / dingtalk
+     * @param request 保存请求（webhookUrl / secret / enabled）
+     * @return 保存后的脱敏通道信息
+     */
+    @PutMapping("/channels/{channel}")
+    @Operation(summary = "保存通道 Webhook 配置", description = "持久化 Webhook URL + 加签密钥 + 启用状态，热生效")
+    public BaseResponse<ChannelVO> saveChannelConfig(
+            @PathVariable String channel,
+            @Valid @RequestBody ChannelConfigSaveRequest request) {
+        return ResultUtils.success(notificationService.saveChannelConfig(channel, request));
     }
 
     /**

@@ -837,6 +837,9 @@ export type NotificationTemplateType =
 
 /**
  * 通知通道信息（对齐 com.finrpa.notification.dto.response.ChannelVO）
+ *
+ * 说明：webhookUrl / enabled 为 P4 settings 原型对齐扩展字段（后端 ChannelVO 暂未包含，
+ * 由 Mock 端提供；后端 CRUD 接口待开发，前端标注 TODO）。
  */
 export interface ChannelVO {
   /** 通道类型：wecom / dingtalk */
@@ -845,6 +848,87 @@ export interface ChannelVO {
   label: string;
   /** 是否已配置 Webhook URL */
   configured: boolean;
+  /** Webhook URL（P4 settings 原型对齐：通道表格展示用，Mock 端填充明文） */
+  webhookUrl?: string;
+  /** 是否启用（P4 settings 原型对齐：通道开关，Mock 端维护状态） */
+  enabled?: boolean;
+}
+
+/**
+ * 通知模板配置项（P4 settings 原型对齐：08-settings.html 通知模板勾选列表）
+ *
+ * 说明：后端暂无对应实体，由 Mock 端维护；后端 CRUD 接口待开发，前端标注 TODO。
+ */
+export interface NotificationTemplateConfigVO {
+  /** 模板类型 */
+  templateType: NotificationTemplateType;
+  /** 模板中文名 */
+  label: string;
+  /** 模板描述 */
+  description: string;
+  /** 频率标签：高频 / 紧急 / 普通 */
+  frequency: 'high' | 'urgent' | 'normal';
+  /** 是否启用 */
+  enabled: boolean;
+}
+
+/**
+ * 通知配置保存请求（P4 settings 原型对齐：通道开关 + 模板启停）
+ *
+ * 说明：后端暂无对应接口，由 Mock 端接受并返回成功；后端 CRUD 接口待开发。
+ */
+export interface NotificationConfigSaveRequest {
+  /** 通道启用状态（key 为 channel 类型，value 为是否启用） */
+  channels: Array<{ channel: NotificationChannelType; enabled: boolean }>;
+  /** 模板启用状态（key 为 templateType，value 为是否启用） */
+  templates: Array<{ templateType: NotificationTemplateType; enabled: boolean }>;
+}
+
+// ============================================================
+// 系统设置 - 用户/角色管理（P4 settings 原型对齐）
+// 说明：后端 com.finrpa.auth 包下仅有 UserMapper/RoleMapper/UserRoleMapper，
+// 无 UserController/RoleController/Service/DTO。下列类型仅用于前端展示，
+// 由 Mock 端提供数据；后端 CRUD 接口待开发，前端标注 TODO。
+// ============================================================
+
+/**
+ * 用户视图（P4 settings 原型对齐：08-settings.html 用户管理表格）
+ */
+export interface UserVO {
+  /** 用户业务 ID */
+  userId: string;
+  /** 用户名（登录账号） */
+  username: string;
+  /** 真实姓名 */
+  realName: string;
+  /** 所属部门名称（联表 sys_department.dept_name） */
+  deptName: string;
+  /** 角色编码列表（联表 sys_role.role_code） */
+  roles: string[];
+  /** 启用状态：true-启用 / false-已禁用 */
+  enabled: boolean;
+  /** 创建时间（ISO 字符串） */
+  createTime: string;
+}
+
+/**
+ * 角色视图（P4 settings 原型对齐：08-settings.html 角色管理表格）
+ */
+export interface RoleVO {
+  /** 角色 ID */
+  roleId: string;
+  /** 角色编码（如 operator / approver / viewer） */
+  roleCode: string;
+  /** 角色中文名（如 操作员 / 审批员 / 观察员） */
+  roleName: string;
+  /** 权限范围描述（用于表格"权限范围"列展示） */
+  permissionScope: string;
+  /** 互斥约束（如 "不可兼任 approver"，空字符串表示无约束） */
+  mutualExclusion: string;
+  /** 是否内置角色（内置角色不可删除） */
+  builtIn: boolean;
+  /** 创建时间（ISO 字符串） */
+  createTime: string;
 }
 
 /**
@@ -1184,4 +1268,163 @@ export interface ApprovalStatVO {
   pendingCount: string | number;
   /** 平均响应时长（分钟） */
   avgResponseMinutes: number;
+}
+
+// ============================================================
+// 系统设置 - 风险关键词库（P0-1）
+// 对齐 com.finrpa.approval.dto.request / response
+// ============================================================
+
+/** 风险关键词 VO（对齐 com.finrpa.approval.dto.response.RiskKeywordVO） */
+export interface RiskKeywordVO {
+  /** 关键词业务 ID */
+  keywordId: string;
+  /** 关键词文本 */
+  keyword: string;
+  /** 所属行业：banking / insurance / securities */
+  industry: string;
+  /** 分类：high_risk_operation / sensitive_data / large_amount */
+  category: string;
+  /** 风险类型：high / medium / low */
+  riskType: string;
+  /** 描述说明 */
+  description?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled: number;
+  /** 是否内置（0-自定义 1-内置） */
+  builtin: number;
+  /** 创建时间（ISO 字符串） */
+  createTime: string;
+  /** 更新时间（ISO 字符串） */
+  updateTime: string;
+}
+
+/** 风险关键词新增 / 更新请求（对齐 com.finrpa.approval.dto.request.RiskKeywordAddRequest） */
+export interface RiskKeywordAddRequest {
+  /** 关键词文本 */
+  keyword: string;
+  /** 所属行业：banking / insurance / securities */
+  industry: string;
+  /** 分类：high_risk_operation / sensitive_data / large_amount */
+  category: string;
+  /** 风险类型：high / medium / low */
+  riskType: string;
+  /** 描述说明（可空） */
+  description?: string;
+  /** 启用状态（默认 1-启用） */
+  enabled?: number;
+}
+
+/** 风险关键词分页查询请求（对齐 com.finrpa.approval.dto.request.RiskKeywordQueryRequest） */
+export interface RiskKeywordQueryRequest {
+  /** 当前页号（从 1 开始） */
+  current: number;
+  /** 页面大小 */
+  pageSize: number;
+  /** 关键词模糊匹配（可空） */
+  keyword?: string;
+  /** 所属行业（可空） */
+  industry?: string | '';
+  /** 分类（可空） */
+  category?: string | '';
+  /** 风险类型（可空） */
+  riskType?: string | '';
+  /** 启用状态（可空，默认全部） */
+  enabled?: number | '';
+}
+
+// ============================================================
+// 系统设置 - Skill 元数据管理（P0-2）
+// 对齐 com.finrpa.skills.dto.request / response
+// ============================================================
+
+/** Skill 视图对象（对齐 com.finrpa.skills.dto.response.SkillVO） */
+export interface SkillVO {
+  /** Skill 业务 ID */
+  skillId: string;
+  /** Skill 唯一标识 */
+  name: string;
+  /** 用途描述 */
+  description?: string;
+  /** 分类：auth / interaction / extraction */
+  category: string;
+  /** 参数 JSON Schema */
+  paramSchema?: string;
+  /** 失败策略：RETRY / SKIP / ABORT */
+  errorStrategy?: string;
+  /** 最大重试次数 */
+  maxRetries?: number;
+  /** 版本号 */
+  version?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled: number;
+  /** 创建时间（ISO 字符串） */
+  createTime: string;
+  /** 更新时间（ISO 字符串） */
+  updateTime: string;
+}
+
+/** Skill 新增请求（对齐 com.finrpa.skills.dto.request.SkillAddRequest） */
+export interface SkillAddRequest {
+  /** Skill 唯一标识 */
+  name: string;
+  /** 用途描述 */
+  description?: string;
+  /** 分类：auth / interaction / extraction */
+  category: string;
+  /** 参数 JSON Schema */
+  paramSchema?: string;
+  /** 失败策略：RETRY / SKIP / ABORT */
+  errorStrategy?: string;
+  /** 最大重试次数 */
+  maxRetries?: number;
+  /** 版本号 */
+  version?: string;
+}
+
+/** Skill 更新请求（对齐 com.finrpa.skills.dto.request.SkillUpdateRequest，name 不可改） */
+export interface SkillUpdateRequest {
+  /** 用途描述 */
+  description?: string;
+  /** 分类 */
+  category?: string;
+  /** 参数 JSON Schema */
+  paramSchema?: string;
+  /** 失败策略 */
+  errorStrategy?: string;
+  /** 最大重试次数 */
+  maxRetries?: number;
+  /** 版本号 */
+  version?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  enabled?: number;
+}
+
+/** Skill 分页查询请求（对齐 com.finrpa.skills.dto.request.SkillQueryRequest） */
+export interface SkillQueryRequest {
+  /** 当前页号 */
+  current: number;
+  /** 页面大小 */
+  pageSize: number;
+  /** 分类筛选 */
+  category?: string | '';
+  /** 启用状态筛选 */
+  enabled?: number | '';
+  /** 名称关键词搜索 */
+  searchText?: string;
+}
+
+// ============================================================
+// 通知通道 Webhook 配置保存（P0-4）
+// 对齐 com.finrpa.notification.dto.request.ChannelConfigSaveRequest
+// ============================================================
+
+/** 通道 Webhook 配置保存请求 */
+export interface ChannelConfigSaveRequest {
+  /** Webhook URL（必填，空串表示清除配置） */
+  webhookUrl: string;
+  /** 加签密钥（仅 dingtalk 使用，可空） */
+  secret?: string;
+  /** 启用状态（必填） */
+  enabled: boolean;
 }

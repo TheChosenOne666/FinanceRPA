@@ -20,6 +20,11 @@
  *   GET  /api/llm/calls/stats           LLM 调用统计（M5.6，含环比趋势）
  *   GET  /api/llm/calls                 LLM 调用记录分页（P3 ai-monitoring 原型对齐）
  *   GET  /api/llm/calls/daily-trend     LLM 调用按日趋势（P3 ai-monitoring 原型对齐）
+ *   GET  /api/users                     用户列表（P4 settings 原型对齐，Mock 数据）
+ *   GET  /api/roles                     角色列表（P4 settings 原型对齐，Mock 数据）
+ *   GET  /api/notification/channels     通知通道列表（P4 settings 原型对齐，含 webhookUrl/enabled）
+ *   GET  /api/notification/templates    通知模板配置列表（P4 settings 原型对齐，Mock 数据）
+ *   PUT  /api/notification/config       保存通知配置（P4 settings 原型对齐，Mock 接受返回成功）
  *
  * SSE 场景（按 taskId 切换）：
  *   mock-success      全部子任务成功
@@ -504,13 +509,73 @@ export function mockServerPlugin(): Plugin {
                 decodeURIComponent(workflowDetailMatch[1]),
               )
             }
-            // 部门列表：/api/v1/tenant/departments（M7.6 三维度 RBAC：任务列表筛选）
-            if (pathname === '/api/v1/tenant/departments' && method === 'GET') {
+            // 部门列表：/api/tenant/departments（P0-3 对齐后端 TenantController，去掉 v1 前缀）
+            if (pathname === '/api/tenant/departments' && method === 'GET') {
               return handleListDepartments(res)
             }
-            // 业务线列表：/api/v1/tenant/business-lines（M7.6 三维度 RBAC：任务列表筛选）
-            if (pathname === '/api/v1/tenant/business-lines' && method === 'GET') {
+            // 业务线列表：/api/tenant/business-lines（P0-3 对齐后端 TenantController，去掉 v1 前缀）
+            if (pathname === '/api/tenant/business-lines' && method === 'GET') {
               return handleListBusinessLines(res)
+            }
+            // 用户列表：/api/users（P4 settings 原型对齐，Mock 数据）
+            if (pathname === '/api/users' && method === 'GET') {
+              return handleListUsers(res)
+            }
+            // 角色列表：/api/roles（P4 settings 原型对齐，Mock 数据）
+            if (pathname === '/api/roles' && method === 'GET') {
+              return handleListRoles(res)
+            }
+            // 通知通道列表：/api/notification/channels（P4 settings 原型对齐，含 webhookUrl/enabled）
+            if (pathname === '/api/notification/channels' && method === 'GET') {
+              return handleListNotificationChannels(res)
+            }
+            // 通知模板配置列表：/api/notification/templates（P4 settings 原型对齐，Mock 数据）
+            if (pathname === '/api/notification/templates' && method === 'GET') {
+              return handleListNotificationTemplates(res)
+            }
+            // 保存通知配置：/api/notification/config（P4 settings 原型对齐，Mock 接受返回成功）
+            if (pathname === '/api/notification/config' && method === 'PUT') {
+              return handleSaveNotificationConfig(req, res)
+            }
+            // 保存通道 Webhook 配置：/api/notification/channels/{channel}（P0-4）
+            const channelSaveMatch = pathname.match(
+              /^\/api\/notification\/channels\/([^/]+)$/,
+            )
+            if (channelSaveMatch && method === 'PUT') {
+              return handleSaveChannelConfig(req, res, channelSaveMatch[1])
+            }
+
+            // 风险关键词列表：/api/risk-keywords（P0-1，分页查询）
+            if (pathname === '/api/risk-keywords' && method === 'GET') {
+              return handleListRiskKeywords(req, res)
+            }
+            // 新增风险关键词：/api/risk-keywords（P0-1）
+            if (pathname === '/api/risk-keywords' && method === 'POST') {
+              return handleAddRiskKeyword(req, res)
+            }
+            // 更新 / 删除风险关键词：/api/risk-keywords/{keywordId}（P0-1）
+            const riskKeywordMatch = pathname.match(
+              /^\/api\/risk-keywords\/([^/]+)$/,
+            )
+            if (riskKeywordMatch && method === 'PUT') {
+              return handleUpdateRiskKeyword(req, res, riskKeywordMatch[1])
+            }
+            if (riskKeywordMatch && method === 'DELETE') {
+              return handleDeleteRiskKeyword(res, riskKeywordMatch[1])
+            }
+
+            // Skill 列表：/api/skills（P0-2，分页查询）
+            if (pathname === '/api/skills' && method === 'GET') {
+              return handleListSkills(req, res)
+            }
+            // 注册 Skill：/api/skills（P0-2）
+            if (pathname === '/api/skills' && method === 'POST') {
+              return handleRegisterSkill(req, res)
+            }
+            // 更新 Skill：/api/skills/{name}（P0-2）
+            const skillMatch = pathname.match(/^\/api\/skills\/([^/]+)$/)
+            if (skillMatch && method === 'PUT') {
+              return handleUpdateSkill(req, res, skillMatch[1])
             }
 
             // 3. 未匹配的 /api/ 请求 → 放行到 proxy（实际会失败，但便于发现遗漏）
@@ -2995,25 +3060,25 @@ async function handleRunWorkflow(
 
 /** Mock 部门列表（对齐原型 03-tasks.html 筛选栏：对公信贷部 / 个人金融部 / 保险业务部 / 资金运营部 / 同业业务部） */
 const MOCK_DEPARTMENTS = [
-  { deptId: '1001', deptName: '财务部', deptCode: 'FIN', parentId: '0', sortOrder: 1 },
-  { deptId: '1002', deptName: '对公信贷部', deptCode: 'CORP', parentId: '0', sortOrder: 2 },
-  { deptId: '1003', deptName: '个人金融部', deptCode: 'RETAIL', parentId: '0', sortOrder: 3 },
-  { deptId: '1004', deptName: '保险业务部', deptCode: 'INS', parentId: '0', sortOrder: 4 },
-  { deptId: '1005', deptName: '资金运营部', deptCode: 'TREASURY', parentId: '0', sortOrder: 5 },
-  { deptId: '1006', deptName: '同业业务部', deptCode: 'IB', parentId: '0', sortOrder: 6 },
+  { deptId: '1001', deptName: '财务部', deptCode: 'FIN', parentId: '0', sortOrder: 1, status: 1 },
+  { deptId: '1002', deptName: '对公信贷部', deptCode: 'CORP', parentId: '0', sortOrder: 2, status: 1 },
+  { deptId: '1003', deptName: '个人金融部', deptCode: 'RETAIL', parentId: '0', sortOrder: 3, status: 1 },
+  { deptId: '1004', deptName: '保险业务部', deptCode: 'INS', parentId: '0', sortOrder: 4, status: 1 },
+  { deptId: '1005', deptName: '资金运营部', deptCode: 'TREASURY', parentId: '0', sortOrder: 5, status: 1 },
+  { deptId: '1006', deptName: '同业业务部', deptCode: 'IB', parentId: '0', sortOrder: 6, status: 1 },
 ]
 
 /** Mock 业务线列表（对齐原型 03-tasks.html 筛选栏：对公信贷 / 个人金融 / 保险业务 / 同业业务 / 资金运营） */
 const MOCK_BUSINESS_LINES = [
-  { businessLineId: '2001', businessLineName: '证券交易', businessLineCode: 'SEC', sortOrder: 1 },
-  { businessLineId: '2002', businessLineName: '对公信贷', businessLineCode: 'CORP_LOAN', sortOrder: 2 },
-  { businessLineId: '2003', businessLineName: '个人金融', businessLineCode: 'RETAIL_FIN', sortOrder: 3 },
-  { businessLineId: '2004', businessLineName: '保险业务', businessLineCode: 'INSURANCE', sortOrder: 4 },
-  { businessLineId: '2005', businessLineName: '同业业务', businessLineCode: 'INTERBANK', sortOrder: 5 },
-  { businessLineId: '2006', businessLineName: '资金运营', businessLineCode: 'TREASURY_OP', sortOrder: 6 },
+  { businessLineId: '2001', businessLineName: '证券交易', businessLineCode: 'SEC', description: '证券交易业务线', sortOrder: 1, status: 1 },
+  { businessLineId: '2002', businessLineName: '对公信贷', businessLineCode: 'CORP_LOAN', description: '对公信贷业务线', sortOrder: 2, status: 1 },
+  { businessLineId: '2003', businessLineName: '个人金融', businessLineCode: 'RETAIL_FIN', description: '个人金融业务线', sortOrder: 3, status: 1 },
+  { businessLineId: '2004', businessLineName: '保险业务', businessLineCode: 'INSURANCE', description: '保险业务线', sortOrder: 4, status: 1 },
+  { businessLineId: '2005', businessLineName: '同业业务', businessLineCode: 'INTERBANK', description: '同业业务线', sortOrder: 5, status: 1 },
+  { businessLineId: '2006', businessLineName: '资金运营', businessLineCode: 'TREASURY_OP', description: '资金运营业务线', sortOrder: 6, status: 1 },
 ]
 
-/** GET /api/v1/tenant/departments */
+/** GET /api/tenant/departments */
 function handleListDepartments(res: ServerResponse): void {
   sendJson(res, 200, {
     code: 0,
@@ -3022,13 +3087,495 @@ function handleListDepartments(res: ServerResponse): void {
   })
 }
 
-/** GET /api/v1/tenant/business-lines */
+/** GET /api/tenant/business-lines */
 function handleListBusinessLines(res: ServerResponse): void {
   sendJson(res, 200, {
     code: 0,
     data: MOCK_BUSINESS_LINES,
     message: 'ok',
   })
+}
+
+// ============================================================
+// P4 settings 原型对齐：用户/角色/通知配置 Mock 数据
+// ============================================================
+
+/** Mock 用户列表（对齐原型 08-settings.html 用户管理表格：4 行示例） */
+const MOCK_USERS = [
+  {
+    userId: '100001',
+    username: 'zhangsan',
+    realName: '张三',
+    deptName: '对公信贷部',
+    roles: ['operator'],
+    enabled: true,
+    createTime: '2026-06-01T09:00:00.000Z',
+  },
+  {
+    userId: '100002',
+    username: 'lisi',
+    realName: '李四',
+    deptName: '个人金融部',
+    roles: ['approver'],
+    enabled: true,
+    createTime: '2026-06-05T14:30:00.000Z',
+  },
+  {
+    userId: '100003',
+    username: 'wangwu',
+    realName: '王五',
+    deptName: '保险业务部',
+    roles: ['viewer'],
+    enabled: true,
+    createTime: '2026-06-10T10:15:00.000Z',
+  },
+  {
+    userId: '100004',
+    username: 'zhaoliu',
+    realName: '赵六',
+    deptName: '对公信贷部',
+    roles: ['operator'],
+    enabled: false,
+    createTime: '2026-06-15T16:45:00.000Z',
+  },
+]
+
+/** Mock 角色列表（对齐原型 08-settings.html 角色管理表格：3 行示例） */
+const MOCK_ROLES = [
+  {
+    roleId: '200001',
+    roleCode: 'operator',
+    roleName: '操作员',
+    permissionScope: '任务执行 · Skill 调用 · 数据查看',
+    mutualExclusion: '不可兼任 approver',
+    builtIn: true,
+    createTime: '2026-06-01T09:00:00.000Z',
+  },
+  {
+    roleId: '200002',
+    roleCode: 'approver',
+    roleName: '审批员',
+    permissionScope: '审批处理 · 风险查看 · 审计日志',
+    mutualExclusion: '不可兼任 operator',
+    builtIn: true,
+    createTime: '2026-06-01T09:00:00.000Z',
+  },
+  {
+    roleId: '200003',
+    roleCode: 'viewer',
+    roleName: '观察员',
+    permissionScope: '数据查看 · 报表导出',
+    mutualExclusion: '',
+    builtIn: true,
+    createTime: '2026-06-01T09:00:00.000Z',
+  },
+]
+
+/**
+ * Mock 通知通道配置（含 webhookUrl / enabled 字段）
+ *
+ * 说明：后端 ChannelVO 仅含 channel/label/configured，
+ * Mock 端在原型对齐时补充 webhookUrl（明文展示）与 enabled（开关状态）。
+ */
+const MOCK_NOTIFICATION_CHANNELS = [
+  {
+    channel: 'wecom' as const,
+    label: '企业微信',
+    configured: true,
+    webhookUrl: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx',
+    enabled: true,
+  },
+  {
+    channel: 'dingtalk' as const,
+    label: '钉钉',
+    configured: true,
+    webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=xxx',
+    enabled: true,
+  },
+]
+
+/**
+ * Mock 通知模板配置列表（对齐原型 08-settings.html 通知模板勾选：4 项）
+ */
+const MOCK_NOTIFICATION_TEMPLATES = [
+  {
+    templateType: 'APPROVAL_PENDING' as const,
+    label: '审批待处理',
+    description: '当有新审批任务待处理时通知审批人',
+    frequency: 'high' as const,
+    enabled: true,
+  },
+  {
+    templateType: 'TASK_FAILED' as const,
+    label: '任务超时',
+    description: '任务执行超过预设时长时通知负责人',
+    frequency: 'high' as const,
+    enabled: true,
+  },
+  {
+    templateType: 'NEEDS_HUMAN' as const,
+    label: 'NEEDS_HUMAN 触发',
+    description: 'LLM 校验失败需人工接管时立即通知',
+    frequency: 'urgent' as const,
+    enabled: true,
+  },
+  {
+    templateType: 'RISK_ESCALATION' as const,
+    label: '风险升级',
+    description: '风险等级升级到高/严重时通知合规岗',
+    frequency: 'urgent' as const,
+    enabled: false,
+  },
+]
+
+/** 通知配置最后保存时间（Mock 内存状态，每次保存更新） */
+let notificationConfigSavedAt = '2026-07-26T06:00:00.000Z'
+
+/** GET /api/users */
+function handleListUsers(res: ServerResponse): void {
+  sendJson(res, 200, { code: 0, data: MOCK_USERS, message: 'ok' })
+}
+
+/** GET /api/roles */
+function handleListRoles(res: ServerResponse): void {
+  sendJson(res, 200, { code: 0, data: MOCK_ROLES, message: 'ok' })
+}
+
+/** GET /api/notification/channels */
+function handleListNotificationChannels(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: MOCK_NOTIFICATION_CHANNELS,
+    message: 'ok',
+  })
+}
+
+/** GET /api/notification/templates */
+function handleListNotificationTemplates(res: ServerResponse): void {
+  sendJson(res, 200, {
+    code: 0,
+    data: MOCK_NOTIFICATION_TEMPLATES,
+    message: 'ok',
+  })
+}
+
+/**
+ * PUT /api/notification/config
+ *
+ * 说明：Mock 端仅更新内存中的通道启用状态与模板启用状态，并刷新最后保存时间。
+ */
+async function handleSaveNotificationConfig(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  // 1. 更新通道启用状态
+  const channels = (body.channels as Array<{ channel: string; enabled: boolean }>) || []
+  for (const ch of channels) {
+    const target = MOCK_NOTIFICATION_CHANNELS.find((c) => c.channel === ch.channel)
+    if (target) {
+      target.enabled = ch.enabled
+      target.configured = Boolean(target.webhookUrl)
+    }
+  }
+  // 2. 更新模板启用状态
+  const templates = (body.templates as Array<{ templateType: string; enabled: boolean }>) || []
+  for (const tpl of templates) {
+    const target = MOCK_NOTIFICATION_TEMPLATES.find(
+      (t) => t.templateType === tpl.templateType,
+    )
+    if (target) {
+      target.enabled = tpl.enabled
+    }
+  }
+  // 3. 刷新最后保存时间
+  notificationConfigSavedAt = new Date().toISOString()
+  sendJson(res, 200, { code: 0, data: notificationConfigSavedAt, message: 'ok' })
+}
+
+// ============================================================
+// P0-4 通知通道 Webhook 配置保存 Mock
+// PUT /api/notification/channels/{channel}
+// ============================================================
+
+/**
+ * PUT /api/notification/channels/{channel}
+ *
+ * 说明：Mock 端更新通道的 webhookUrl / secret / enabled，并返回脱敏后的通道信息。
+ */
+async function handleSaveChannelConfig(
+  req: IncomingMessage,
+  res: ServerResponse,
+  channel: string,
+): Promise<void> {
+  const body = await readBody(req)
+  const target = MOCK_NOTIFICATION_CHANNELS.find((c) => c.channel === channel)
+  if (!target) {
+    sendJson(res, 200, {
+      code: 40000,
+      data: null,
+      message: `无效的通道类型: ${channel}`,
+    })
+    return
+  }
+  // 1. 更新通道配置
+  const webhookUrl = (body.webhookUrl as string) ?? ''
+  const secret = (body.secret as string) ?? ''
+  const enabled = (body.enabled as boolean) ?? true
+  target.webhookUrl = webhookUrl
+  target.enabled = enabled
+  target.configured = Boolean(webhookUrl)
+  // 2. 钉钉通道额外保存 secret（Mock 端不持久化，仅日志）
+  if (channel === 'dingtalk' && secret) {
+    // Mock 端不存储 secret，真实后端会持久化
+  }
+  // 3. 返回脱敏后的通道信息（与后端 ChannelVO 脱敏规则一致）
+  const maskedUrl = webhookUrl
+    ? webhookUrl.replace(/(key|access_token)=[^&]+/, '$1=***')
+    : ''
+  sendJson(res, 200, {
+    code: 0,
+    data: {
+      channel: target.channel,
+      label: target.label,
+      configured: target.configured,
+      webhookUrl: maskedUrl,
+      enabled: target.enabled,
+    },
+    message: 'ok',
+  })
+}
+
+// ============================================================
+// P0-1 风险关键词库 Mock
+// ============================================================
+
+/** Mock 风险关键词列表（对齐后端 RiskKeywordVO，keywordId/builtin/enabled 为 number/string 兼容） */
+const MOCK_RISK_KEYWORDS = [
+  { keywordId: '30001', keyword: '大额转账', industry: 'banking', category: 'large_amount', riskType: 'high', description: '单笔超过 50 万的转账操作', enabled: 1, builtin: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { keywordId: '30002', keyword: '修改收款账户', industry: 'banking', category: 'high_risk_operation', riskType: 'high', description: '修改供应商收款账户信息', enabled: 1, builtin: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { keywordId: '30003', keyword: '客户身份证号', industry: 'banking', category: 'sensitive_data', riskType: 'medium', description: '涉及客户身份证号操作', enabled: 1, builtin: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { keywordId: '30004', keyword: '保单退保', industry: 'insurance', category: 'high_risk_operation', riskType: 'high', description: '保单退保操作', enabled: 1, builtin: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { keywordId: '30005', keyword: '理赔打款', industry: 'insurance', category: 'large_amount', riskType: 'medium', description: '理赔金额打款操作', enabled: 1, builtin: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { keywordId: '30006', keyword: '股票大宗交易', industry: 'securities', category: 'large_amount', riskType: 'high', description: '大宗股票交易操作', enabled: 1, builtin: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { keywordId: '30007', keyword: '账户解冻', industry: 'banking', category: 'high_risk_operation', riskType: 'high', description: '冻结账户解冻操作', enabled: 0, builtin: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { keywordId: '30008', keyword: '客户手机号', industry: 'banking', category: 'sensitive_data', riskType: 'low', description: '涉及客户手机号操作', enabled: 1, builtin: 0, createTime: '2026-07-15T10:00:00.000Z', updateTime: '2026-07-15T10:00:00.000Z' },
+]
+
+/** 雪花算法 ID 自增计数器（Mock 用） */
+let mockRiskKeywordIdSeq = 30009
+
+/** GET /api/risk-keywords（分页查询） */
+function handleListRiskKeywords(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  // 1. 解析查询参数
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const current = Number(url.searchParams.get('current') ?? '1')
+  const pageSize = Number(url.searchParams.get('pageSize') ?? '10')
+  const keyword = url.searchParams.get('keyword') ?? ''
+  const industry = url.searchParams.get('industry') ?? ''
+  const category = url.searchParams.get('category') ?? ''
+  const riskType = url.searchParams.get('riskType') ?? ''
+  const enabled = url.searchParams.get('enabled') ?? ''
+
+  // 2. 筛选
+  let records = MOCK_RISK_KEYWORDS.filter((k) => {
+    if (keyword && !k.keyword.includes(keyword)) return false
+    if (industry && k.industry !== industry) return false
+    if (category && k.category !== category) return false
+    if (riskType && k.riskType !== riskType) return false
+    if (enabled !== '' && String(k.enabled) !== enabled) return false
+    return true
+  })
+
+  // 3. 分页
+  const total = records.length
+  const pages = Math.ceil(total / pageSize) || 1
+  const start = (current - 1) * pageSize
+  records = records.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: { records, total, current, size: pageSize, pages },
+    message: 'ok',
+  })
+}
+
+/** POST /api/risk-keywords（新增） */
+async function handleAddRiskKeyword(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  const now = new Date().toISOString()
+  const newKeyword = {
+    keywordId: String(mockRiskKeywordIdSeq++),
+    keyword: body.keyword as string,
+    industry: body.industry as string,
+    category: body.category as string,
+    riskType: body.riskType as string,
+    description: (body.description as string) ?? '',
+    enabled: body.enabled !== undefined ? Number(body.enabled) : 1,
+    builtin: 0,
+    createTime: now,
+    updateTime: now,
+  }
+  MOCK_RISK_KEYWORDS.unshift(newKeyword)
+  sendJson(res, 200, { code: 0, data: newKeyword.keywordId, message: 'ok' })
+}
+
+/** PUT /api/risk-keywords/{keywordId}（更新） */
+async function handleUpdateRiskKeyword(
+  req: IncomingMessage,
+  res: ServerResponse,
+  keywordId: string,
+): Promise<void> {
+  const body = await readBody(req)
+  const target = MOCK_RISK_KEYWORDS.find((k) => k.keywordId === keywordId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `关键词不存在: ${keywordId}` })
+    return
+  }
+  // 1. 内置关键词仅可改 enabled / description
+  if (target.builtin === 1) {
+    if (body.enabled !== undefined) target.enabled = Number(body.enabled)
+    if (body.description !== undefined) target.description = body.description as string
+  } else {
+    // 2. 自定义关键词全字段可更新
+    if (body.keyword !== undefined) target.keyword = body.keyword as string
+    if (body.industry !== undefined) target.industry = body.industry as string
+    if (body.category !== undefined) target.category = body.category as string
+    if (body.riskType !== undefined) target.riskType = body.riskType as string
+    if (body.description !== undefined) target.description = body.description as string
+    if (body.enabled !== undefined) target.enabled = Number(body.enabled)
+  }
+  target.updateTime = new Date().toISOString()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+/** DELETE /api/risk-keywords/{keywordId}（删除） */
+function handleDeleteRiskKeyword(
+  res: ServerResponse,
+  keywordId: string,
+): void {
+  const target = MOCK_RISK_KEYWORDS.find((k) => k.keywordId === keywordId)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `关键词不存在: ${keywordId}` })
+    return
+  }
+  if (target.builtin === 1) {
+    sendJson(res, 200, { code: 50001, data: null, message: '内置关键词不可删除' })
+    return
+  }
+  const idx = MOCK_RISK_KEYWORDS.findIndex((k) => k.keywordId === keywordId)
+  MOCK_RISK_KEYWORDS.splice(idx, 1)
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
+}
+
+// ============================================================
+// P0-2 Skill 元数据 Mock
+// ============================================================
+
+/** Mock Skill 列表（对齐后端 SkillVO，skillId/enabled 为 number/string 兼容） */
+const MOCK_SKILLS = [
+  { skillId: '40001', name: 'login', description: '银行网银登录 Skill', category: 'auth', paramSchema: '{"username":{"type":"string"},"password":{"type":"string"}}', errorStrategy: 'RETRY', maxRetries: 3, version: '1.0.0', enabled: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { skillId: '40002', name: 'form_fill', description: '表单填写 Skill', category: 'interaction', paramSchema: '{"fields":{"type":"object"}}', errorStrategy: 'RETRY', maxRetries: 2, version: '1.0.0', enabled: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { skillId: '40003', name: 'file_download', description: '文件下载 Skill', category: 'extraction', paramSchema: '{"url":{"type":"string"},"savePath":{"type":"string"}}', errorStrategy: 'SKIP', maxRetries: 1, version: '1.0.0', enabled: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { skillId: '40004', name: 'data_extract', description: '数据提取 Skill', category: 'extraction', paramSchema: '{"selector":{"type":"string"}}', errorStrategy: 'ABORT', maxRetries: 0, version: '1.0.0', enabled: 1, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+  { skillId: '40005', name: 'page_navigate', description: '页面跳转 Skill', category: 'interaction', paramSchema: '{"url":{"type":"string"}}', errorStrategy: 'RETRY', maxRetries: 2, version: '1.0.0', enabled: 0, createTime: '2026-06-01T08:00:00.000Z', updateTime: '2026-06-01T08:00:00.000Z' },
+]
+
+/** 雪花算法 ID 自增计数器（Mock 用） */
+let mockSkillIdSeq = 40006
+
+/** GET /api/skills（分页查询） */
+function handleListSkills(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  // 1. 解析查询参数
+  const url = new URL(req.url ?? '', 'http://localhost')
+  const current = Number(url.searchParams.get('current') ?? '1')
+  const pageSize = Number(url.searchParams.get('pageSize') ?? '10')
+  const category = url.searchParams.get('category') ?? ''
+  const enabled = url.searchParams.get('enabled') ?? ''
+  const searchText = url.searchParams.get('searchText') ?? ''
+
+  // 2. 筛选
+  let records = MOCK_SKILLS.filter((s) => {
+    if (category && s.category !== category) return false
+    if (enabled !== '' && String(s.enabled) !== enabled) return false
+    if (searchText && !s.name.includes(searchText) && !(s.description ?? '').includes(searchText)) return false
+    return true
+  })
+
+  // 3. 分页
+  const total = records.length
+  const pages = Math.ceil(total / pageSize) || 1
+  const start = (current - 1) * pageSize
+  records = records.slice(start, start + pageSize)
+
+  sendJson(res, 200, {
+    code: 0,
+    data: { records, total, current, size: pageSize, pages },
+    message: 'ok',
+  })
+}
+
+/** POST /api/skills（注册） */
+async function handleRegisterSkill(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readBody(req)
+  // 1. 校验 name 唯一性
+  const exists = MOCK_SKILLS.some((s) => s.name === body.name)
+  if (exists) {
+    sendJson(res, 200, { code: 50001, data: null, message: `Skill 已存在: ${body.name}` })
+    return
+  }
+  const now = new Date().toISOString()
+  const newSkill = {
+    skillId: String(mockSkillIdSeq++),
+    name: body.name as string,
+    description: (body.description as string) ?? '',
+    category: body.category as string,
+    paramSchema: (body.paramSchema as string) ?? '',
+    errorStrategy: (body.errorStrategy as string) ?? 'RETRY',
+    maxRetries: body.maxRetries !== undefined ? Number(body.maxRetries) : 1,
+    version: (body.version as string) ?? '1.0.0',
+    enabled: 1,
+    createTime: now,
+    updateTime: now,
+  }
+  MOCK_SKILLS.unshift(newSkill)
+  sendJson(res, 200, { code: 0, data: newSkill, message: 'ok' })
+}
+
+/** PUT /api/skills/{name}（更新） */
+async function handleUpdateSkill(
+  req: IncomingMessage,
+  res: ServerResponse,
+  name: string,
+): Promise<void> {
+  const body = await readBody(req)
+  const target = MOCK_SKILLS.find((s) => s.name === name)
+  if (!target) {
+    sendJson(res, 200, { code: 40400, data: null, message: `Skill 不存在: ${name}` })
+    return
+  }
+  // 1. name 不可修改，其他字段可更新
+  if (body.description !== undefined) target.description = body.description as string
+  if (body.category !== undefined) target.category = body.category as string
+  if (body.paramSchema !== undefined) target.paramSchema = body.paramSchema as string
+  if (body.errorStrategy !== undefined) target.errorStrategy = body.errorStrategy as string
+  if (body.maxRetries !== undefined) target.maxRetries = Number(body.maxRetries)
+  if (body.version !== undefined) target.version = body.version as string
+  if (body.enabled !== undefined) target.enabled = Number(body.enabled)
+  target.updateTime = new Date().toISOString()
+  sendJson(res, 200, { code: 0, data: true, message: 'ok' })
 }
 
 export default mockServerPlugin

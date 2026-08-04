@@ -6,13 +6,16 @@ import com.finrpa.notification.channels.NotificationChannel;
 import com.finrpa.notification.constant.NotificationConstant;
 import com.finrpa.notification.dispatcher.NotificationDispatcher;
 import com.finrpa.notification.dto.NotificationMessage;
+import com.finrpa.notification.dto.request.ChannelConfigSaveRequest;
 import com.finrpa.notification.dto.request.NotificationTestRequest;
 import com.finrpa.notification.dto.response.ChannelVO;
 import com.finrpa.notification.dto.response.NotificationSendResultVO;
 import com.finrpa.notification.dto.response.RetryQueueStatsVO;
+import com.finrpa.notification.entity.NotificationChannelConfigEO;
 import com.finrpa.notification.enums.NotificationChannelEnum;
 import com.finrpa.notification.enums.NotificationTemplateEnum;
 import com.finrpa.notification.service.NotificationAttemptService;
+import com.finrpa.notification.service.NotificationChannelConfigService;
 import com.finrpa.notification.service.NotificationService;
 import com.finrpa.notification.templates.NotificationTemplateRenderer;
 import jakarta.annotation.Resource;
@@ -66,10 +69,16 @@ public class NotificationServiceImpl implements NotificationService {
     @Resource
     private RedissonClient redissonClient;
 
+    /** 通道 Webhook 配置服务（P0-4） */
+    @Resource
+    private NotificationChannelConfigService channelConfigService;
+
     // region 查询通道
 
     /**
      * 查询所有通道及其配置状态
+     *
+     * <p>P0-4 扩展：从数据库加载持久化配置，返回脱敏 webhookUrl 与 enabled 字段。</p>
      *
      * @return 通道信息列表
      */
@@ -77,13 +86,88 @@ public class NotificationServiceImpl implements NotificationService {
     public List<ChannelVO> listChannels() {
         List<ChannelVO> result = new ArrayList<>();
         for (NotificationChannel channel : channels) {
+            String channelValue = channel.getChannel().getValue();
             ChannelVO vo = new ChannelVO();
-            vo.setChannel(channel.getChannel().getValue());
+            vo.setChannel(channelValue);
             vo.setLabel(channel.getChannel().getLabel());
-            vo.setConfigured(channel.isConfigured());
+
+            // 1. 优先从数据库读取持久化配置（含 enabled / webhookUrl 脱敏）
+            NotificationChannelConfigEO config = channelConfigService.getByChannel(channelValue);
+            if (config != null) {
+                vo.setEnabled(config.getEnabled() == 1);
+                vo.setWebhookUrl(maskWebhookUrl(config.getWebhookUrl()));
+                vo.setConfigured(config.getWebhookUrl() != null && !config.getWebhookUrl().isBlank());
+            } else {
+                // 2. 数据库无记录时回退到通道实现的 isConfigured（基于 yml 配置）
+                vo.setEnabled(true);
+                vo.setWebhookUrl("");
+                vo.setConfigured(channel.isConfigured());
+            }
             result.add(vo);
         }
         return result;
+    }
+
+    // endregion
+
+    // region 保存通道配置（P0-4）
+
+    /**
+     * 保存通道 Webhook 配置
+     *
+     * <p>持久化到数据库 + 热更新 NotificationProperties 内存，
+     * 返回脱敏后的通道信息。</p>
+     *
+     * @param channel 通道类型：wecom / dingtalk
+     * @param request 保存请求（webhookUrl / secret / enabled）
+     * @return 保存后的脱敏通道信息
+     */
+    @Override
+    public ChannelVO saveChannelConfig(String channel, ChannelConfigSaveRequest request) {
+        // 1. 校验通道类型
+        NotificationChannelEnum channelEnum = NotificationChannelEnum.getEnumByValue(channel);
+        ThrowUtils.throwIf(channelEnum == null, ErrorCode.PARAMS_ERROR, "无效的通道类型: " + channel);
+
+        // 2. 持久化 + 热更新内存
+        NotificationChannelConfigEO saved = channelConfigService.saveConfig(channel, request);
+
+        // 3. 构建脱敏返回 VO
+        ChannelVO vo = new ChannelVO();
+        vo.setChannel(channel);
+        vo.setLabel(channelEnum.getLabel());
+        vo.setConfigured(!saved.getWebhookUrl().isBlank());
+        vo.setEnabled(saved.getEnabled() == 1);
+        vo.setWebhookUrl(maskWebhookUrl(saved.getWebhookUrl()));
+        log.info("通道 Webhook 配置已保存: channel={}, enabled={}", channel, saved.getEnabled() == 1);
+        return vo;
+    }
+
+    // endregion
+
+    // region Webhook URL 脱敏
+
+    /**
+     * 对 Webhook URL 中的敏感查询参数进行掩码
+     *
+     * <p>脱敏规则：
+     * <ul>
+     *   <li>企业微信 {@code ?key=xxx} → {@code ?key=***}</li>
+     *   <li>钉钉 {@code ?access_token=xxx} → {@code ?access_token=***}</li>
+     * </ul>
+     * URL 为空或不含敏感参数时原样返回。</p>
+     *
+     * @param webhookUrl 原 Webhook URL
+     * @return 脱敏后的 URL
+     */
+    private String maskWebhookUrl(String webhookUrl) {
+        if (webhookUrl == null || webhookUrl.isBlank()) {
+            return "";
+        }
+        // 1. 掩码 key 参数（企业微信）
+        String masked = webhookUrl.replaceAll("([?&]key=)[^&]+", "$1***");
+        // 2. 掩码 access_token 参数（钉钉）
+        masked = masked.replaceAll("([?&]access_token=)[^&]+", "$1***");
+        return masked;
     }
 
     // endregion

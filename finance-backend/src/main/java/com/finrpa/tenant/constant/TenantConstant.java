@@ -66,6 +66,9 @@ public interface TenantConstant {
             // 通知发送尝试记录表：无 org_id 字段，由 Java 内部触发流程写入（审批触发 / 重试调度），
             // 已加入忽略清单绕过自动租户过滤；查询 API 在 Service 层手动按需过滤
             "rpa_notification_attempt",
+            // 通知通道 Webhook 配置表：全局共享（无 org_id 字段），
+            // 由运维通过设置页统一管理
+            "rpa_notification_channel_config",
             // Skyvern 核心表（Python 侧 Alembic 管理，Java 侧不感知字段）
             "skyvern_*"
     );
