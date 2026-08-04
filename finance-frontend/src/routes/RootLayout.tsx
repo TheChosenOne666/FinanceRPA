@@ -18,14 +18,14 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/AuthStore'
 import {
-  IconApproval,
+  IconAlert,
   IconBell,
-  IconChart,
-  IconList,
+  IconClipboard,
+  IconDashboard,
+  IconFileText,
+  IconFlow,
   IconSearch,
-  IconShield,
-  IconTerminal,
-  IconWorkflow,
+  IconShieldCheck,
 } from '@/components/Icons'
 
 /** 导航项定义 */
@@ -48,14 +48,7 @@ const MONITOR_NAV: NavItem[] = [
     path: '/dashboard',
     label: '运营大屏',
     title: '运营大屏',
-    icon: (
-      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-      </svg>
-    ),
+    icon: <IconDashboard className="icon" />,
   },
   {
     path: '/llm-monitor',
@@ -75,26 +68,13 @@ const AUTOMATION_NAV: NavItem[] = [
     path: '/tasks',
     label: '任务管理',
     title: '任务列表',
-    icon: (
-      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z" />
-        <path d="M8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
-        <line x1="9" y1="12" x2="15" y2="12" />
-        <line x1="9" y1="16" x2="13" y2="16" />
-      </svg>
-    ),
+    icon: <IconClipboard className="icon" />,
   },
   {
     path: '/workflows',
     label: '工作流',
     title: '工作流模板',
-    icon: (
-      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="4" y="4" width="6" height="6" rx="1" />
-        <rect x="14" y="14" width="6" height="6" rx="1" />
-        <path d="M10 7h4a3 3 0 0 1 3 3v4" />
-      </svg>
-    ),
+    icon: <IconFlow className="icon" />,
   },
 ]
 
@@ -104,39 +84,21 @@ const COMPLIANCE_NAV: NavItem[] = [
     path: '/approvals',
     label: '审批中心',
     title: '审批中心',
-    icon: (
-      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        <polyline points="9 12 11 14 15 10" />
-      </svg>
-    ),
+    icon: <IconShieldCheck className="icon" />,
     badge: { text: '3', variant: 'warning' },
   },
   {
     path: '/needs-human',
     label: '人工接管',
     title: '人工接管队列',
-    icon: (
-      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-    ),
+    icon: <IconAlert className="icon" />,
     badge: { text: '7', variant: 'danger' },
   },
   {
     path: '/audit-logs',
     label: '审计日志',
     title: '审计日志',
-    icon: (
-      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="8" y1="13" x2="16" y2="13" />
-        <line x1="8" y1="17" x2="14" y2="17" />
-      </svg>
-    ),
+    icon: <IconFileText className="icon" />,
   },
 ]
 
@@ -347,42 +309,42 @@ function HomePlaceholder() {
       path: '/dashboard',
       name: '运营大屏',
       desc: '查看任务统计与性能监控',
-      icon: <IconChart size={22} />,
+      icon: <IconDashboard size={22} />,
       iconClass: 'stat-icon-blue',
     },
     {
       path: '/tasks',
       name: '任务管理',
       desc: '创建与跟踪自动化任务',
-      icon: <IconList size={22} />,
+      icon: <IconClipboard size={22} />,
       iconClass: 'stat-icon-green',
     },
     {
       path: '/workflows',
       name: '工作流模板',
       desc: '配置与管理自动化流程',
-      icon: <IconWorkflow size={22} />,
+      icon: <IconFlow size={22} />,
       iconClass: 'stat-icon-purple',
     },
     {
       path: '/approvals',
       name: '审批中心',
       desc: '处理待审批的高风险任务',
-      icon: <IconApproval size={22} />,
+      icon: <IconShieldCheck size={22} />,
       iconClass: 'stat-icon-amber',
     },
     {
       path: '/needs-human',
       name: '人工接管',
       desc: '处置需要人工介入的子任务',
-      icon: <IconShield size={22} />,
+      icon: <IconAlert size={22} />,
       iconClass: 'stat-icon-blue',
     },
     {
       path: '/audit-logs',
       name: '审计日志',
       desc: '检索操作记录与截图对比',
-      icon: <IconTerminal size={22} />,
+      icon: <IconFileText size={22} />,
       iconClass: 'stat-icon-green',
     },
   ]

@@ -329,4 +329,65 @@ export function IconDownload(props: IconProps) {
   )
 }
 
+// ============================================================
+// 侧边栏导航专用图标（与首页快捷入口共用，确保两处视觉一致）
+// ============================================================
+
+/** 运营大屏图标（2x2 方格，dashboard 经典样式） */
+export function IconDashboard(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+    </Svg>
+  )
+}
+
+/** 任务管理图标（剪贴板样式） */
+export function IconClipboard(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z" />
+      <path d="M8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+      <line x1="9" y1="12" x2="15" y2="12" />
+      <line x1="9" y1="16" x2="13" y2="16" />
+    </Svg>
+  )
+}
+
+/** 工作流图标（线性流程：2 节点 + L 型连接） */
+export function IconFlow(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="6" height="6" rx="1" />
+      <rect x="14" y="14" width="6" height="6" rx="1" />
+      <path d="M10 7h4a3 3 0 0 1 3 3v4" />
+    </Svg>
+  )
+}
+
+/** 审批图标（盾牌 + 对勾，表示批准/合规通过） */
+export function IconShieldCheck(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <polyline points="9 12 11 14 15 10" />
+    </Svg>
+  )
+}
+
+/** 文档图标（审计日志 / 操作记录） */
+export function IconFileText(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="8" y1="13" x2="16" y2="13" />
+      <line x1="8" y1="17" x2="14" y2="17" />
+    </Svg>
+  )
+}
+
 export default Svg
