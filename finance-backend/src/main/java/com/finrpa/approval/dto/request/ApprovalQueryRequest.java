@@ -31,4 +31,7 @@ public class ApprovalQueryRequest {
 
     /** 任务 ID（精确查询） */
     private Long taskId;
+
+    /** 触发用户 ID 筛选（用于"我发起的"Tab，对齐前端 ApprovalQueryRequest.userId） */
+    private Long userId;
 }

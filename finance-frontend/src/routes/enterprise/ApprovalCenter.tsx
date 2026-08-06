@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { approvalApi } from '@/api/approval'
@@ -158,24 +159,29 @@ function ApprovalCenter() {
   // 1. 当前登录用户（用于"我发起的"筛选与审批流展示）
   const currentUser = useAuthStore((s) => s.user)
 
-  // 2. Tab 切换
+  // 2. URL 查询参数（M9.6：从工作流详情页跳转时携带 approvalId 自动定位）
+  const [searchParams] = useSearchParams()
+
+  // 3. Tab 切换
   const [tab, setTab] = useState<ApprovalTab>('pending')
 
-  // 3. 分页
+  // 4. 分页
   const [current, setCurrent] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
-  // 4. 选中的审批单（右侧面板展示）
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // 5. 选中的审批单（右侧面板展示；初始化从 URL ?approvalId= 读取）
+  const [selectedId, setSelectedId] = useState<string | null>(
+    searchParams.get('approvalId'),
+  )
 
-  // 5. 倒计时每秒刷新（触发重渲染）
+  // 6. 倒计时每秒刷新（触发重渲染）
   const [, setTick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1_000)
     return () => clearInterval(id)
   }, [])
 
-  // 6. 查询参数（根据 Tab 构造）
+  // 7. 查询参数（根据 Tab 构造）
   const queryKey = useMemo(
     () =>
       [
@@ -204,7 +210,7 @@ function ApprovalCenter() {
     refetchOnWindowFocus: false,
   })
 
-  // 7. 自动轮询：待审批 10s 刷新，其他 30s
+  // 8. 自动轮询：待审批 10s 刷新，其他 30s
   const refreshMs = tab === 'pending' ? 10_000 : 30_000
   const refreshMsRef = useRef(refreshMs)
   refreshMsRef.current = refreshMs

@@ -80,7 +80,7 @@ function WorkflowRunsPage() {
         status,
         workflowId,
         sortField: 'createTime',
-        sortOrder: 'desc',
+        sortOrder: 'descend',
       } satisfies TaskQueryRequest),
     enabled: !!workflowId,
     refetchOnWindowFocus: false,

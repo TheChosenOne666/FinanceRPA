@@ -97,8 +97,8 @@ export interface LoginResponse {
   accessToken: string;
   /** 刷新令牌 */
   refreshToken: string;
-  /** 过期时间（秒） */
-  expiresIn: number;
+  /** 过期时间（秒，后端 Long 经 JsonConfig 序列化为 String） */
+  expiresIn: string | number;
   /** 登录用户信息 */
   user: LoginUserInfo;
 }
@@ -192,8 +192,8 @@ export interface TaskVO {
   skyvernTaskId?: string;
   /** 触发用户姓名（关联 sys_user.real_name） */
   userName?: string;
-  /** 任务耗时（毫秒，仅终态任务计算） */
-  durationMs?: number;
+  /** 任务耗时（毫秒，仅终态任务计算；后端 Long 经 JsonConfig 序列化为 String） */
+  durationMs?: string | number;
   /** 风险等级（关联工作流模板：low / medium / high / critical） */
   riskLevel?: string;
   /** 部门业务 ID（M7.6 三维度 RBAC） */
@@ -266,8 +266,8 @@ export interface TaskQueryRequest {
   pageSize: number;
   /** 排序字段 */
   sortField?: string;
-  /** 排序顺序：asc / desc */
-  sortOrder?: 'asc' | 'desc';
+  /** 排序顺序：ascend / descend（对齐后端 CommonConstant.SORT_ORDER_*） */
+  sortOrder?: 'ascend' | 'descend';
   /** 任务状态筛选 */
   status?: TaskStatus | '';
   /** 关键词搜索（匹配 goal） */
@@ -423,8 +423,8 @@ export interface WorkflowVO {
   enabled: number;
   /** 创建人姓名（null 表示系统创建） */
   createUser?: string;
-  /** 执行次数（统计 rpa_agent_task 表中 workflow_id = 此模板的记录数） */
-  runCount?: number;
+  /** 执行次数（统计 rpa_agent_task 表中 workflow_id = 此模板的记录数；后端 Long 经 JsonConfig 序列化为 String） */
+  runCount?: string | number;
   /** 创建时间（ISO 字符串） */
   createTime: string;
   /** 更新时间（ISO 字符串） */
@@ -465,6 +465,10 @@ export interface WorkflowQueryRequest {
   current: number;
   /** 页面大小 */
   pageSize: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
   /** 模板名称（模糊搜索） */
   name?: string;
   /** 行业筛选 */
@@ -491,8 +495,10 @@ export interface WorkflowRunVO {
   taskId: string;
   /** 工作流模板 ID */
   workflowId: string;
-  /** 任务初始状态 */
+  /** 任务初始状态：EXECUTING（medium 及以下）/ PENDING_APPROVAL（high / critical 待审批） */
   state: string;
+  /** 审批单 ID（state=PENDING_APPROVAL 时填充，用于跳转审批中心；其他状态为 null/undefined） */
+  approvalId?: string;
 }
 
 // ============================================================
@@ -560,6 +566,10 @@ export interface NeedsHumanQueryRequest {
   current: number;
   /** 页面大小 */
   pageSize: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
   /** 状态筛选 */
   status?: NeedsHumanStatus | '';
   /** 任务 ID 筛选 */
@@ -587,12 +597,12 @@ export interface NeedsHumanResolveRequest {
 export interface ModelStatsVO {
   /** 模型名 */
   model: string;
-  /** 调用次数 */
-  calls: number;
-  /** 成功调用次数 */
-  successCalls: number;
-  /** 总 token 数 */
-  totalTokens: number;
+  /** 调用次数（后端 Long 经 JsonConfig 序列化为 String） */
+  calls: string | number;
+  /** 成功调用次数（后端 Long 经 JsonConfig 序列化为 String） */
+  successCalls: string | number;
+  /** 总 token 数（后端 Long 经 JsonConfig 序列化为 String） */
+  totalTokens: string | number;
   /** 总成本（美元） */
   cost: number;
 }
@@ -601,22 +611,22 @@ export interface ModelStatsVO {
  * LLM 调用统计 VO（对齐 com.finrpa.llm.dto.response.LlmCallStatsVO）
  */
 export interface LlmCallStatsVO {
-  /** 总调用次数 */
-  totalCalls: number;
-  /** 成功调用次数 */
-  successCalls: number;
-  /** 失败调用次数 */
-  failedCalls: number;
-  /** 缓存命中次数 */
-  cacheHitCalls: number;
+  /** 总调用次数（后端 Long 经 JsonConfig 序列化为 String） */
+  totalCalls: string | number;
+  /** 成功调用次数（后端 Long 经 JsonConfig 序列化为 String） */
+  successCalls: string | number;
+  /** 失败调用次数（后端 Long 经 JsonConfig 序列化为 String） */
+  failedCalls: string | number;
+  /** 缓存命中次数（后端 Long 经 JsonConfig 序列化为 String） */
+  cacheHitCalls: string | number;
   /** 缓存命中率（0-1） */
   cacheHitRate: number;
-  /** 总 prompt token 数 */
-  totalPromptTokens: number;
-  /** 总 completion token 数 */
-  totalCompletionTokens: number;
-  /** 总 token 数 */
-  totalTokens: number;
+  /** 总 prompt token 数（后端 Long 经 JsonConfig 序列化为 String） */
+  totalPromptTokens: string | number;
+  /** 总 completion token 数（后端 Long 经 JsonConfig 序列化为 String） */
+  totalCompletionTokens: string | number;
+  /** 总 token 数（后端 Long 经 JsonConfig 序列化为 String） */
+  totalTokens: string | number;
   /** 总成本（美元） */
   totalCost: number;
   /** 平均调用耗时（毫秒） */
@@ -684,6 +694,10 @@ export interface LlmCallRecordQueryRequest {
   current: number;
   /** 页面大小 */
   pageSize: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
   /** 起始时间 */
   startTime?: string;
   /** 结束时间 */
@@ -704,8 +718,8 @@ export interface LlmCallRecordQueryRequest {
 export interface LlmCallDailyTrendVO {
   /** 日期（格式 yyyy-MM-dd） */
   date: string;
-  /** 当日调用次数 */
-  calls: number;
+  /** 当日调用次数（后端 Long 经 JsonConfig 序列化为 String） */
+  calls: string | number;
   /** 当日总成本（美元） */
   cost: number;
   /** 当日平均耗时（毫秒） */
@@ -838,8 +852,7 @@ export type NotificationTemplateType =
 /**
  * 通知通道信息（对齐 com.finrpa.notification.dto.response.ChannelVO）
  *
- * 说明：webhookUrl / enabled 为 P4 settings 原型对齐扩展字段（后端 ChannelVO 暂未包含，
- * 由 Mock 端提供；后端 CRUD 接口待开发，前端标注 TODO）。
+ * 说明：webhookUrl / enabled 已对齐后端 ChannelVO（webhookUrl 为脱敏后返回，enabled 为通道开关）。
  */
 export interface ChannelVO {
   /** 通道类型：wecom / dingtalk */
@@ -848,9 +861,9 @@ export interface ChannelVO {
   label: string;
   /** 是否已配置 Webhook URL */
   configured: boolean;
-  /** Webhook URL（P4 settings 原型对齐：通道表格展示用，Mock 端填充明文） */
+  /** Webhook URL（后端脱敏后返回，通道表格展示用） */
   webhookUrl?: string;
-  /** 是否启用（P4 settings 原型对齐：通道开关，Mock 端维护状态） */
+  /** 是否启用（通道开关） */
   enabled?: boolean;
 }
 
@@ -940,6 +953,10 @@ export interface UserQueryRequest {
   current?: number;
   /** 每页数量 */
   pageSize?: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
 }
 
 /**
@@ -1060,6 +1077,10 @@ export interface RoleQueryRequest {
   current?: number;
   /** 每页数量 */
   pageSize?: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
 }
 
 /**
@@ -1289,6 +1310,10 @@ export interface SessionQueryRequest {
   current?: number;
   /** 每页条数（默认 10） */
   pageSize?: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
 }
 
 // ============================================================
@@ -1324,8 +1349,8 @@ export interface SystemHealthVO {
   overallStatus: string;
   /** 检查时间戳 */
   checkedAt: string;
-  /** 检查耗时（毫秒） */
-  durationMs: number;
+  /** 检查耗时（毫秒，后端 Long 经 JsonConfig 序列化为 String） */
+  durationMs: string | number;
   /** 各组件检查明细 */
   components: ComponentHealth[];
 }
@@ -1374,6 +1399,10 @@ export interface ApprovalRouteConfigQueryRequest {
   current?: number;
   /** 每页数量 */
   pageSize?: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
 }
 
 /**
@@ -1449,8 +1478,8 @@ export interface RetryQueueStatsVO {
   successCount: string | number;
   /** 失败次数 */
   failureCount: string | number;
-  /** 成功率（0.0 ~ 1.0） */
-  successRate: string | number;
+  /** 成功率（0.0 ~ 1.0，Java double 不被 JsonConfig 序列化为 String） */
+  successRate: number;
   /** 超过最大重试次数的告警数（待人工介入） */
   alertCount: string | number;
 }
@@ -1543,8 +1572,8 @@ export interface AuditLogVO {
   startedAt?: string;
   /** 完成时间（ISO 字符串） */
   completedAt?: string;
-  /** 执行耗时（毫秒） */
-  durationMs?: number;
+  /** 执行耗时（毫秒；后端 Long 经 JsonConfig 序列化为 String） */
+  durationMs?: string | number;
   /** 操作前截图 URL（MinIO 预签名，1 小时有效） */
   beforeScreenshotUrl?: string;
   /** 操作后截图 URL（MinIO 预签名，1 小时有效） */
@@ -1798,6 +1827,10 @@ export interface RiskKeywordQueryRequest {
   current: number;
   /** 页面大小 */
   pageSize: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
   /** 关键词模糊匹配（可空） */
   keyword?: string;
   /** 所属行业（可空） */
@@ -1883,6 +1916,10 @@ export interface SkillQueryRequest {
   current: number;
   /** 页面大小 */
   pageSize: number;
+  /** 排序字段（继承后端 PageRequest） */
+  sortField?: string;
+  /** 排序顺序：ascend / descend（继承后端 PageRequest） */
+  sortOrder?: 'ascend' | 'descend';
   /** 分类筛选 */
   category?: string | '';
   /** 启用状态筛选 */

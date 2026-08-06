@@ -874,7 +874,7 @@ function AuditTimelineGroup({
   const [expanded, setExpanded] = useState(true)
   const first = logs[0]
   const last = logs[logs.length - 1]
-  const totalDuration = logs.reduce((sum, l) => sum + (l.durationMs ?? 0), 0)
+  const totalDuration = logs.reduce((sum, l) => sum + Number(l.durationMs ?? 0), 0)
   const successCount = logs.filter((l) => l.executionResult === 'success').length
   const successRate = logs.length > 0 ? (successCount / logs.length) * 100 : 0
 
@@ -941,7 +941,7 @@ function AuditTimelineGroup({
                 <div className="audit-timeline-line2">
                   <span className="cell-mono">{formatTime(log.startedAt)}</span>
                   <span className="audit-timeline-duration">
-                    耗时 {formatDuration(log.durationMs)}
+                    耗时 {formatDuration(Number(log.durationMs))}
                   </span>
                   {log.pageUrl && (
                     <span className="audit-timeline-url" title={log.pageUrl}>
@@ -1058,7 +1058,7 @@ function AuditDetailPanel({ log }: AuditDetailPanelProps) {
         <div className="approval-detail-meta-item">
           <div className="approval-detail-meta-label">执行耗时</div>
           <div className="approval-detail-meta-value">
-            {formatDuration(log.durationMs)}
+            {formatDuration(Number(log.durationMs))}
           </div>
         </div>
       </div>

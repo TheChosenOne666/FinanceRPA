@@ -1734,7 +1734,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **验收标准** | SIT 测试全部通过；覆盖 5 个跨模块场景；接口契约一致性验证通过；数据一致性无丢失 |
 | **状态** | ✅ 已完成（2026-08-05）。5 个场景、8 个测试用例全部通过（总耗时约 6.5 分钟）。测试报告：① 场景1 全链路契约（1 用例，3.9min）：真实 Skyvern 执行"银行流水下载"，验证 WorkflowRunVO/TaskDetailVO/SubTaskVO/AuditLogVO/OverviewVO 字段对齐 + 状态流转 PENDING→EXECUTING→SUCCESS，审计日志 1 条 actionType=skyvern_task_execution；② 场景2 NEEDS_HUMAN 流程（2 用例，3.6s）：模拟 LLM 失败→入队→skip 续跑 SUCCESS + abort 终止 ABORTED；③ 场景3 断点续跑（2 用例，2.4s）：coordination-state 持久化 completedSubtasks=["step_0","step_1"] + resume 前置校验（EXECUTING 状态被拒绝）；④ 场景4 审批超时（1 用例，2.2min）：动态改 high 阈值 1 分钟→审批单 TIMEOUT+任务 ABORTED+阈值还原；⑤ 场景5 跨组织隔离（2 用例，2.4s）：admin（银河证券）与 admin_demo_xcba（星辰银行）双向隔离，直接查询被拒"无权访问其他组织的任务"。发现并修复 1 个契约差异：WorkflowRunVO.approvalId medium 风险时 Java 返回 null（Jackson 默认序列化），TS 期望 undefined，断言改为 toBeFalsy() 兼容。产出物：`tests/sit/`（5 scenarios + lib + README.md） |
 
-#### M9.6 前后端字段对齐联调
+#### M9.6 前后端字段对齐联调 ✅
 
 | 项 | 内容 |
 |----|------|
@@ -1743,6 +1743,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | 前后端字段对齐报告 + 修复 |
 | **描述** | 1. **字段对齐审计**：逐个 API 比对 Java 后端响应字段与前端 TypeScript 类型定义<br>2. 检查项：<br>　- 字段名一致性（驼峰 / 下划线）<br>　- 字段类型一致（Java Long ↔ TS number / Java LocalDateTime ↔ TS string）<br>　- 枚举值一致（risk_level / task_state / role_type）<br>　- 可空字段标注<br>　- 分页结构统一<br>3. OpenAPI 契约校验：springdoc 生成的 OpenAPI 与前端 API 类型定义比对<br>4. 修复不一致项<br>5. 前端 API 类型自动生成（可选：openapi-typescript） |
 | **验收标准** | 前后端字段 100% 对齐；OpenAPI 契约校验通过；无类型不一致导致的运行时错误 |
+| **状态** | ✅ 已完成（2026-08-06）。字段对齐审计覆盖 47 个 Java VO/DTO 与前端 types.ts 比对，修复 5 类不一致项：① sortOrder 枚举（前端 'asc'/'desc' → 对齐后端 'ascend'/'descend'，影响 TaskQueryRequest/WorkflowQueryRequest 等 9 个查询请求）；② WorkflowRunVO 缺 approvalId（high/critical 风险工作流触发后前端无法跳转审批中心，前端补字段 + WorkflowDetail.tsx 按 state=PENDING_APPROVAL 路由 /approvals?approvalId=，ApprovalCenter 读取 URL 参数自动定位）；③ Long 类型序列化（后端 JsonConfig 将 Long 序列化为 String 防 JS 精度丢失，前端 14 个字段类型 number → string\|number，修复 AuthStore/LlmMonitor/AuditLogs/TasksPage 4 处算术运算 Number() 转换）；④ NeedsHumanQueueVO 缺 taskTitle/subtaskGoal（后端 NeedsHumanServiceImpl 新增 loadTaskTitles/loadSubtaskGoals 联表 rpa_agent_task + rpa_agent_subtask 填充）；⑤ ApprovalQueryRequest 缺 userId（"我发起的"Tab 筛选，后端 ApprovalServiceImpl 新增 userId 查询条件 + 前端 approval.ts 透传）。OpenAPI 契约校验：启动后端 dev profile（Docker PostgreSQL + Redis），拉取 /v3/api-docs（77 paths、164 schemas），运行 `tests/sit/verify-openapi-alignment.mjs` 50 项校验全部通过。产出物：`tests/sit/verify-openapi-alignment.mjs` + `tests/sit/openapi-docs.json` |
 
 ---
 
@@ -1904,6 +1905,7 @@ M{里程碑号}.{任务序号}
 | v1.4 | 2026-07-29 | - | 更新 M2.1 任务状态为已完成；补充 M2.1 实际产出文件清单（agent/skills/clients/api/schemas/demo_seed 14 个新增 + config/main/pyproject/Dockerfile 4 个更新）；记录 20 个单元测试全部通过；记录 Skyvern 源码暂未引入的落地偏差（M2.1 fallback 模式不需要，M3 实际浏览器操作时引入）；同步 system-design.md 4.3 节 M2.1 落地偏差实现说明 |
 | v1.5 | 2026-08-04 | - | 新增第 10 章"前端 UI 原型对齐追踪"（8 个原型页面对齐进度表 + 建议优先级）；记录工作流页面（M3.6）+ 任务列表页（M2.5）已完成对齐 |
 | v1.6 | 2026-08-05 | - | 更新 M9.5 任务状态为已完成；5 个场景、8 个测试用例全部通过（场景1 全链路契约 3.9min + 场景2 NEEDS_HUMAN 3.6s + 场景3 断点续跑 2.4s + 场景4 审批超时 2.2min + 场景5 跨组织隔离 2.4s）；发现并修复 1 个契约差异（WorkflowRunVO.approvalId null vs undefined）；产出物 tests/sit/（5 scenarios + lib + README.md） |
+| v1.7 | 2026-08-06 | - | 更新 M9.6 任务状态为已完成；字段对齐审计覆盖 47 个 Java VO/DTO 与前端 types.ts 比对，修复 5 类不一致项（sortOrder 枚举 / WorkflowRunVO.approvalId / Long 序列化 string\|number / NeedsHumanQueueVO.taskTitle-subtaskGoal / ApprovalQueryRequest.userId）；OpenAPI 契约校验启动后端 dev profile 拉取 /v3/api-docs（77 paths、164 schemas），verify-openapi-alignment.mjs 50 项校验全部通过；产出物 tests/sit/verify-openapi-alignment.mjs + tests/sit/openapi-docs.json |
 
 ---
 

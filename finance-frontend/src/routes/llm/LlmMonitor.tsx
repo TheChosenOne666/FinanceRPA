@@ -308,9 +308,9 @@ function KpiCard({
  * 模型分布（横向占比条，对齐原型 .model-row）
  */
 function ModelDistribution({ modelStats }: { modelStats: ModelStatsVO[] }) {
-  // 1. 计算总调用次数
+  // 1. 计算总调用次数（calls 后端 Long 序列化为 string | number，统一转 number）
   const totalCalls = useMemo(
-    () => modelStats.reduce((sum, m) => sum + m.calls, 0),
+    () => modelStats.reduce((sum, m) => sum + Number(m.calls), 0),
     [modelStats],
   )
 
@@ -321,7 +321,7 @@ function ModelDistribution({ modelStats }: { modelStats: ModelStatsVO[] }) {
   return (
     <div>
       {modelStats.map((m, idx) => {
-        const pct = totalCalls > 0 ? (m.calls / totalCalls) * 100 : 0
+        const pct = totalCalls > 0 ? (Number(m.calls) / totalCalls) * 100 : 0
         const color = MODEL_COLORS[idx % MODEL_COLORS.length]
         return (
           <div className="model-row" key={m.model}>

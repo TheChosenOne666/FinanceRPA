@@ -75,8 +75,8 @@ export const useAuthStore = create<AuthState>()(
         set({ loading: true })
         try {
           const res = await authApi.login({ username, password })
-          // 2. 计算 token 过期时间戳
-          const expiresAt = Date.now() + res.expiresIn * 1000
+          // 2. 计算 token 过期时间戳（expiresIn 后端 Long 序列化为 string | number，统一转 number）
+          const expiresAt = Date.now() + Number(res.expiresIn) * 1000
           // 3. 先存 token，便于后续请求附加 Authorization
           set({
             accessToken: res.accessToken,
@@ -124,7 +124,7 @@ export const useAuthStore = create<AuthState>()(
       // region 设置 token（refresh 后调用）
 
       setTokens: (tokens) => {
-        const expiresAt = Date.now() + tokens.expiresIn * 1000
+        const expiresAt = Date.now() + Number(tokens.expiresIn) * 1000
         set({
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,

@@ -408,8 +408,12 @@ function WorkflowRunForm({
       // 3.2 调用触发 API
       const result = await workflowApi.runWorkflow(workflowId, { params: runParams })
 
-      // 3.3 成功 → 跳转任务详情页
-      navigate(`/tasks/${result.taskId}`)
+      // 3.3 根据初始状态跳转：PENDING_APPROVAL → 审批中心（携带 approvalId）；其他 → 任务详情页
+      if (result.state === 'PENDING_APPROVAL' && result.approvalId) {
+        navigate(`/approvals?approvalId=${result.approvalId}`)
+      } else {
+        navigate(`/tasks/${result.taskId}`)
+      }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : '触发执行失败，请稍后重试'
       setFormError(msg)

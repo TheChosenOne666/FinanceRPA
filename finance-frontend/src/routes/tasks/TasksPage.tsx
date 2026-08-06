@@ -200,7 +200,7 @@ function TasksPage() {
         status,
         searchText,
         sortField: 'createTime',
-        sortOrder: 'desc',
+        sortOrder: 'descend',
       }
       // 6.1 业务线筛选（M7.6 三维度 RBAC）
       if (businessLineId) {
@@ -553,7 +553,7 @@ function TaskCard({ task, onClick }: { task: TaskVO; onClick: () => void }) {
           </span>
           {task.durationMs != null && (
             <span className="stat-item">
-              耗时 <span className="mono">{formatDuration(task.durationMs)}</span>
+              耗时 <span className="mono">{formatDuration(Number(task.durationMs))}</span>
             </span>
           )}
           {hasProgress && (

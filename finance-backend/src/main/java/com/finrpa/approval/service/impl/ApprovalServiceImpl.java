@@ -257,6 +257,10 @@ public class ApprovalServiceImpl implements ApprovalService {
         if (queryRequest.getTaskId() != null) {
             wrapper.eq(ApprovalRequestEO::getTaskId, queryRequest.getTaskId());
         }
+        // 按触发用户 ID 过滤（"我发起的"Tab）
+        if (queryRequest.getUserId() != null) {
+            wrapper.eq(ApprovalRequestEO::getUserId, queryRequest.getUserId());
+        }
 
         wrapper.orderByDesc(ApprovalRequestEO::getCreateTime);
 

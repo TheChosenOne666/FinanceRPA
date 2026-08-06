@@ -123,3 +123,36 @@ tests/sit/
 | 差异 | 说明 | 处理方式 |
 |------|------|----------|
 | `WorkflowRunVO.approvalId` null vs undefined | Java Jackson 默认序列化 null 字段，medium 风险时返回 `{"approvalId": null}`；TypeScript 可选字段期望 `undefined` | 测试断言用 `toBeFalsy()` 兼容 null/undefined；前端 `if (run.approvalId)` 判断两者等价 |
+
+## M9.6 OpenAPI 契约校验
+
+M9.6 前后端字段对齐联调阶段产出 `verify-openapi-alignment.mjs` 脚本，启动后端 dev profile 后拉取 `/v3/api-docs`（77 paths、164 schemas），对 10 类关键字段进行 50 项校验：
+
+1. `WorkflowRunVO.approvalId`（high/critical 风险跳转审批中心）
+2. `NeedsHumanQueueVO.taskTitle` / `subtaskGoal`（联表 rpa_agent_task + rpa_agent_subtask 填充）
+3. `ApprovalQueryRequest.userId`（"我发起的"Tab 筛选）
+4. `TaskQueryRequest.sortField` / `sortOrder`（ascend / descend）
+5. Long 类型字段（OpenAPI 体现为 integer/int64，前端 string | number 兼容）
+6. 关键 API 路径存在性（15 条）
+7. `ApprovalRequestVO.userName`（联表 sys_user.real_name）
+8. `TaskVO` 扩展字段（M7.6 三维度 RBAC：riskLevel / departmentName / businessLineName）
+9. `ChannelVO.webhookUrl` / `enabled`
+10. 风控配置 VO（ApprovalTimeoutConfigVO / ApprovalRouteConfigVO）
+
+### 运行方式
+
+```bash
+# 1. 启动后端（dev profile，需 PostgreSQL + Redis）
+cd finance-backend
+$env:SPRING_PROFILES_ACTIVE='dev'
+./mvnw.cmd spring-boot:run -DskipTests
+
+# 2. 拉取 OpenAPI 文档
+curl http://localhost:8080/api/v3/api-docs -o tests/sit/openapi-docs.json
+
+# 3. 运行校验
+node tests/sit/verify-openapi-alignment.mjs
+```
+
+> 校验结果：50/50 全部通过（2026-08-06）。
+

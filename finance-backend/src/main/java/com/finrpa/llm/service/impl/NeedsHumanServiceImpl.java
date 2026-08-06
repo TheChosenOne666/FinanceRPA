@@ -4,6 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.finrpa.agent.entity.AgentSubTaskEO;
+import com.finrpa.agent.entity.AgentTaskEO;
+import com.finrpa.agent.mapper.AgentSubTaskMapper;
+import com.finrpa.agent.mapper.AgentTaskMapper;
 import com.finrpa.agent.service.TaskService;
 import com.finrpa.common.exception.ThrowUtils;
 import com.finrpa.common.response.ErrorCode;
@@ -23,6 +27,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,6 +59,14 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
     /** 业务线 Mapper（用于填充队列 VO 的 businessLineName） */
     @Resource
     private BusinessLineMapper businessLineMapper;
+
+    /** 任务 Mapper（M9.6 填充队列 VO 的 taskTitle） */
+    @Resource
+    private AgentTaskMapper agentTaskMapper;
+
+    /** 子任务 Mapper（M9.6 填充队列 VO 的 subtaskGoal） */
+    @Resource
+    private AgentSubTaskMapper agentSubTaskMapper;
 
     // region 入队
 
@@ -134,12 +147,26 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
         // 3. 批量查询业务线名称（避免 N+1）
         Map<Long, String> bizLineNameMap = loadBusinessLineNames(queuePage.getRecords());
 
-        // 4. 转换为 VO
+        // 4. M9.6 批量查询任务目标（taskTitle，避免 N+1）
+        Map<Long, String> taskTitleMap = loadTaskTitles(queuePage.getRecords());
+
+        // 5. M9.6 批量查询子任务目标（subtaskGoal，避免 N+1）
+        Map<String, String> subtaskGoalMap = loadSubtaskGoals(queuePage.getRecords());
+
+        // 6. 转换为 VO
         return queuePage.convert(eo -> {
             NeedsHumanQueueVO vo = new NeedsHumanQueueVO();
             BeanUtils.copyProperties(eo, vo);
             if (eo.getBusinessLineId() != null) {
                 vo.setBusinessLineName(bizLineNameMap.get(eo.getBusinessLineId()));
+            }
+            // 6.1 填充任务目标
+            if (eo.getTaskId() != null) {
+                vo.setTaskTitle(taskTitleMap.get(eo.getTaskId()));
+            }
+            // 6.2 填充子任务目标
+            if (eo.getSubtaskId() != null && !eo.getSubtaskId().isBlank()) {
+                vo.setSubtaskGoal(subtaskGoalMap.get(eo.getSubtaskId()));
             }
             return vo;
         });
@@ -173,6 +200,18 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
         if (queue.getBusinessLineId() != null) {
             Map<Long, String> bizLineNameMap = loadBusinessLineNames(Collections.singletonList(queue));
             vo.setBusinessLineName(bizLineNameMap.get(queue.getBusinessLineId()));
+        }
+
+        // 4. M9.6 填充任务目标
+        if (queue.getTaskId() != null) {
+            Map<Long, String> taskTitleMap = loadTaskTitles(Collections.singletonList(queue));
+            vo.setTaskTitle(taskTitleMap.get(queue.getTaskId()));
+        }
+
+        // 5. M9.6 填充子任务目标
+        if (queue.getSubtaskId() != null && !queue.getSubtaskId().isBlank()) {
+            Map<String, String> subtaskGoalMap = loadSubtaskGoals(Collections.singletonList(queue));
+            vo.setSubtaskGoal(subtaskGoalMap.get(queue.getSubtaskId()));
         }
         return vo;
     }
@@ -273,6 +312,74 @@ public class NeedsHumanServiceImpl implements NeedsHumanService {
         Map<Long, String> result = new LinkedHashMap<>();
         for (BusinessLineEO biz : bizLines) {
             result.put(biz.getBusinessLineId(), biz.getBusinessLineName());
+        }
+        return result;
+    }
+
+    /**
+     * 批量加载任务目标映射（M9.6 填充 taskTitle，避免 N+1 查询）
+     *
+     * @param queues 队列条目列表
+     * @return taskId → goal（任务目标）映射
+     */
+    private Map<Long, String> loadTaskTitles(List<NeedsHumanQueueEO> queues) {
+        if (queues == null || queues.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        List<Long> taskIds = queues.stream()
+                .map(NeedsHumanQueueEO::getTaskId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (taskIds.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        QueryWrapper<AgentTaskEO> taskWrapper = new QueryWrapper<>();
+        taskWrapper.in("task_id", taskIds);
+        List<AgentTaskEO> tasks = agentTaskMapper.selectList(taskWrapper);
+        Map<Long, String> result = new LinkedHashMap<>();
+        for (AgentTaskEO task : tasks) {
+            result.put(task.getTaskId(), task.getGoal());
+        }
+        return result;
+    }
+
+    /**
+     * 批量加载子任务目标映射（M9.6 填充 subtaskGoal，避免 N+1 查询）
+     *
+     * <p>NeedsHumanQueueEO.subtaskId 存储为 String，查询时需解析为 Long。</p>
+     *
+     * @param queues 队列条目列表
+     * @return subtaskId（字符串形式） → goal（子任务目标）映射
+     */
+    private Map<String, String> loadSubtaskGoals(List<NeedsHumanQueueEO> queues) {
+        if (queues == null || queues.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        // 1. 收集有效的 subtaskId（解析为 Long 去重）
+        List<Long> subtaskIdsLong = new ArrayList<>();
+        for (NeedsHumanQueueEO queue : queues) {
+            String sid = queue.getSubtaskId();
+            if (sid == null || sid.isBlank()) {
+                continue;
+            }
+            Long sidLong = parseLong(sid);
+            if (sidLong == null || subtaskIdsLong.contains(sidLong)) {
+                continue;
+            }
+            subtaskIdsLong.add(sidLong);
+        }
+        if (subtaskIdsLong.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        // 2. 批量查询子任务
+        QueryWrapper<AgentSubTaskEO> subtaskWrapper = new QueryWrapper<>();
+        subtaskWrapper.in("subtask_id", subtaskIdsLong);
+        List<AgentSubTaskEO> subtasks = agentSubTaskMapper.selectList(subtaskWrapper);
+        // 3. 构建映射（key 用 Long 的字符串形式，与队列条目中的 subtaskId 对齐）
+        Map<String, String> result = new LinkedHashMap<>();
+        for (AgentSubTaskEO subtask : subtasks) {
+            result.put(String.valueOf(subtask.getSubtaskId()), subtask.getGoal());
         }
         return result;
     }

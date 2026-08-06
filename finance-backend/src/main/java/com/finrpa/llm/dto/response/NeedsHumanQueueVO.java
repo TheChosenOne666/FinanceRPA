@@ -66,6 +66,12 @@ public class NeedsHumanQueueVO implements Serializable {
     /** 处置时间 */
     private Timestamp resolvedAt;
 
+    /** 任务目标（关联 rpa_agent_task.goal，用于队列卡片"子任务"展示） */
+    private String taskTitle;
+
+    /** 子任务目标（关联 rpa_agent_subtask.goal，用于队列卡片"子任务"展示） */
+    private String subtaskGoal;
+
     /** 创建时间 */
     private Timestamp createTime;
 }

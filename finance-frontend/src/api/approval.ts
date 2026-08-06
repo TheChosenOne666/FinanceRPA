@@ -39,6 +39,7 @@ export async function listApprovals(
       approvalRoute: query.approvalRoute || undefined,
       riskLevel: query.riskLevel || undefined,
       taskId: query.taskId || undefined,
+      userId: query.userId || undefined,
     },
   })
   return res.data.data
