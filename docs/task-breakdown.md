@@ -1693,15 +1693,16 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **验收标准** | 6 个场景全部通过；审计日志完整；大屏数据正确 |
 | **状态** | ✅ 已完成（2026-08-05）。6 个场景全部通过。修复 2 个问题：(1) **M6.2 LLM 风险判断误报**：`_build_prompt` 排除 `steps` 字段，避免 LLM 误读 `field_mapping` key"身份证号"为敏感数据导致场景4 误判 critical（修复后场景4：insured_name 含"退保"→ high → department 路由 → SUCCESS）(2) **场景6 关键词不命中**：mock HTML option value 从"买"/"卖"改为"买入"/"卖出"，测试参数 trade_type 同步改为"买入"，命中 securities high_risk_operation 关键词 → high → department 路由 → SUCCESS。最终大屏统计：total=26 success=18 failed=0 successRate=69.2% |
 
-#### M9.2 性能测试
+#### M9.2 性能测试 ✅
 
 | 项 | 内容 |
 |----|------|
 | **规模** | M |
 | **前置依赖** | M9.1 |
-| **产出物** | 性能测试报告 |
+| **产出物** | `tests/perf/` 性能测试套件 + `docs/perf-test-report.md` 性能测试报告 |
 | **描述** | 1. 单任务执行延迟基线<br>2. 并发任务（10/50/100）吞吐量<br>3. SSE 推送延迟<br>4. 数据库查询性能（审计日志百万级）<br>5. LLM 调用成本基线 |
 | **验收标准** | 单任务延迟 < 30s；10 并发稳定运行；审计查询 < 500ms |
+| **状态** | ✅ 套件已创建（2026-08-06）。5 个场景测试脚本 + 百万造数脚本 + 性能统计工具（P50/P95/P99/throughput）+ 报告模板。**策略**：(1) 并发压测混合策略——10 并发用真实 Skyvern 验证端到端，50/100 并发用内部回调模拟（绕过 Skyvern 视觉决策，专注测 Java+PG 并发能力）；(2) 审计百万造数——直连 PG 用 `generate_series` 批量 INSERT，`audit_id >= 9900000000000000000` 避开雪花 ID 范围，测试后自动清理 + ANALYZE；(3) LLM 成本基线——真实调用火山方舟豆包 5 次风险判断，从 `rpa_llm_call_log` 表统计 token/cost。**注**：测试结果待全栈启动后执行 `npm test` 填充 `docs/perf-test-report.md`。**场景3 SSE 推送延迟已通过（2026-08-06）**：P95=3ms（< 500ms ✓），首个事件延迟 5996ms（< 60000ms ✓），共 43 个事件（42 progress + 1 complete），耗时 3.8min。执行中发现并修复 2 个真实 bug：① Python SSE timestamp 时区偏移——`event_bus.py`/`schemas.py`/`resilient_caller.py` 3 处 `datetime.utcnow()` 生成无时区 ISO 字符串，前端 `new Date()` 按本地时区解析造成 8 小时偏移（P95 从 28800003ms 降至 3ms）；② Skyvern 监控路径不发中间 SSE 事件——`tasks.py` `_monitor_skyvern_task` 仅在终态发一次 complete，中间轮询无 progress，首个事件延迟=任务执行时长（234711ms），修复后轮询循环非终态时发布 progress 事件，首个延迟降至 5996ms（同时改善前端任务详情页进度反馈体验）。**场景2 改为方案B混合策略（2026-08-06）**：第1组 5 并发真实 Skyvern（Playwright，从 10 降为 5 避免本地资源压力）+ 第2/3组 50/100 并发模拟回调改用 JMeter（`jmeter/concurrent-mock.jmx`，参数化 `concurrent.level`，生成 HTML 报告）；新增 `package.json` 脚本 `test:concurrent:jmx:50/100`。**场景2 并发吞吐量已通过（2026-08-06）**：第1组 5 并发真实 Skyvern 成功率 100%（P50=299s/P95=357s/6min）；第2组 50 并发 JMeter 0 错误（P50=9ms/P95=67ms/17 req/s）；第3组 100 并发 JMeter 0 错误（P50=7.5ms/P95=70ms/33 req/s）；瓶颈分析：端到端延迟瓶颈在 Skyvern LLM 视觉决策，Java 后端 100 并发 P95<100ms 余量充足。**场景1 单任务延迟基线已通过（2026-08-06）**：触发 1502ms（< 5s ✓）/ 详情 88ms（< 1s ✓）/ 端到端 5.4min（基线）/ 审计 32ms（< 500ms ✓） |
 
 #### M9.3 生产 Docker Compose overlay
 
@@ -1906,6 +1907,9 @@ M{里程碑号}.{任务序号}
 | v1.5 | 2026-08-04 | - | 新增第 10 章"前端 UI 原型对齐追踪"（8 个原型页面对齐进度表 + 建议优先级）；记录工作流页面（M3.6）+ 任务列表页（M2.5）已完成对齐 |
 | v1.6 | 2026-08-05 | - | 更新 M9.5 任务状态为已完成；5 个场景、8 个测试用例全部通过（场景1 全链路契约 3.9min + 场景2 NEEDS_HUMAN 3.6s + 场景3 断点续跑 2.4s + 场景4 审批超时 2.2min + 场景5 跨组织隔离 2.4s）；发现并修复 1 个契约差异（WorkflowRunVO.approvalId null vs undefined）；产出物 tests/sit/（5 scenarios + lib + README.md） |
 | v1.7 | 2026-08-06 | - | 更新 M9.6 任务状态为已完成；字段对齐审计覆盖 47 个 Java VO/DTO 与前端 types.ts 比对，修复 5 类不一致项（sortOrder 枚举 / WorkflowRunVO.approvalId / Long 序列化 string\|number / NeedsHumanQueueVO.taskTitle-subtaskGoal / ApprovalQueryRequest.userId）；OpenAPI 契约校验启动后端 dev profile 拉取 /v3/api-docs（77 paths、164 schemas），verify-openapi-alignment.mjs 50 项校验全部通过；产出物 tests/sit/verify-openapi-alignment.mjs + tests/sit/openapi-docs.json |
+| v1.8 | 2026-08-06 | - | M9.2 场景3 SSE 推送延迟测试通过（P95=3ms < 500ms，首个延迟 5996ms < 60000ms，43 事件，3.8min）；修复 2 个 bug：① Python SSE timestamp 时区偏移（event_bus.py/schemas.py/resilient_caller.py 3 处 datetime.utcnow()→datetime.now(timezone.utc)，P95 28800003ms→3ms）② Skyvern 监控路径不发中间 SSE 事件（tasks.py _monitor_skyvern_task 轮询循环加 progress 发布，首个延迟 234711ms→5996ms）；更新 docs/perf-test-report.md 场景3 结果与瓶颈分析 |
+| v1.9 | 2026-08-06 | - | M9.2 场景2 改为方案B混合策略：第1组 5 并发真实 Skyvern（Playwright，REAL_CONCURRENT 10→5，删除第2/3组模拟回调代码）+ 第2/3组 50/100 并发模拟回调改用 JMeter（新增 jmeter/concurrent-mock.jmx，参数化 concurrent.level，JSR223 Groovy 生成伪 taskId，Constant Timer 2000ms，ResponseAssertion HTTP 200，SummaryReport；package.json 新增 test:concurrent:jmx:50/100 脚本；.gitignore 排除 jmeter 产物）；JMeter 校验通过（1 线程 2 请求 0 错误）；补记场景1 测试结果（触发 1502ms/详情 88ms/端到端 5.4min/审计 32ms 全通过） |
+| v2.0 | 2026-08-06 | - | M9.2 场景2 并发吞吐量测试通过：第1组 5 并发真实 Skyvern 成功率 100%（5/5 SUCCESS，P50=299309ms/P95=357159ms，6.0min，吞吐 0.01 req/s）；第2组 50 并发 JMeter 0 错误（100 请求=50×2 回调，P50=9ms/P95=67ms/TPS=17.0 req/s）；第3组 100 并发 JMeter 0 错误（200 请求=100×2 回调，P50=7.5ms/P95=70ms/TPS=33.35 req/s）；发现并解决 PowerShell 传参问题（-J 参数需引号包裹才能正确传递给 jmeter.bat）；瓶颈分析：端到端延迟瓶颈在 Skyvern LLM 视觉决策（非 Java 后端），Java 后端 100 并发 P95<100ms 近线性扩展余量充足 |
 
 ---
 

@@ -8,7 +8,7 @@
 @author FinanceRPA
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -98,4 +98,4 @@ class SseEvent(BaseModel):
     task_id: str
     event_type: str  # step_start / step_end / progress / error / complete / replan
     data: dict
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -1,0 +1,17 @@
+# 依赖
+node_modules/
+package-lock.json
+
+# 测试产物
+test-results/
+playwright-report/
+playwright/.cache/
+
+# 临时数据
+*.perf.json
+audit-seed-*.log
+
+# JMeter 产物
+jmeter/results-*.jtl
+jmeter/report-*/
+jmeter/*.log

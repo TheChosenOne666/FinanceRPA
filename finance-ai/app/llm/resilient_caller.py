@@ -32,7 +32,7 @@ M5.1 实现，提供 LLM 调用的三层容错机制：
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -333,7 +333,7 @@ class ResilientCaller:
             error_message=error_message,
             duration_ms=duration_ms,
             cache_hit=cache_hit,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
         try:

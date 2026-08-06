@@ -207,6 +207,16 @@ async def _monitor_skyvern_task(
             )
             if rpa_state in ("SUCCESS", "FAILED", "ABORTED"):
                 break
+            # 非终态：发布 progress 事件（供 SSE 订阅者感知任务进行中，避免前端长时间无反馈）
+            await event_bus.publish(
+                task_id,
+                "progress",
+                {
+                    "state": "EXECUTING",
+                    "skyvernStatus": skyvern_status,
+                    "message": f"Skyvern 任务执行中（{skyvern_status}）",
+                },
+            )
         else:
             # 轮询超时，标记失败
             rpa_state = "FAILED"

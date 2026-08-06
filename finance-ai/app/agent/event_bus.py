@@ -25,7 +25,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable
 
 import redis.asyncio as aioredis
@@ -108,7 +108,7 @@ class TaskEventBus:
             "data": {
                 "taskId": task_id,
                 "eventType": event_type,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 **data,
             },
         }
