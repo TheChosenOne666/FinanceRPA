@@ -1942,3 +1942,91 @@ export interface ChannelConfigSaveRequest {
   /** 启用状态（必填） */
   enabled: boolean;
 }
+
+// ============================================================
+// 系统设置 - P3 统一配置中心（对齐 SystemConfigController @RequestMapping("/system-config")）
+// 对齐 com.finrpa.system.dto.response.SystemConfigVO / SystemConfigUpdateRequest
+// ============================================================
+
+/**
+ * 系统配置 VO（对齐 SystemConfigVO）
+ *
+ * 用于设置页 AI 配置 / 存储配置 / 定时任务 / 系统参数 四个子区块展示与编辑。
+ */
+export interface SystemConfigVO {
+  /** 主键 ID */
+  id: string;
+  /** 配置键（如 ai.base_url / minio.endpoint / scheduler.approval_timeout.enabled） */
+  configKey: string;
+  /** 配置值（统一以字符串存储，前端按 configType 解释） */
+  configValue: string;
+  /** 值类型：STRING / INTEGER / BOOLEAN */
+  configType: string;
+  /** 描述说明 */
+  description?: string;
+  /** 启用状态（0-禁用 1-启用） */
+  status: number;
+  /** 更新时间 */
+  updateTime?: string;
+}
+
+/**
+ * 系统配置更新请求（对齐 SystemConfigUpdateRequest）
+ */
+export interface SystemConfigUpdateRequest {
+  /** 配置值（必填） */
+  configValue: string;
+  /** 描述说明（可选，传 null/undefined 不更新） */
+  description?: string;
+  /** 启用状态（可选，传 null/undefined 不更新；0-禁用 1-启用） */
+  status?: number;
+}
+
+// ============================================================
+// 系统设置 - P3 权限矩阵（对齐 PermissionController @RequestMapping("/permissions")）
+// 对齐 com.finrpa.auth.dto.response.PermissionVO / RolePermissionMatrixVO
+// ============================================================
+
+/**
+ * 权限点 VO（对齐 PermissionVO，矩阵列定义）
+ */
+export interface PermissionVO {
+  /** 权限业务 ID */
+  permissionId: string;
+  /** 权限编码（如 task:create） */
+  permissionCode: string;
+  /** 权限名称（如 任务创建） */
+  permissionName: string;
+  /** 资源类型（task / workflow / user / role / org / report / all） */
+  resourceType: string;
+  /** 资源路径（可空） */
+  resourcePath?: string;
+  /** 排序序号 */
+  sortOrder?: number;
+}
+
+/**
+ * 角色权限矩阵行 VO（对齐 RolePermissionMatrixVO）
+ *
+ * 每行代表一个角色，含其已勾选的权限 ID 集合。
+ */
+export interface RolePermissionMatrixVO {
+  /** 角色业务 ID */
+  roleId: string;
+  /** 角色编码 */
+  roleCode: string;
+  /** 角色名称 */
+  roleName: string;
+  /** 是否内置角色（内置角色权限可查看，建议不强制修改） */
+  builtIn: boolean;
+  /** 已勾选的权限 ID 集合 */
+  permissionIds: string[];
+}
+
+/**
+ * 角色权限保存请求（对齐 RolePermissionSaveRequest，全量替换语义）
+ */
+export interface RolePermissionSaveRequest {
+  /** 权限 ID 集合（全量替换：传空数组表示清空该角色全部权限） */
+  permissionIds: string[];
+}

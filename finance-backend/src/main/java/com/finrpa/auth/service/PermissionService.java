@@ -1,6 +1,11 @@
 package com.finrpa.auth.service;
 
+import com.finrpa.auth.dto.response.PermissionVO;
+import com.finrpa.auth.dto.response.RolePermissionMatrixVO;
+import com.finrpa.auth.entity.UserRoleEO;
+
 import java.util.List;
+import java.util.Set;
 
 /**
  * 权限服务接口
@@ -112,5 +117,32 @@ public interface PermissionService {
      * @param userId 用户 ID
      * @return 主关联实体；无关联时返回 null
      */
-    com.finrpa.auth.entity.UserRoleEO getPrimaryUserRole(Long userId);
+    UserRoleEO getPrimaryUserRole(Long userId);
+
+    // region P3 USR-3 权限矩阵可视化
+
+    /**
+     * 查询全部权限点（设置页权限矩阵列定义）
+     *
+     * @return 权限点列表
+     */
+    List<PermissionVO> listAllPermissions();
+
+    /**
+     * 查询角色权限矩阵（设置页权限矩阵展示，每行一个角色 + 已勾选权限 ID 集合）
+     *
+     * @return 角色权限矩阵行列表
+     */
+    List<RolePermissionMatrixVO> getPermissionMatrix();
+
+    /**
+     * 保存角色权限（全量替换语义）
+     *
+     * @param roleId        角色业务 ID
+     * @param permissionIds 权限 ID 集合
+     * @return 操作结果
+     */
+    boolean saveRolePermissions(Long roleId, List<Long> permissionIds);
+
+    // endregion
 }

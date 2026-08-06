@@ -6588,6 +6588,220 @@ table.data-table {
   line-height: 1.6;
 }
 
+/* ---------- P3 系统配置区块（AI / 存储 / 定时任务 / 系统参数 共用） ---------- */
+.settings-config-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 16px;
+}
+
+.settings-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.settings-config-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-config-item:last-child {
+  border-bottom: none;
+}
+
+.settings-config-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-config-key {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  word-break: break-all;
+}
+
+.settings-config-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.settings-config-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.settings-config-control {
+  flex-shrink: 0;
+  min-width: 200px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-config-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-config-input {
+  padding: 5px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.8);
+  min-width: 160px;
+  font-family: var(--font-sans);
+}
+
+.settings-config-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-primary-lighter);
+}
+
+.settings-config-view {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-config-value {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-config-error {
+  margin-top: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--risk-high);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- P3 权限矩阵表格 ---------- */
+.permission-matrix-wrap {
+  padding: 16px;
+}
+
+.permission-matrix-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.permission-matrix-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  min-width: 600px;
+}
+
+.permission-matrix-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--glass-bg, rgba(248, 250, 252, 0.95));
+  padding: 10px 8px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-default);
+  min-width: 80px;
+  vertical-align: bottom;
+}
+
+.permission-matrix-table thead th.pm-role-col {
+  text-align: left;
+  min-width: 160px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--glass-bg, rgba(248, 250, 252, 0.95));
+}
+
+.pm-perm-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pm-perm-code {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  margin-top: 2px;
+}
+
+.permission-matrix-table tbody td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.permission-matrix-table tbody td.pm-role-cell {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.95));
+  z-index: 1;
+}
+
+.pm-role-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pm-role-code {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  margin-top: 2px;
+}
+
+.pm-builtin-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--accent-primary-hover);
+  background: var(--accent-primary-lighter);
+  border-radius: var(--radius-pill);
+  margin-top: 4px;
+}
+
+.pm-check-cell input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.pm-action-cell {
+  position: sticky;
+  right: 0;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.95));
+  z-index: 1;
+  min-width: 70px;
+}
+
 /* ---------- Mock 数据提示徽章 ---------- */
 .mock-data-badge {
   display: inline-flex;

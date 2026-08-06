@@ -2,6 +2,7 @@ package com.finrpa.approval.scheduler;
 
 import com.finrpa.approval.constant.ApprovalConstant;
 import com.finrpa.approval.service.ApprovalService;
+import com.finrpa.system.service.SystemConfigService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -14,25 +15,8 @@ import org.springframework.stereotype.Component;
  * <p>基于 Spring {@link Scheduled} + ShedLock {@link SchedulerLock} 实现分布式定时任务，
  * 每分钟扫描一次 PENDING 状态的审批单，将已超时的审批单标记为 TIMEOUT 并触发后续处理。</p>
  *
- * <p>超时阈值（M6.4）：
- * <ul>
- *   <li>high 风险（部门审批）：30 分钟</li>
- *   <li>critical 风险（合规审计部审批）：60 分钟</li>
- * </ul>
- * </p>
- *
- * <p>超时处理流程（委托 {@link ApprovalService#processTimeoutApprovals()}）：
- * <ol>
- *   <li>标记审批单状态为 TIMEOUT</li>
- *   <li>更新 Java 任务状态为 ABORTED</li>
- *   <li>发布 Pub/Sub 通知（唤醒等待线程 + 通知前端）</li>
- *   <li>通知 Python 终止任务（防御性调用）</li>
- * </ol>
- * </p>
- *
- * <p>ShedLock 保证集群部署下同一时刻仅单节点执行扫描，
- * 锁持有时间 30 秒（{@link ApprovalConstant#TIMEOUT_SCHEDULER_LOCK_AT_MOST}），
- * 最短持有 5 秒（{@link ApprovalConstant#TIMEOUT_SCHEDULER_LOCK_AT_LEAST}）。</p>
+ * <p>P3 OPS-2：增加 {@code scheduler.approval_timeout.enabled} 开关判断，
+ * 关闭时跳过本次扫描（cron 固定每分钟，改 cron 需重启）。</p>
  *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
@@ -44,6 +28,10 @@ public class ApprovalTimeoutScheduler {
     /** 审批服务（超时处理委托） */
     @Resource
     private ApprovalService approvalService;
+
+    /** 系统配置服务（P3 OPS-2 启停开关读取） */
+    @Resource
+    private SystemConfigService systemConfigService;
 
     /**
      * 扫描并处理超时审批单
@@ -59,6 +47,13 @@ public class ApprovalTimeoutScheduler {
             lockAtLeastFor = "PT5S"
     )
     public void scanTimeoutApprovals() {
+        // P3 OPS-2：检查启停开关（关闭时跳过本次扫描）
+        boolean enabled = systemConfigService.getBoolean("scheduler.approval_timeout.enabled", true);
+        if (!enabled) {
+            log.debug("[ApprovalTimeoutScheduler] 超时审批扫描已禁用，跳过本次执行");
+            return;
+        }
+
         long startMs = System.currentTimeMillis();
         try {
             int count = approvalService.processTimeoutApprovals();

@@ -1,15 +1,28 @@
 package com.finrpa.auth.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.finrpa.auth.dto.response.PermissionVO;
+import com.finrpa.auth.dto.response.RolePermissionMatrixVO;
+import com.finrpa.auth.entity.PermissionEO;
 import com.finrpa.auth.entity.RoleEO;
+import com.finrpa.auth.entity.RolePermissionEO;
 import com.finrpa.auth.entity.UserEO;
 import com.finrpa.auth.entity.UserRoleEO;
+import com.finrpa.auth.mapper.PermissionMapper;
 import com.finrpa.auth.mapper.RoleMapper;
+import com.finrpa.auth.mapper.RolePermissionMapper;
 import com.finrpa.auth.mapper.UserMapper;
 import com.finrpa.auth.mapper.UserRoleMapper;
 import com.finrpa.auth.service.PermissionService;
+import com.finrpa.common.exception.ThrowUtils;
+import com.finrpa.common.response.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -18,9 +31,13 @@ import java.util.stream.Collectors;
 /**
  * 权限服务实现
  *
+ * <p>P3 USR-3 权限矩阵可视化：{@code getPermissionsByRole} 改为优先查 sys_role_permission 关联表，
+ * DB 无记录时回退硬编码默认值（兼容初始化场景）。</p>
+ *
  * @author <a href="https://github.com/TheChosenOne666">小楼</a>
  * @from <a href="https://github.com/TheChosenOne666">TheChosenOne666</a>
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PermissionServiceImpl implements PermissionService {
@@ -31,6 +48,10 @@ public class PermissionServiceImpl implements PermissionService {
     private final RoleMapper roleMapper;
     /** 用户-角色关联 Mapper（M7.6 三维度 RBAC） */
     private final UserRoleMapper userRoleMapper;
+    /** 权限点 Mapper（P3 USR-3） */
+    private final PermissionMapper permissionMapper;
+    /** 角色-权限关联 Mapper（P3 USR-3） */
+    private final RolePermissionMapper rolePermissionMapper;
 
     /** 互斥角色集合：operator 与 approver 不可同时持有 */
     private static final Set<String> MUTUALLY_EXCLUSIVE_ROLES = Set.of("operator", "approver");
@@ -155,10 +176,29 @@ public class PermissionServiceImpl implements PermissionService {
     /**
      * 根据角色编码返回该角色对应的权限标识列表
      *
+     * <p>P3 USR-3：优先查 sys_role_permission 关联表，DB 无记录时回退硬编码默认值
+     * （兼容 V27 迁移未执行或自定义角色未配置权限的场景）。</p>
+     *
      * @param roleCode 角色编码
      * @return 权限标识列表
      */
     private List<String> getPermissionsByRole(String roleCode) {
+        // 1. 优先查 DB（P3 USR-3 权限矩阵配置）
+        List<String> dbPerms = permissionMapper.selectPermissionCodesByRoleCode(roleCode);
+        if (dbPerms != null && !dbPerms.isEmpty()) {
+            return dbPerms;
+        }
+        // 2. DB 无记录时回退硬编码默认值
+        return getDefaultPermissionsByRole(roleCode);
+    }
+
+    /**
+     * 内置角色权限硬编码默认值（DB 配置缺失时的兜底）
+     *
+     * @param roleCode 角色编码
+     * @return 权限标识列表
+     */
+    private List<String> getDefaultPermissionsByRole(String roleCode) {
         return switch (roleCode) {
             case "super_admin" -> List.of("*");
             case "org_admin" -> List.of("user:manage", "role:manage", "org:manage");
@@ -306,4 +346,92 @@ public class PermissionServiceImpl implements PermissionService {
         List<UserRoleEO> relations = userRoleMapper.selectByUserId(userId);
         return relations.isEmpty() ? null : relations.get(0);
     }
+
+    // region P3 USR-3 权限矩阵可视化
+
+    /**
+     * 查询全部权限点（设置页权限矩阵列定义）
+     */
+    @Override
+    public List<PermissionVO> listAllPermissions() {
+        // 1. 查询全部启用状态的权限点，按 sort_order 升序
+        QueryWrapper<PermissionEO> wrapper = new QueryWrapper<>();
+        wrapper.eq("status", 1)
+                .orderByAsc("sort_order");
+        List<PermissionEO> list = permissionMapper.selectList(wrapper);
+
+        // 2. 转换为 VO
+        return list.stream().map(eo -> {
+            PermissionVO vo = new PermissionVO();
+            BeanUtils.copyProperties(eo, vo);
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * 查询角色权限矩阵
+     */
+    @Override
+    public List<RolePermissionMatrixVO> getPermissionMatrix() {
+        // 1. 查询全部未删除角色，按 role_id 升序
+        QueryWrapper<RoleEO> roleWrapper = new QueryWrapper<>();
+        roleWrapper.orderByAsc("role_id");
+        List<RoleEO> roles = roleMapper.selectList(roleWrapper);
+
+        // 2. 内置角色编码集合（用于前端提示是否可修改）
+        Set<String> builtInCodes = Set.of(
+                "super_admin", "org_admin", "operator", "approver", "viewer",
+                "admin", "ops", "user"
+        );
+
+        // 3. 逐角色查询已勾选权限 ID 集合
+        return roles.stream().map(role -> {
+            RolePermissionMatrixVO vo = new RolePermissionMatrixVO();
+            vo.setRoleId(role.getRoleId());
+            vo.setRoleCode(role.getRoleCode());
+            vo.setRoleName(role.getRoleName());
+            vo.setBuiltIn(builtInCodes.contains(role.getRoleCode()));
+            List<Long> permIds = rolePermissionMapper.selectPermissionIdsByRoleId(role.getRoleId());
+            vo.setPermissionIds(permIds != null ? permIds : new ArrayList<>());
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * 保存角色权限（全量替换语义：先删后插）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveRolePermissions(Long roleId, List<Long> permissionIds) {
+        // 1. 参数校验
+        ThrowUtils.throwIf(roleId == null, ErrorCode.PARAMS_ERROR, "角色 ID 不能为空");
+        ThrowUtils.throwIf(permissionIds == null, ErrorCode.PARAMS_ERROR, "权限 ID 集合不能为空");
+
+        // 2. 校验角色存在
+        QueryWrapper<RoleEO> roleWrapper = new QueryWrapper<>();
+        roleWrapper.eq("role_id", roleId);
+        RoleEO role = roleMapper.selectOne(roleWrapper);
+        ThrowUtils.throwIf(role == null, ErrorCode.NOT_FOUND_ERROR, "角色不存在: " + roleId);
+
+        // 3. 删除该角色的全部权限关联
+        QueryWrapper<RolePermissionEO> deleteWrapper = new QueryWrapper<>();
+        deleteWrapper.eq("role_id", roleId);
+        rolePermissionMapper.delete(deleteWrapper);
+
+        // 4. 批量插入新关联（permissionIds 为空则仅清空）
+        if (!permissionIds.isEmpty()) {
+            for (Long permId : permissionIds) {
+                RolePermissionEO eo = new RolePermissionEO();
+                eo.setRoleId(roleId);
+                eo.setPermissionId(permId);
+                rolePermissionMapper.insert(eo);
+            }
+        }
+
+        log.info("保存角色权限: roleId={}, roleCode={}, permissionIds={}",
+                roleId, role.getRoleCode(), permissionIds);
+        return true;
+    }
+
+    // endregion
 }

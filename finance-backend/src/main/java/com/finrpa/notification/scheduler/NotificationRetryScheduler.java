@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finrpa.notification.constant.NotificationConstant;
 import com.finrpa.notification.dispatcher.NotificationDispatcher;
 import com.finrpa.notification.dto.NotificationRetryTask;
+import com.finrpa.system.service.SystemConfigService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -53,6 +54,10 @@ public class NotificationRetryScheduler {
     @Resource
     private ObjectMapper objectMapper;
 
+    /** 系统配置服务（P3 OPS-2 启停开关 + 重试次数读取） */
+    @Resource
+    private SystemConfigService systemConfigService;
+
     /**
      * 扫描并处理重试队列
      *
@@ -67,6 +72,13 @@ public class NotificationRetryScheduler {
             lockAtLeastFor = "PT10S"
     )
     public void scanRetryQueue() {
+        // P3 OPS-2：检查启停开关（关闭时跳过本次扫描）
+        boolean enabled = systemConfigService.getBoolean("scheduler.notification_retry.enabled", true);
+        if (!enabled) {
+            log.debug("[RetryScheduler] 通知重试扫描已禁用，跳过本次执行");
+            return;
+        }
+
         long startMs = System.currentTimeMillis();
         RList<String> queue = redissonClient.getList(NotificationConstant.RETRY_QUEUE_KEY);
         int queueSize = queue.size();
@@ -97,7 +109,7 @@ public class NotificationRetryScheduler {
                 processed++;
                 if (ok) {
                     success++;
-                } else if (retryTask.getRetryCount() + 1 >= NotificationConstant.MAX_RETRY_COUNT) {
+                } else if (retryTask.getRetryCount() + 1 >= systemConfigService.getInteger("scheduler.notification_retry.max_count", NotificationConstant.MAX_RETRY_COUNT)) {
                     // 超过最大重试次数阈值，告警人工介入
                     overLimit++;
                     log.error("[RetryScheduler] 任务超过最大重试次数，需人工介入: template={}, retryCount={}",

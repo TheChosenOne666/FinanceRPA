@@ -2288,5 +2288,87 @@ M{里程碑号}.{任务序号}
 - [settings-requirements.md](file:///d:/lingou-projects/financeRPA/docs/settings-requirements.md) v1.3：补充 P2 详细任务章节 + 4.3 P2 验收清单 + 变更记录
 - 本文档 10.7 节
 
-**下一步（P3 规划，待用户确认）**：
-- P3：权限矩阵可视化（USR-3）/ AI 服务在线配置（INT-1）/ MinIO 配置（INT-3）/ 定时任务配置（OPS-2）/ 系统参数开关（OPS-3）
+### 10.8 P3 设置功能扩展（2026-08-06）
+
+**背景**：P2 完成后用户确认进入 P3。P3 聚焦「统一配置中心 + 权限矩阵可视化 + 运维开关」三大块，目标是把分散在 yml / 常量 / 硬编码中的配置项收敛到 `sys_config` 表，并补齐三维度 RBAC 的可视化勾选能力。采用「尽可能简单打通」策略：复用 V2 已建的 `sys_config` / `sys_permission` / `sys_role_permission` 表，不新建任何表，仅补种子数据 + 动态刷新机制。
+
+**实施清单**：
+
+1. **后端 - 统一配置中心（INT-1 / INT-3 / OPS-2 / OPS-3）**
+   - 复用 V2 已建 `sys_config` 表（key-value），不新建表
+   - 新建 [V26__insert_p3_system_config_seeds.sql](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/resources/db/migration/V26__insert_p3_system_config_seeds.sql)：初始化 24 条种子配置
+     - AI 服务（7 条）：`ai.base_url` / `ai.internal_token` / `ai.connect_timeout` / `ai.read_timeout` / `ai.sse_timeout` / `ai.retry.max_attempts` / `ai.retry.backoff`
+     - MinIO 存储（6 条）：`minio.endpoint` / `minio.access_key` / `minio.secret_key` / `minio.bucket_prefix` / `minio.presign_expiry_hours` / `minio.retention_days`
+     - 定时任务（3 条）：`scheduler.approval_timeout.enabled` / `scheduler.notification_retry.enabled` / `scheduler.notification_retry.max_count`
+     - 系统开关（3 条）：`maintenance.enabled` / `registration.enabled` / `upload.max_file_size_mb`
+   - 新建 [SystemConfigController](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/system/controller/SystemConfigController.java)（`@RequestMapping("/system-config")`）：
+     - `GET /system-config` 查询全部配置项（设置页展示）
+     - `PUT /system-config/{key}` 按 config_key 更新配置值
+     - `POST /system-config/refresh` 刷新缓存并重建 AI/MinIO 配置属性（高频字段热生效）
+   - 新建 `SystemConfigService(Impl)`：
+     - 采用 `ConcurrentHashMap` 本地缓存 + 30 秒 TTL 策略，兼顾读取性能与运行时热生效
+     - 提供 `getString` / `getInteger` / `getBoolean` 三种读取方法
+     - 更新后置缓存过期，下次读自动重载
+   - 动态刷新接入点：
+     - `AiServiceProperties.refreshFromConfig`：从 DB 重读 `ai.*` 配置，重试参数立即热生效，连接参数需重启重建 WebClient
+     - `MinioProperties.refreshFromConfig`：从 DB 重读 `minio.*` 配置，预签名有效期等高频字段热生效
+     - `ApprovalTimeoutScheduler`：每次扫描读 `scheduler.approval_timeout.enabled` 决定是否执行
+     - `NotificationRetryScheduler`：每次扫描读 `scheduler.notification_retry.enabled` + `max_count` 控制启停与重试上限
+     - `MinioStorageServiceImpl.uploadScreenshot`：上传前读 `upload.max_file_size_mb` 校验文件大小
+
+2. **后端 - 权限矩阵可视化（USR-3）**
+   - 复用 V2 已建 `sys_permission` + `sys_role_permission` 表，不新建表
+   - 新建 [V27__init_permissions_and_role_permissions.sql](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/resources/db/migration/V27__init_permissions_and_role_permissions.sql)：
+     - 初始化 12 个权限点（permission_id 1-12）：全部权限 / 用户管理 / 角色管理 / 组织管理 / 任务 CRUD / 任务执行 / 任务查看 / 任务审批 / 工作流审批 / 报表查看
+     - 初始化 5 个内置角色的权限关联：super_admin（全部）/ org_admin（user+role+org:manage）/ operator（task:create+update+delete+execute）/ approver（task:approve+workflow:approve）/ viewer（task:view+report:view）
+   - 新建 [PermissionController](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/auth/controller/PermissionController.java)（`@RequestMapping("/permissions")`）：
+     - `GET /permissions` 查询全部启用权限点（矩阵列定义）
+     - `GET /permissions/matrix` 查询角色权限矩阵（角色列表 + 每角色已勾选权限 ID 集合）
+     - `PUT /permissions/roles/{roleId}` 保存角色权限（全量替换语义，先删后插）
+   - 扩展 `PermissionServiceImpl`：
+     - `listAllPermissions` / `getPermissionMatrix` / `saveRolePermissions` 三个新方法
+     - `getPermissionsByRole` 改为优先查 `sys_role_permission` 关联表，DB 无记录时回退硬编码默认值（兼容初始化场景）
+   - 单元测试 [PermissionServiceTest](file:///d:/lingou-projects/financeRPA/finance-backend/src/test/java/com/finrpa/auth/service/PermissionServiceTest.java) PASS
+
+3. **后端 - 维护模式拦截器（OPS-3）**
+   - 新建 [MaintenanceInterceptor](file:///d:/lingou-projects/financeRPA/finance-backend/src/main/java/com/finrpa/system/interceptor/MaintenanceInterceptor.java)：
+     - 读取 `maintenance.enabled` 开关（带 30s 缓存）
+     - 启用时拦截所有非白名单请求，返回 503 + JSON 错误响应
+     - 白名单：登录 / 刷新 token / 系统配置查询与刷新 / 系统健康检查 / Spring 错误页 / 静态资源
+   - 接入 WebMvc 拦截链（`WebMvcConfig`）
+
+4. **前端 - 4 个新子导航区块**
+   - [Settings.tsx](file:///d:/lingou-projects/financeRPA/finance-frontend/src/routes/enterprise/Settings.tsx) 新增 4 个子导航项 + `SystemConfigSection` 可复用组件：
+     - 「AI 配置」（prefix=`ai.`）：7 项 AI 服务配置在线编辑
+     - 「存储配置」（prefix=`minio.`）：6 项 MinIO 配置在线编辑
+     - 「定时任务」（prefix=`scheduler.`）：3 项定时任务开关与重试次数
+     - 「系统参数」（prefix=`__others__`）：聚合未命中已知前缀的配置（维护模式 / 注册开关 / 上传大小上限）
+   - `SystemConfigSection` 设计：
+     - 一次加载全量 sys_config，前端按 prefix 过滤分组，减少后端多次请求
+     - 按配置类型自动渲染输入控件（STRING→文本框 / INTEGER→数字框 / BOOLEAN→开关）
+     - 单项编辑 + 保存，保存后触发本地缓存刷新
+     - 顶部「刷新缓存热生效」按钮调用 `POST /system-config/refresh` 重建 AI/MinIO 配置属性
+   - 新增 `PermissionMatrixSection` 区块：
+     - 行=角色，列=权限点，勾选状态本地维护，按行保存（全量替换语义）
+     - 内置角色展示「内置」徽章
+     - 草稿与原始数据 diff 判断 dirty 状态，仅 dirty 行显示保存按钮
+
+5. **前端 - API / 类型同步**
+   - [settings.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/settings.ts) 新增 6 个 API：`listSystemConfigs` / `updateSystemConfig` / `refreshSystemConfig` / `listAllPermissions` / `getPermissionMatrix` / `saveRolePermissions`
+   - [types.ts](file:///d:/lingou-projects/financeRPA/finance-frontend/src/api/types.ts) 新增 `SystemConfigVO` / `SystemConfigUpdateRequest` / `PermissionVO` / `RolePermissionMatrixVO` / `RolePermissionSaveRequest`
+   - [glass.css](file:///d:/lingou-projects/financeRPA/finance-frontend/src/styles/glass.css) 新增 `.settings-config-*` 与 `.permission-matrix-*` 样式
+
+**验证结果**：
+- 后端编译通过（`mvnw compile` PASS）
+- 前端 `tsc --noEmit` PASS（0 错误）
+- 内置浏览器验证 5 项功能 UI 全部 PASS（无 JS 错误）：
+  - AI 配置 / 存储配置 / 定时任务 / 系统参数 四个区块列表加载 + 编辑 + 保存 + 刷新缓存热生效
+  - 权限矩阵区块：列定义加载 + 勾选状态渲染 + 按行保存
+
+**文档同步**：
+- [settings-requirements.md](file:///d:/lingou-projects/financeRPA/docs/settings-requirements.md) v1.4：补充 P3 详细任务章节 + 4.4 P3 验收清单 + 变更记录
+- 本文档 10.8 节
+
+**下一步**：设置页 P0/P1/P2/P3 全部已完成，设置页功能扩展计划收尾。后续可选方向：
+- 后端补 `SystemConfigServiceImpl` 与 `PermissionServiceImpl` 权限矩阵相关方法的单元测试（当前仅有 `PermissionServiceTest` 覆盖 hasPermission 系列，矩阵 CRUD 未覆盖）
+- 前端补 React Query mutation 的错误重试与 toast 提示（当前仅控制台错误日志）

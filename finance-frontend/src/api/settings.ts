@@ -41,16 +41,21 @@ import type {
   PasswordPolicyUpdateRequest,
   PasswordPolicyVO,
   PasswordResetRequest,
+  PermissionVO,
   RiskKeywordAddRequest,
   RiskKeywordQueryRequest,
   RiskKeywordVO,
   RoleAddRequest,
+  RolePermissionMatrixVO,
+  RolePermissionSaveRequest,
   RoleQueryRequest,
   RoleUpdateRequest,
   RoleVO,
   SessionQueryRequest,
   SessionVO,
   SkillAddRequest,
+  SystemConfigUpdateRequest,
+  SystemConfigVO,
   SystemHealthVO,
   SkillQueryRequest,
   SkillUpdateRequest,
@@ -724,4 +729,108 @@ export const settingsApi = {
   killSession,
   // P2 OPS-1 系统健康检查
   checkSystemHealth,
+  // P3 统一配置中心
+  listSystemConfigs,
+  updateSystemConfig,
+  refreshSystemConfig,
+  // P3 权限矩阵
+  listAllPermissions,
+  getPermissionMatrix,
+  saveRolePermissions,
+}
+
+// ============================================================
+// P3 统一配置中心（对齐 SystemConfigController @RequestMapping("/system-config")）
+// ============================================================
+
+/**
+ * 查询全部系统配置项
+ *
+ * 用于设置页 AI 配置 / 存储配置 / 定时任务 / 系统参数 四个子区块统一加载，前端按 config_key 前缀过滤分组。
+ *
+ * @returns 配置列表
+ */
+export async function listSystemConfigs(): Promise<SystemConfigVO[]> {
+  const res = await axiosClient.get<BaseResponse<SystemConfigVO[]>>(
+    '/system-config',
+  )
+  return res.data.data
+}
+
+/**
+ * 按 config_key 更新配置（运行时热生效）
+ *
+ * @param key 配置键
+ * @param body 更新请求
+ * @returns 更新后的配置 VO
+ */
+export async function updateSystemConfig(
+  key: string,
+  body: SystemConfigUpdateRequest,
+): Promise<SystemConfigVO> {
+  const res = await axiosClient.put<BaseResponse<SystemConfigVO>>(
+    `/system-config/${key}`,
+    body,
+  )
+  return res.data.data
+}
+
+/**
+ * 手动刷新缓存并重建 AI / MinIO 配置属性（高频字段立即热生效）
+ *
+ * @returns 操作结果
+ */
+export async function refreshSystemConfig(): Promise<boolean> {
+  const res = await axiosClient.post<BaseResponse<boolean>>(
+    '/system-config/refresh',
+  )
+  return res.data.data
+}
+
+// ============================================================
+// P3 权限矩阵（对齐 PermissionController @RequestMapping("/permissions")）
+// ============================================================
+
+/**
+ * 查询全部权限点（矩阵列定义）
+ *
+ * @returns 权限点列表
+ */
+export async function listAllPermissions(): Promise<PermissionVO[]> {
+  const res = await axiosClient.get<BaseResponse<PermissionVO[]>>(
+    '/permissions',
+  )
+  return res.data.data
+}
+
+/**
+ * 查询角色权限矩阵（角色列表 + 每个角色已勾选的权限 ID 集合）
+ *
+ * @returns 角色权限矩阵行列表
+ */
+export async function getPermissionMatrix(): Promise<
+  RolePermissionMatrixVO[]
+> {
+  const res = await axiosClient.get<
+    BaseResponse<RolePermissionMatrixVO[]>
+  >('/permissions/matrix')
+  return res.data.data
+}
+
+/**
+ * 保存角色权限（全量替换语义：先删后插）
+ *
+ * @param roleId 角色业务 ID
+ * @param body 保存请求（含权限 ID 集合）
+ * @returns 操作结果
+ */
+export async function saveRolePermissions(
+  roleId: string,
+  body: RolePermissionSaveRequest,
+): Promise<boolean> {
+  const res = await axiosClient.put<BaseResponse<boolean>>(
+    `/permissions/roles/${roleId}`,
+    body,
+  )
+  return res.data.data
 }

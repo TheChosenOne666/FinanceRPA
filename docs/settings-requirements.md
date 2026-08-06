@@ -4,9 +4,9 @@
 >
 > | 项 | 内容 |
 > |----|------|
-> | 文档版本 | v1.3 |
+> | 文档版本 | v1.4 |
 > | 创建日期 | 2026-08-04 |
-> | 文档状态 | P0/P1/P2 已实施，P3 待规划 |
+> | 文档状态 | P0/P1/P2/P3 全部已实施 |
 > | 关联页面 | `finance-frontend/src/routes/enterprise/Settings.tsx` |
 > | 关联原型 | `prototypes/08-settings.html`（仅作 UI 参考，本文档不约束 UI） |
 
@@ -325,6 +325,25 @@ P1 范围：审批超时阈值配置（RSK-1）/ 审批人映射（RSK-3）/ 用
 - [x] `tsc --noEmit` 通过
 - [x] 内置浏览器验证 4 项功能 UI 全部 PASS（无 JS 错误）
 
+### 4.4 P3 验收
+
+- [x] 后端 `SystemConfigController`（P3 INT-1/INT-2/INT-3 + OPS-2/OPS-3）已实现：`GET /system-config` / `PUT /system-config/{key}` / `POST /system-config/refresh`
+- [x] 后端 `PermissionController`（P3 USR-3 权限矩阵可视化）已实现：`GET /permissions` / `GET /permissions/matrix` / `PUT /permissions/roles/{roleId}`
+- [x] 后端 `MaintenanceInterceptor`（P3 OPS-3 全局维护模式开关）已接入 WebMvc 拦截链
+- [x] 后端 `MinioStorageServiceImpl` 已接入 `upload.max_file_size_mb` 运行时校验（P3 OPS-3）
+- [x] 后端 `ApprovalTimeoutScheduler` / `NotificationRetryScheduler` 已接入 `scheduler.*.enabled` 启停开关（P3 OPS-2）
+- [x] 后端 `AiServiceProperties` / `MinioProperties` 已实现 `refreshFromConfig` 热刷新方法
+- [x] 数据库 V26 迁移脚本初始化 24 条 `sys_config` 种子数据（AI / MinIO / 定时任务 / 维护 / 注册 / 上传 / RPA / Security / System 九组）
+- [x] 数据库 V27 迁移脚本初始化 12 个权限点 + 8 个角色的权限关联（`sys_permission` + `sys_role_permission`）
+- [x] 前端新增 4 个子导航项（AI 配置 / 存储配置 / 定时任务 / 系统参数），全部复用 `SystemConfigSection` 组件按 `config_key` 前缀过滤
+- [x] 前端「权限矩阵」占位替换为 `PermissionMatrixSection` 组件：行=角色、列=权限点、按行保存（全量替换语义），内置角色标记「内置」徽章
+- [x] 前端 `types.ts` 新增 `SystemConfigVO` / `SystemConfigUpdateRequest` / `PermissionVO` / `RolePermissionMatrixVO` / `RolePermissionSaveRequest` 5 个类型
+- [x] 前端 `settings.ts` 新增 6 个 API 函数：`listSystemConfigs` / `updateSystemConfig` / `refreshSystemConfig` / `listAllPermissions` / `getPermissionMatrix` / `saveRolePermissions`
+- [x] 前端 `glass.css` 新增 `settings-config-*` 与 `permission-matrix-*` 样式类
+- [x] 修正 `.env.local` Mock 变量名：`VITE_ENABLE_MOCK` → `VITE_USE_MOCK`（vite.config.ts 实际读取的变量名）
+- [x] `tsc --noEmit` 通过
+- [x] 后端 API 联调验证：`GET /api/system-config` 返回 24 条、`GET /api/permissions` 返回 12 条、`GET /api/permissions/matrix` 返回 8 行
+
 ---
 
 ## 5. 变更记录
@@ -335,3 +354,4 @@ P1 范围：审批超时阈值配置（RSK-1）/ 审批人映射（RSK-3）/ 用
 | 2026-08-04 | v1.1 | P0 全部实施完成（P0-1 风险关键词库 / P0-2 Skill 管理 / P0-3 部门业务线只读 / P0-4 通知通道 Webhook 保存），4.1 验收清单全部通过 | 小楼 |
 | 2026-08-04 | v1.2 | P1 全部实施完成（P1-1 审批超时阈值 / P1-2 审批人映射 / P1-3 用户 CRUD / P1-4 角色 CRUD），4.2 验收清单全部通过 | 小楼 |
 | 2026-08-04 | v1.3 | P2 全部实施完成（P2-1 密码策略 SEC-1 / P2-2 登录安全策略 SEC-2 / P2-3 在线会话管理 SEC-3 / P2-4 系统健康检查 OPS-1），4.3 验收清单全部通过 | 小楼 |
+| 2026-08-06 | v1.4 | P3 全部实施完成（P3 INT-1/INT-2/INT-3 统一配置中心 + OPS-2 定时任务开关 + OPS-3 维护模式/上传限制 + USR-3 权限矩阵可视化），4.4 验收清单全部通过 | 小楼 |

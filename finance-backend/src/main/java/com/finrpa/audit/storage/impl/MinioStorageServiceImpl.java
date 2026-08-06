@@ -48,6 +48,10 @@ public class MinioStorageServiceImpl implements MinioStorageService {
     @Resource
     private MinioProperties minioProperties;
 
+    /** 系统配置服务（P3 OPS-3 文件上传大小校验） */
+    @Resource
+    private com.finrpa.system.service.SystemConfigService systemConfigService;
+
     // region 上传截图
 
     /**
@@ -70,6 +74,12 @@ public class MinioStorageServiceImpl implements MinioStorageService {
         ThrowUtils.throwIf(!AuditConstant.SCREENSHOT_PHASE_BEFORE.equals(phase)
                         && !AuditConstant.SCREENSHOT_PHASE_AFTER.equals(phase),
                 ErrorCode.PARAMS_ERROR, "阶段必须为 before 或 after");
+
+        // P3 OPS-3：文件上传大小校验（从 sys_config 读取 upload.max_file_size_mb）
+        Integer maxFileSizeMb = systemConfigService.getInteger("upload.max_file_size_mb", 10);
+        long maxBytes = maxFileSizeMb.longValue() * 1024L * 1024L;
+        ThrowUtils.throwIf(file.getSize() > maxBytes, ErrorCode.PARAMS_ERROR,
+                "文件大小超过限制: " + maxFileSizeMb + "MB");
 
         // 2. 构建 bucket 名与对象路径
         String bucketName = resolveBucketName(orgId);

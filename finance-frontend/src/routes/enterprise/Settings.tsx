@@ -44,12 +44,16 @@ import type {
   RiskKeywordQueryRequest,
   RiskKeywordVO,
   RoleAddRequest,
+  RolePermissionMatrixVO,
+  RolePermissionSaveRequest,
   RoleQueryRequest,
   RoleUpdateRequest,
   RoleVO,
   SessionQueryRequest,
   SessionVO,
   SkillAddRequest,
+  SystemConfigUpdateRequest,
+  SystemConfigVO,
   SystemHealthVO,
   SkillQueryRequest,
   SkillUpdateRequest,
@@ -76,6 +80,10 @@ type SettingsTab =
   | 'security'
   | 'notification'
   | 'skills'
+  | 'ai-config'
+  | 'storage-config'
+  | 'scheduler-config'
+  | 'system-params'
   | 'permissions'
 
 /** 子导航配置 */
@@ -197,6 +205,55 @@ const SUB_NAV_ITEMS: SubNavItem[] = [
       </svg>
     ),
   },
+  {
+    key: 'ai-config',
+    label: 'AI 配置',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <rect x="9" y="9" width="6" height="6" />
+        <line x1="9" y1="2" x2="9" y2="4" />
+        <line x1="15" y1="2" x2="15" y2="4" />
+        <line x1="9" y1="20" x2="9" y2="22" />
+        <line x1="15" y1="20" x2="15" y2="22" />
+        <line x1="20" y1="9" x2="22" y2="9" />
+        <line x1="20" y1="14" x2="22" y2="14" />
+        <line x1="2" y1="9" x2="4" y2="9" />
+        <line x1="2" y1="14" x2="4" y2="14" />
+      </svg>
+    ),
+  },
+  {
+    key: 'storage-config',
+    label: '存储配置',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      </svg>
+    ),
+  },
+  {
+    key: 'scheduler-config',
+    label: '定时任务',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+  },
+  {
+    key: 'system-params',
+    label: '系统参数',
+    icon: (
+      <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    ),
+  },
 ]
 
 /** 角色编码 → badge class 映射（对齐原型 operator/approver/viewer 三种颜色） */
@@ -291,12 +348,19 @@ function Settings() {
           )}
           {activeTab === 'notification' && <NotificationSection />}
           {activeTab === 'skills' && <SkillsSection />}
-          {activeTab === 'permissions' && (
-            <PlaceholderSection
-              title="权限矩阵"
-              desc="权限矩阵可视化编辑界面待开发。当前 RBAC 已支持三维度（部门×业务线×角色）权限校验。"
-            />
+          {activeTab === 'ai-config' && (
+            <SystemConfigSection title="AI 配置" prefix="ai." />
           )}
+          {activeTab === 'storage-config' && (
+            <SystemConfigSection title="存储配置" prefix="minio." />
+          )}
+          {activeTab === 'scheduler-config' && (
+            <SystemConfigSection title="定时任务" prefix="scheduler." />
+          )}
+          {activeTab === 'system-params' && (
+            <SystemConfigSection title="系统参数" prefix="__others__" />
+          )}
+          {activeTab === 'permissions' && <PermissionMatrixSection />}
         </div>
       </div>
       {/* endregion */}
@@ -5069,33 +5133,373 @@ function SessionManagementSection() {
 }
 
 // ============================================================
-// 占位区块
+// P3 系统配置区块（AI 配置 / 存储配置 / 定时任务 / 系统参数 共用）
+// 对齐后端 SystemConfigController：GET /system-config / PUT /system-config/{key} / POST /system-config/refresh
 // ============================================================
 
-/** 占位区块（未实现子导航内容） */
-function PlaceholderSection({ title, desc }: { title: string; desc: string }) {
+/** 系统配置区块属性 */
+interface SystemConfigSectionProps {
+  /** 区块标题 */
+  title: string
+  /** 配置键前缀过滤；`__others__` 表示展示未命中已知前缀的所有配置 */
+  prefix: string
+}
+
+/** 配置值类型 → 输入控件类型映射 */
+const CONFIG_INPUT_TYPE: Record<string, string> = {
+  STRING: 'text',
+  INTEGER: 'number',
+  BOOLEAN: 'checkbox',
+}
+
+/** 已知前缀（用于「系统参数」聚合其余项） */
+const KNOWN_PREFIXES = ['ai.', 'minio.', 'scheduler.']
+
+/**
+ * 系统配置区块（可复用，按前缀过滤展示）
+ *
+ * 设计：一次加载全量 sys_config，前端按 prefix 过滤分组，减少后端多次请求；
+ * 编辑按 config_key 单项保存，保存后触发本地缓存刷新。
+ */
+function SystemConfigSection({ title, prefix }: SystemConfigSectionProps) {
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState<Record<string, string>>({})
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  // 1. 加载全部系统配置
+  const { data: allConfigs, isLoading } = useQuery({
+    queryKey: ['system-config', 'all'],
+    queryFn: () => settingsApi.listSystemConfigs(),
+  })
+
+  // 2. 按前缀过滤
+  const configs = (allConfigs ?? []).filter((c) => {
+    if (prefix === '__others__') {
+      return !KNOWN_PREFIXES.some((p) => c.configKey.startsWith(p))
+    }
+    return c.configKey.startsWith(prefix)
+  })
+
+  // 3. 进入编辑态
+  const startEdit = (key: string, value: string) => {
+    setEditing((prev) => ({ ...prev, [key]: value }))
+  }
+  const cancelEdit = (key: string) => {
+    setEditing((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  // 4. 保存单项配置
+  const updateMutation = useMutation({
+    mutationFn: ({
+      key,
+      body,
+    }: {
+      key: string
+      body: SystemConfigUpdateRequest
+    }) => settingsApi.updateSystemConfig(key, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-config', 'all'] })
+    },
+  })
+
+  // 5. 刷新缓存（重建 AI / MinIO 配置属性）
+  const refreshMutation = useMutation({
+    mutationFn: () => settingsApi.refreshSystemConfig(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-config', 'all'] })
+    },
+  })
+
+  const handleSave = (cfg: SystemConfigVO) => {
+    const value = editing[cfg.configKey] ?? ''
+    setSavingKey(cfg.configKey)
+    updateMutation.mutate(
+      { key: cfg.configKey, body: { configValue: value } },
+      {
+        onSuccess: () => {
+          cancelEdit(cfg.configKey)
+          setSavingKey(null)
+        },
+        onError: () => setSavingKey(null),
+      },
+    )
+  }
+
+  const handleToggleBoolean = (cfg: SystemConfigVO) => {
+    const next = cfg.configValue === 'true' ? 'false' : 'true'
+    setSavingKey(cfg.configKey)
+    updateMutation.mutate(
+      { key: cfg.configKey, body: { configValue: next } },
+      { onSettled: () => setSavingKey(null) },
+    )
+  }
+
   return (
     <div className="settings-section">
-      <div className="section-title">{title}</div>
-      <div className="glass-card-static settings-placeholder">
-        <div className="settings-placeholder-icon">
-          <svg
-            width="48"
-            height="48"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
+      <div className="settings-section-header">
+        <h2 className="section-title">{title}</h2>
+        <button
+          type="button"
+          className="btn-test"
+          onClick={() => refreshMutation.mutate()}
+          disabled={refreshMutation.isPending}
+        >
+          {refreshMutation.isPending ? '刷新中…' : '刷新缓存热生效'}
+        </button>
+      </div>
+      <div className="glass-card-static settings-config-list">
+        {isLoading && <div className="settings-empty">加载中…</div>}
+        {!isLoading && configs.length === 0 && (
+          <div className="settings-empty">暂无可配置项</div>
+        )}
+        {configs.map((cfg) => {
+          const isBool = cfg.configType === 'BOOLEAN'
+          const isEditing = editing[cfg.configKey] !== undefined
+          const inputType = CONFIG_INPUT_TYPE[cfg.configType] ?? 'text'
+          return (
+            <div className="settings-config-item" key={cfg.configKey}>
+              <div className="settings-config-meta">
+                <div className="settings-config-key">{cfg.configKey}</div>
+                <div className="settings-config-desc">
+                  {cfg.description ?? '—'}
+                </div>
+                <div className="settings-config-time">
+                  更新于 {cfg.updateTime ? dayjs(cfg.updateTime).format('YYYY-MM-DD HH:mm') : '—'}
+                </div>
+              </div>
+              <div className="settings-config-control">
+                {isBool ? (
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={cfg.configValue === 'true'}
+                      onChange={() => handleToggleBoolean(cfg)}
+                      disabled={savingKey === cfg.configKey}
+                    />
+                    <span className="switch-slider" />
+                  </label>
+                ) : isEditing ? (
+                  <div className="settings-config-edit">
+                    <input
+                      type={inputType}
+                      className="settings-config-input"
+                      value={editing[cfg.configKey]}
+                      onChange={(e) =>
+                        setEditing((prev) => ({
+                          ...prev,
+                          [cfg.configKey]: e.target.value,
+                        }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => handleSave(cfg)}
+                      disabled={savingKey === cfg.configKey}
+                    >
+                      {savingKey === cfg.configKey ? '保存中…' : '保存'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => cancelEdit(cfg.configKey)}
+                    >
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <div className="settings-config-view">
+                    <span className="settings-config-value">
+                      {cfg.configValue}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => startEdit(cfg.configKey, cfg.configValue)}
+                    >
+                      编辑
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {(updateMutation.isError || refreshMutation.isError) && (
+        <div className="settings-config-error">
+          操作失败：{(updateMutation.error as ApiError)?.message || (refreshMutation.error as ApiError)?.message}
         </div>
-        <div className="settings-placeholder-title">敬请期待</div>
-        <div className="settings-placeholder-desc">{desc}</div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// P3 权限矩阵区块（对齐 PermissionController）
+// GET /permissions（列定义）+ GET /permissions/matrix（行 + 已勾选）+ PUT /permissions/roles/{roleId}
+// ============================================================
+
+/**
+ * 权限矩阵区块
+ *
+ * 设计：行=角色，列=权限点；勾选状态本地维护，按行保存（全量替换语义）。
+ * 内置角色可查看可编辑，但保存前会二次确认。
+ */
+function PermissionMatrixSection() {
+  const queryClient = useQueryClient()
+  const [draft, setDraft] = useState<Record<string, Set<string>>>({})
+
+  // 1. 加载权限点（列定义）
+  const { data: permissions, isLoading: permLoading } = useQuery({
+    queryKey: ['permissions', 'all'],
+    queryFn: () => settingsApi.listAllPermissions(),
+  })
+
+  // 2. 加载角色权限矩阵（行 + 已勾选）
+  const { data: matrix, isLoading: matrixLoading } = useQuery({
+    queryKey: ['permissions', 'matrix'],
+    queryFn: () => settingsApi.getPermissionMatrix(),
+  })
+
+  // 3. 初始化草稿（矩阵加载完成后）
+  useEffect(() => {
+    if (matrix) {
+      const init: Record<string, Set<string>> = {}
+      matrix.forEach((row) => {
+        init[row.roleId] = new Set(row.permissionIds)
+      })
+      setDraft(init)
+    }
+  }, [matrix])
+
+  const toggle = (roleId: string, permId: string) => {
+    setDraft((prev) => {
+      const next = { ...prev }
+      const set = new Set(next[roleId] ?? [])
+      if (set.has(permId)) {
+        set.delete(permId)
+      } else {
+        set.add(permId)
+      }
+      next[roleId] = set
+      return next
+    })
+  }
+
+  // 4. 保存某角色权限
+  const saveMutation = useMutation({
+    mutationFn: ({
+      roleId,
+      permissionIds,
+    }: {
+      roleId: string
+      permissionIds: string[]
+    }) =>
+      settingsApi.saveRolePermissions(roleId, {
+        permissionIds,
+      } as RolePermissionSaveRequest),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['permissions', 'matrix'] })
+    },
+  })
+
+  const handleSaveRow = (row: RolePermissionMatrixVO) => {
+    const ids = Array.from(draft[row.roleId] ?? [])
+    saveMutation.mutate({ roleId: row.roleId, permissionIds: ids })
+  }
+
+  const isDirty = (roleId: string) => {
+    const original = matrix?.find((r) => r.roleId === roleId)
+    if (!original) return false
+    const orig = new Set(original.permissionIds)
+    const cur = draft[roleId] ?? new Set()
+    if (orig.size !== cur.size) return true
+    for (const id of cur) {
+      if (!orig.has(id)) return true
+    }
+    return false
+  }
+
+  const perms = permissions ?? []
+  const rows = matrix ?? []
+  const loading = permLoading || matrixLoading
+
+  return (
+    <div className="settings-section">
+      <div className="settings-section-header">
+        <h2 className="section-title">权限矩阵</h2>
+        <span className="settings-config-desc">
+          勾选 = 授予该角色对应权限，按行保存（全量替换）
+        </span>
+      </div>
+      <div className="glass-card-static permission-matrix-wrap">
+        {loading && <div className="settings-empty">加载中…</div>}
+        {!loading && perms.length === 0 && (
+          <div className="settings-empty">暂无权限点</div>
+        )}
+        {!loading && perms.length > 0 && (
+          <div className="permission-matrix-scroll">
+            <table className="permission-matrix-table">
+              <thead>
+                <tr>
+                  <th className="pm-role-col">角色 / 权限</th>
+                  {perms.map((p) => (
+                    <th key={p.permissionId} title={p.permissionCode}>
+                      <div className="pm-perm-name">{p.permissionName}</div>
+                      <div className="pm-perm-code">{p.permissionCode}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const checked = draft[row.roleId] ?? new Set<string>()
+                  const dirty = isDirty(row.roleId)
+                  return (
+                    <tr key={row.roleId}>
+                      <td className="pm-role-cell">
+                        <div className="pm-role-name">{row.roleName}</div>
+                        <div className="pm-role-code">{row.roleCode}</div>
+                        {row.builtIn && (
+                          <span className="pm-builtin-badge">内置</span>
+                        )}
+                      </td>
+                      {perms.map((p) => (
+                        <td key={p.permissionId} className="pm-check-cell">
+                          <input
+                            type="checkbox"
+                            checked={checked.has(p.permissionId)}
+                            onChange={() => toggle(row.roleId, p.permissionId)}
+                          />
+                        </td>
+                      ))}
+                      <td className="pm-action-cell">
+                        <button
+                          type="button"
+                          className="btn-link"
+                          onClick={() => handleSaveRow(row)}
+                          disabled={!dirty || saveMutation.isPending}
+                        >
+                          {saveMutation.isPending ? '保存中…' : '保存'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {saveMutation.isError && (
+          <div className="settings-config-error">
+            保存失败：{(saveMutation.error as ApiError)?.message}
+          </div>
+        )}
       </div>
     </div>
   )
