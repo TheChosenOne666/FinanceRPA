@@ -1,0 +1,24 @@
+{
+  "name": "finrpa-sit",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "FinanceRPA M9.5 SIT 系统集成测试：跨服务接口契约一致性 + 数据一致性 + 异常分支覆盖",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:contract": "playwright test scenarios/01-contract.spec.ts",
+    "test:needs-human": "playwright test scenarios/02-needs-human-flow.spec.ts",
+    "test:resume": "playwright test scenarios/03-task-resume.spec.ts",
+    "test:timeout": "playwright test scenarios/04-approval-timeout.spec.ts",
+    "test:isolation": "playwright test scenarios/05-cross-org-isolation.spec.ts",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.0.0",
+    "axios": "^1.7.7",
+    "typescript": "^5.6.3"
+  }
+}

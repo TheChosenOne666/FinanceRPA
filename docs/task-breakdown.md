@@ -1535,8 +1535,8 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `app/approval/risk_judge.py` + API |
 | **描述** | 1. LLM Prompt：输入目标 + 参数 + 预筛结果 → 输出 final_risk_level<br>2. 走三层容错（复用 M5.1）<br>3. API：`POST /api/v1/ai/risk/judge`（Java 调用）<br>4. 输出：low / medium / high / critical |
 | **验收标准** | LLM 判断结果合理；走三层容错；返回正确风险等级 |
-| **状态** | ✅ 已完成（2026-08-01）。实现 Python LLM 风险二次判断，对接 M6.1 在 `AiServiceClient.judgeRisk()` 预留的 `POST /api/v1/ai/risk/judge` 接口。最终落地：(1) **新建 `app/approval/` 包**：`__init__.py` + `schemas.py` + `risk_judge.py`<br>(2) **`schemas.py` Pydantic 模型**：`RiskJudgeRequest`（Java→Python，含 task_id / goal / params / industry / pre_screen_risk_level / hit_keywords / amount_matches / max_amount）+ `RiskJudgeResponse`（Python→Java，含 final_risk_level / reasoning / approval_route / message）+ `RiskJudgeOutput`（LLM 输出模型，注入 ResilientCaller JSON Schema 约束）+ `HitKeywordItem` / `AmountMatchItem` 子模型，全部使用 `_CAMEL_CONFIG` 驼峰序列化与 Java 侧对齐<br>(3) **`risk_judge.py` RiskJudgeService**：核心判断服务 — `judge()` 方法构造 prompt（system prompt + goal + params + 预筛结果）→ 调 `ResilientCaller.call()`（层 1 Schema 约束 + 层 2 Pydantic 校验重试 + 层 3 NEEDS_HUMAN 兜底）→ 解析 LLM 输出 → 校验风险等级与审批路由合法性<br>(4) **三层容错集成**：复用 M5.1 ResilientCaller，`NeedsHumanError`（重试耗尽）回退使用预筛风险等级不阻塞 Java 流程；其他异常（网络错误等）同样回退；LLM 输出非法值时自动修正<br>(5) **LLM Prompt 设计**：金融 RPA 风险评估专家系统 prompt，含 4 级风险判定指南（low/medium/high/critical）+ 3 级审批路由指南（auto/department/compliance）+ few-shot 示例<br>(6) **审批路由默认映射**：low→auto / medium→auto / high→department / critical→compliance<br>(7) **`app/api/risk.py` API 路由**：`POST /api/v1/ai/risk/judge` 端点，含 `_create_llm_callable()` litellm 工厂函数（从 config 读取 model/api_key/base_url）+ `_create_risk_judge_service()` 服务工厂（构造 ResilientCaller + JavaBackendClient）<br>(8) **`main.py` 注册路由**：`app.include_router(risk.router)`<br>(9) **litellm 集成**：使用 `litellm.acompletion()` 异步调用，temperature=0.1 保证判断稳定性，max_tokens=1024 限制输出长度 |
-| **测试覆盖** | 24 个新测试全部通过：正常 LLM 判断成功 2 个（high→critical + low→auto）+ NeedsHumanError 回退 2 个（high→department + critical→compliance）+ 其他异常回退 2 个（网络错误 + 通用异常）+ LLM 输出非法值校验 2 个（非法风险等级回退 + 非法审批路由修正）+ prompt 构造 8 个（goal/industry/preScreen/keywords/amounts/params/空关键词/空金额）+ 格式化辅助 2 个（dict 输入兼容关键词+金额）+ 回退响应 3 个（low/high/critical）+ Pydantic 序列化 3 个（驼峰反序列化 + 驼峰序列化 + JSON Schema）；全部 293 个单元测试通过 |
+| **状态** | ✅ 已完成（2026-08-01）。实现 Python LLM 风险二次判断，对接 M6.1 在 `AiServiceClient.judgeRisk()` 预留的 `POST /api/v1/ai/risk/judge` 接口。最终落地：(1) **新建 `app/approval/` 包**：`__init__.py` + `schemas.py` + `risk_judge.py`<br>(2) **`schemas.py` Pydantic 模型**：`RiskJudgeRequest`（Java→Python，含 task_id / goal / params / industry / pre_screen_risk_level / hit_keywords / amount_matches / max_amount）+ `RiskJudgeResponse`（Python→Java，含 final_risk_level / reasoning / approval_route / message）+ `RiskJudgeOutput`（LLM 输出模型，注入 ResilientCaller JSON Schema 约束）+ `HitKeywordItem` / `AmountMatchItem` 子模型，全部使用 `_CAMEL_CONFIG` 驼峰序列化与 Java 侧对齐<br>(3) **`risk_judge.py` RiskJudgeService**：核心判断服务 — `judge()` 方法构造 prompt（system prompt + goal + params + 预筛结果）→ 调 `ResilientCaller.call()`（层 1 Schema 约束 + 层 2 Pydantic 校验重试 + 层 3 NEEDS_HUMAN 兜底）→ 解析 LLM 输出 → 校验风险等级与审批路由合法性<br>(4) **三层容错集成**：复用 M5.1 ResilientCaller，`NeedsHumanError`（重试耗尽）回退使用预筛风险等级不阻塞 Java 流程；其他异常（网络错误等）同样回退；LLM 输出非法值时自动修正<br>(5) **LLM Prompt 设计**：金融 RPA 风险评估专家系统 prompt，含 4 级风险判定指南（low/medium/high/critical）+ 3 级审批路由指南（auto/department/compliance）+ few-shot 示例<br>(6) **审批路由默认映射**：low→auto / medium→auto / high→department / critical→compliance<br>(7) **`app/api/risk.py` API 路由**：`POST /api/v1/ai/risk/judge` 端点，含 `_create_llm_callable()` litellm 工厂函数（从 config 读取 model/api_key/base_url）+ `_create_risk_judge_service()` 服务工厂（构造 ResilientCaller + JavaBackendClient）<br>(8) **`main.py` 注册路由**：`app.include_router(risk.router)`<br>(9) **litellm 集成**：使用 `litellm.acompletion()` 异步调用，temperature=0.1 保证判断稳定性，max_tokens=1024 限制输出长度<br>(10) **M9.1 修复（2026-08-05）**：`_build_prompt()` 构造 LLM prompt 时排除 params 中的 `steps` 字段。steps 是 Skyvern 内部执行 JSON 字符串，含 `field_mapping` 的 key（如"身份证号"），LLM 会误读为实际处理的敏感数据导致误判 critical。排除后 LLM 仅基于实际用户输入参数 + 预筛结果判断 |
+| **测试覆盖** | 25 个测试全部通过：正常 LLM 判断成功 2 个（high→critical + low→auto）+ NeedsHumanError 回退 2 个（high→department + critical→compliance）+ 其他异常回退 2 个（网络错误 + 通用异常）+ LLM 输出非法值校验 2 个（非法风险等级回退 + 非法审批路由修正）+ prompt 构造 9 个（goal/industry/preScreen/keywords/amounts/params/**排除steps**/空关键词/空金额）+ 格式化辅助 2 个（dict 输入兼容关键词+金额）+ 回退响应 3 个（low/high/critical）+ Pydantic 序列化 3 个（驼峰反序列化 + 驼峰序列化 + JSON Schema）；全部 294 个单元测试通过 |
 
 #### M6.3 Java 审批流路由 + Pub/Sub
 
@@ -1691,6 +1691,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `tests/e2e/` 6 个场景测试脚本 |
 | **描述** | 1. 银行流水下载（medium）<br>2. 跨行转账核对（high，触发审批）<br>3. 对公贷款放款（critical，触发合规审批）<br>4. 保单申请填写（high）<br>5. 理赔审核提交（high）<br>6. 委托下单（high）<br>每个场景验证：触发 → 审批 → 执行 → 审计 → 大屏统计 |
 | **验收标准** | 6 个场景全部通过；审计日志完整；大屏数据正确 |
+| **状态** | ✅ 已完成（2026-08-05）。6 个场景全部通过。修复 2 个问题：(1) **M6.2 LLM 风险判断误报**：`_build_prompt` 排除 `steps` 字段，避免 LLM 误读 `field_mapping` key"身份证号"为敏感数据导致场景4 误判 critical（修复后场景4：insured_name 含"退保"→ high → department 路由 → SUCCESS）(2) **场景6 关键词不命中**：mock HTML option value 从"买"/"卖"改为"买入"/"卖出"，测试参数 trade_type 同步改为"买入"，命中 securities high_risk_operation 关键词 → high → department 路由 → SUCCESS。最终大屏统计：total=26 success=18 failed=0 successRate=69.2% |
 
 #### M9.2 性能测试
 
@@ -1722,7 +1723,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **描述** | 1. Makefile：`make dev` / `make build` / `make test` / `make seed` / `make backup` / `make logs`<br>2. `scripts/healthcheck.sh`：全链路健康检查<br>3. `scripts/seed_demo_data.py`：演示数据导入<br>4. `scripts/backup.sh`：PG + MinIO 备份 |
 | **验收标准** | Makefile 命令可用；脚本执行成功 |
 
-#### M9.5 SIT 系统集成测试
+#### M9.5 SIT 系统集成测试 ✅
 
 | 项 | 内容 |
 |----|------|
@@ -1731,6 +1732,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `tests/sit/` 系统集成测试套件 + 测试报告 |
 | **描述** | 1. **跨服务集成测试**：Java + Python + 前端三服务联调，覆盖模块间交互<br>2. 测试场景：<br>　- 认证 → 触发任务 → 审批 → 执行 → 审计 → 大屏统计 全链路<br>　- LLM 失败 → NEEDS_HUMAN → 人工处置 → 续跑<br>　- 任务中断 → 断点续跑<br>　- 审批超时 → 自动拒绝<br>　- 跨组织数据隔离<br>3. 数据准备：SIT 专用数据集（独立于演示数据）<br>4. 自动化：CI 可执行，输出测试报告<br>5. 与 E2E 区别：SIT 关注模块间接口契约与数据一致性，E2E 关注用户场景 |
 | **验收标准** | SIT 测试全部通过；覆盖 5 个跨模块场景；接口契约一致性验证通过；数据一致性无丢失 |
+| **状态** | ✅ 已完成（2026-08-05）。5 个场景、8 个测试用例全部通过（总耗时约 6.5 分钟）。测试报告：① 场景1 全链路契约（1 用例，3.9min）：真实 Skyvern 执行"银行流水下载"，验证 WorkflowRunVO/TaskDetailVO/SubTaskVO/AuditLogVO/OverviewVO 字段对齐 + 状态流转 PENDING→EXECUTING→SUCCESS，审计日志 1 条 actionType=skyvern_task_execution；② 场景2 NEEDS_HUMAN 流程（2 用例，3.6s）：模拟 LLM 失败→入队→skip 续跑 SUCCESS + abort 终止 ABORTED；③ 场景3 断点续跑（2 用例，2.4s）：coordination-state 持久化 completedSubtasks=["step_0","step_1"] + resume 前置校验（EXECUTING 状态被拒绝）；④ 场景4 审批超时（1 用例，2.2min）：动态改 high 阈值 1 分钟→审批单 TIMEOUT+任务 ABORTED+阈值还原；⑤ 场景5 跨组织隔离（2 用例，2.4s）：admin（银河证券）与 admin_demo_xcba（星辰银行）双向隔离，直接查询被拒"无权访问其他组织的任务"。发现并修复 1 个契约差异：WorkflowRunVO.approvalId medium 风险时 Java 返回 null（Jackson 默认序列化），TS 期望 undefined，断言改为 toBeFalsy() 兼容。产出物：`tests/sit/`（5 scenarios + lib + README.md） |
 
 #### M9.6 前后端字段对齐联调
 
@@ -1901,6 +1903,7 @@ M{里程碑号}.{任务序号}
 | v1.3 | 2026-07-28 | - | 更新 M1.3 任务状态为已完成；补充 M1.3 详细产出物描述（AxiosClient/auth.ts/types.ts/AuthStore/AuthGuard/LoginPage/Forbidden/RootLayout/router/styles）；补充验收标准验证结果（browser 自动化 11 项 PASS）；新增"前后端联调测试步骤"小节；同步 system-design.md 4.4 节实现说明（后端 controller 路径偏差 /api/v1、vite proxy rewrite、M1.5 范围最小化、i18n 暂不实现、2FA 暂不实现、RootLayout 占位、refresh 失败强制跳转） |
 | v1.4 | 2026-07-29 | - | 更新 M2.1 任务状态为已完成；补充 M2.1 实际产出文件清单（agent/skills/clients/api/schemas/demo_seed 14 个新增 + config/main/pyproject/Dockerfile 4 个更新）；记录 20 个单元测试全部通过；记录 Skyvern 源码暂未引入的落地偏差（M2.1 fallback 模式不需要，M3 实际浏览器操作时引入）；同步 system-design.md 4.3 节 M2.1 落地偏差实现说明 |
 | v1.5 | 2026-08-04 | - | 新增第 10 章"前端 UI 原型对齐追踪"（8 个原型页面对齐进度表 + 建议优先级）；记录工作流页面（M3.6）+ 任务列表页（M2.5）已完成对齐 |
+| v1.6 | 2026-08-05 | - | 更新 M9.5 任务状态为已完成；5 个场景、8 个测试用例全部通过（场景1 全链路契约 3.9min + 场景2 NEEDS_HUMAN 3.6s + 场景3 断点续跑 2.4s + 场景4 审批超时 2.2min + 场景5 跨组织隔离 2.4s）；发现并修复 1 个契约差异（WorkflowRunVO.approvalId null vs undefined）；产出物 tests/sit/（5 scenarios + lib + README.md） |
 
 ---
 
