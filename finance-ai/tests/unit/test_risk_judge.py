@@ -335,6 +335,25 @@ def test_build_prompt_contains_params():
     assert "50000" in prompt
 
 
+def test_build_prompt_excludes_steps():
+    """prompt 应排除 steps 字段（Skyvern 内部执行 JSON，含 field_mapping key 易导致 LLM 误判）。"""
+    request = _make_request(params={
+        "steps": '[{"skill":"form_fill","params_mapping":{"field_mapping":{"身份证号":"110101199001011234"}}}]',
+        "applicant_name": "张三",
+        "industry": "insurance",
+    })
+    caller = _make_mock_caller()
+    service = RiskJudgeService(resilient_caller=caller)
+
+    prompt = service._build_prompt(request)
+
+    # 实际用户参数应保留
+    assert "张三" in prompt
+    # steps 内部 JSON 及其 field_mapping key 不应出现在 prompt 中
+    assert "身份证号" not in prompt
+    assert "field_mapping" not in prompt
+
+
 def test_build_prompt_no_keywords():
     """无命中关键词时 prompt 显示"无命中关键词"。"""
     request = _make_request(hit_keywords=[])

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>企业网银 - 银行流水下载</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f7fa; color: #1f2937; padding: 20px; }
+    .container { max-width: 680px; margin: 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); overflow: hidden; }
+    header { background: #047857; color: #fff; padding: 16px 24px; }
+    header h1 { font-size: 18px; }
+    main { padding: 24px; }
+    section h2 { font-size: 16px; color: #374151; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 14px; color: #374151; margin-bottom: 6px; font-weight: 500; }
+    .form-group input { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    .form-group input:focus { outline: none; border-color: #047857; box-shadow: 0 0 0 3px rgba(4,120,87,.1); }
+    button { background: #047857; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; }
+    button:hover { background: #036049; }
+    .result { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 14px; }
+    .result-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .logged-user { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header><h1>企业网银 · 流水下载</h1></header>
+    <main>
+      <!-- 登录区 -->
+      <section id="login-section">
+        <h2>用户登录</h2>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="username">用户名</label>
+            <input id="username" type="text" placeholder="请输入用户名" required>
+          </div>
+          <div class="form-group">
+            <label for="password">密码</label>
+            <input id="password" type="password" placeholder="请输入密码" required>
+          </div>
+          <button type="submit">登录</button>
+        </form>
+      </section>
+
+      <!-- 业务区（登录后显示） -->
+      <section id="business-section" hidden>
+        <p class="logged-user">当前用户：<span id="current-user">-</span></p>
+        <h2>下载对公账户流水</h2>
+        <form id="statement-form">
+          <div class="form-group">
+            <label for="account-number">账号</label>
+            <input id="account-number" type="text" placeholder="请输入对公账户号">
+          </div>
+          <div class="form-group">
+            <label for="date-start">开始日期</label>
+            <input id="date-start" type="date">
+          </div>
+          <div class="form-group">
+            <label for="date-end">结束日期</label>
+            <input id="date-end" type="date">
+          </div>
+          <button type="button" id="download-btn">下载流水</button>
+        </form>
+        <div id="result" class="result result-success" hidden></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // 登录：任意用户名密码均可通过（mock）
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var u = document.getElementById('username').value;
+      document.getElementById('current-user').textContent = u;
+      document.getElementById('login-section').hidden = true;
+      document.getElementById('business-section').hidden = false;
+    });
+
+    // 下载流水：生成最小 PDF 并触发下载（Skyvern file_download 监听下载事件）
+    document.getElementById('download-btn').addEventListener('click', function() {
+      var acct = document.getElementById('account-number').value;
+      var ds = document.getElementById('date-start').value;
+      var de = document.getElementById('date-end').value;
+      // 构造最小可打开的 PDF
+      var pdf = '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R>>endobj\n4 0 obj<</Length 80>>stream\nBT /F1 12 Tf 50 750 Td (流水明细 ' + acct + ' ' + ds + '~' + de + ') Tj ET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000196 00000 n \ntrailer<</Size 5/Root 1 0 R>>\nstartxref\n326\n%%EOF';
+      var blob = new Blob([pdf], { type: 'application/pdf' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = '流水明细_' + acct + '_' + ds + '_' + de + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      // 显示成功提示
+      var r = document.getElementById('result');
+      r.textContent = '流水下载已触发：账号 ' + acct + '，日期范围 ' + ds + ' 至 ' + de;
+      r.hidden = false;
+    });
+  </script>
+</body>
+</html>

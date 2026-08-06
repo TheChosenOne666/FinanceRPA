@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock 金融业务系统 - 场景导航</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f7fa; color: #1f2937; padding: 40px 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { text-align: center; color: #047857; margin-bottom: 8px; }
+    .subtitle { text-align: center; color: #6b7280; margin-bottom: 32px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; transition: box-shadow .2s; }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+    .card h3 { color: #047857; margin-bottom: 8px; font-size: 16px; }
+    .card .meta { color: #6b7280; font-size: 13px; margin-bottom: 12px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 6px; }
+    .badge-medium { background: #fef3c7; color: #92400e; }
+    .badge-high { background: #fee2e2; color: #991b1b; }
+    .badge-critical { background: #7f1d1d; color: #fff; }
+    .card a { display: inline-block; color: #047857; text-decoration: none; font-size: 14px; font-weight: 500; }
+    .card a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Mock 金融业务系统</h1>
+    <p class="subtitle">M9.1 E2E 测试场景导航 · 供 Skyvern 浏览器自动化操作</p>
+    <div class="grid">
+      <div class="card">
+        <h3>场景1 · 银行流水下载</h3>
+        <p class="meta"><span class="badge badge-medium">medium</span> 银行业务</p>
+        <a href="scenario1.html">进入场景 →</a>
+      </div>
+      <div class="card">
+        <h3>场景2 · 跨行转账核对</h3>
+        <p class="meta"><span class="badge badge-high">high</span> 银行业务</p>
+        <a href="scenario2.html">进入场景 →</a>
+      </div>
+      <div class="card">
+        <h3>场景3 · 对公贷款放款</h3>
+        <p class="meta"><span class="badge badge-critical">critical</span> 银行业务</p>
+        <a href="scenario3.html">进入场景 →</a>
+      </div>
+      <div class="card">
+        <h3>场景4 · 保单申请填写</h3>
+        <p class="meta"><span class="badge badge-high">high</span> 保险业务</p>
+        <a href="scenario4.html">进入场景 →</a>
+      </div>
+      <div class="card">
+        <h3>场景5 · 理赔审核提交</h3>
+        <p class="meta"><span class="badge badge-high">high</span> 保险业务</p>
+        <a href="scenario5.html">进入场景 →</a>
+      </div>
+      <div class="card">
+        <h3>场景6 · 委托下单</h3>
+        <p class="meta"><span class="badge badge-high">high</span> 证券业务</p>
+        <a href="scenario6.html">进入场景 →</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

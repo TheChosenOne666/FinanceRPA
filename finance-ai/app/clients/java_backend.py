@@ -315,8 +315,9 @@ class JavaBackendClient:
         @return: 是否成功
         """
         # 统一转为 dict（AuditLogPayload → by_alias 序列化）
+        # mode='json'：将 datetime 等非 JSON 原生类型转为 ISO 字符串，避免 httpx json 序列化失败
         if hasattr(payload, "model_dump"):
-            data = payload.model_dump(by_alias=True, exclude_none=True)
+            data = payload.model_dump(by_alias=True, exclude_none=True, mode="json")
         else:
             data = dict(payload)
 

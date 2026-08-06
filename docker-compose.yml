@@ -211,6 +211,27 @@ services:
     networks:
       - finrpa-net
 
+  # ========== 测试辅助（M9.1 E2E）==========
+  # mock 银行/保险/证券业务页面：供 Skyvern 容器内通过 http://mock-bank 访问
+  # 独立 nginx 托管静态 HTML，不经过主网关代理
+  mock-bank:
+    image: nginx:1.25-alpine
+    container_name: finrpa-mock-bank
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./mock-bank:/usr/share/nginx/html:ro
+      - ./mock-bank/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - finrpa-net
+
   # ========== 网关层 ==========
   nginx:
     image: nginx:1.25-alpine

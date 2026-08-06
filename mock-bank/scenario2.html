@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>企业网银 - 跨行转账核对</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f7fa; color: #1f2937; padding: 20px; }
+    .container { max-width: 800px; margin: 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); overflow: hidden; }
+    header { background: #047857; color: #fff; padding: 16px 24px; }
+    header h1 { font-size: 18px; }
+    main { padding: 24px; }
+    section h2 { font-size: 16px; color: #374151; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb; }
+    .form-group { margin-bottom: 16px; display: inline-block; margin-right: 12px; }
+    .form-group label { display: block; font-size: 14px; color: #374151; margin-bottom: 6px; font-weight: 500; }
+    .form-group input { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    .form-group input:focus { outline: none; border-color: #047857; box-shadow: 0 0 0 3px rgba(4,120,87,.1); }
+    button { background: #047857; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; }
+    button:hover { background: #036049; }
+    button:disabled { background: #d1d5db; cursor: not-allowed; }
+    .logged-user { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: left; font-size: 13px; }
+    th { background: #f9fafb; font-weight: 600; color: #374151; }
+    tr:nth-child(even) td { background: #fcfcfd; }
+    .pagination { margin-top: 16px; text-align: center; }
+    .pagination button { background: #fff; color: #047857; border: 1px solid #047857; margin: 0 4px; }
+    .pagination button:hover:not(:disabled) { background: #f0fdf4; }
+    .page-info { font-size: 13px; color: #6b7280; margin: 0 8px; }
+    .result { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 14px; }
+    .result-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header><h1>企业网银 · 跨行转账核对</h1></header>
+    <main>
+      <!-- 登录区 -->
+      <section id="login-section">
+        <h2>用户登录</h2>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="username">用户名</label>
+            <input id="username" type="text" placeholder="请输入用户名" required>
+          </div>
+          <div class="form-group">
+            <label for="password">密码</label>
+            <input id="password" type="password" placeholder="请输入密码" required>
+          </div>
+          <button type="submit">登录</button>
+        </form>
+      </section>
+
+      <!-- 业务区 -->
+      <section id="business-section" hidden>
+        <p class="logged-user">当前用户：<span id="current-user">-</span></p>
+        <h2>跨行转账记录核对</h2>
+        <div class="form-group">
+          <label for="query-date">核对日期</label>
+          <input id="query-date" type="date">
+        </div>
+        <button type="button" id="query-btn">查询</button>
+
+        <div id="table-wrapper" hidden>
+          <table id="transfer-table">
+            <thead>
+              <tr>
+                <th>交易日期</th>
+                <th>转出账户</th>
+                <th>转入账户</th>
+                <th>金额（元）</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="transfer-tbody"></tbody>
+          </table>
+          <div class="pagination">
+            <button type="button" id="prev-btn" disabled>上一页</button>
+            <span class="page-info">第 <span id="current-page">1</span> / <span id="total-pages">3</span> 页</span>
+            <button type="button" id="next-btn">下一页</button>
+          </div>
+          <div id="result" class="result result-success" hidden></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // 登录
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var u = document.getElementById('username').value;
+      document.getElementById('current-user').textContent = u;
+      document.getElementById('login-section').hidden = true;
+      document.getElementById('business-section').hidden = false;
+    });
+
+    // mock 跨行转账数据（12 条，3 页）
+    var mockData = [
+      ['2026-07-01', '6228480012345678', '6225880098765432', '50000.00', '成功'],
+      ['2026-07-02', '6228480012345678', '6217000011112222', '12500.00', '成功'],
+      ['2026-07-03', '6228480012345678', '6227000033334444', '8800.00', '成功'],
+      ['2026-07-04', '6228480012345678', '6217580055556666', '230000.00', '成功'],
+      ['2026-07-05', '6228480012345678', '6225900077778888', '15600.00', '成功'],
+      ['2026-07-06', '6228480012345678', '6228480099990000', '4200.00', '失败'],
+      ['2026-07-07', '6228480012345678', '6217000012345000', '98000.00', '成功'],
+      ['2026-07-08', '6228480012345678', '6225880065432100', '31000.00', '成功'],
+      ['2026-07-09', '6228480012345678', '6227000087654321', '7600.00', '成功'],
+      ['2026-07-10', '6228480012345678', '6217580011223344', '145000.00', '成功'],
+      ['2026-07-11', '6228480012345678', '6225900055667788', '6800.00', '成功'],
+      ['2026-07-12', '6228480012345678', '6228480099887766', '22000.00', '成功']
+    ];
+    var pageSize = 5;
+    var totalPages = Math.ceil(mockData.length / pageSize);
+    var currentPage = 1;
+    document.getElementById('total-pages').textContent = totalPages;
+
+    function renderTable() {
+      var tbody = document.getElementById('transfer-tbody');
+      tbody.innerHTML = '';
+      var start = (currentPage - 1) * pageSize;
+      var end = Math.min(start + pageSize, mockData.length);
+      for (var i = start; i < end; i++) {
+        var row = mockData[i];
+        var tr = document.createElement('tr');
+        for (var j = 0; j < row.length; j++) {
+          var td = document.createElement('td');
+          td.textContent = row[j];
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      document.getElementById('current-page').textContent = currentPage;
+      document.getElementById('prev-btn').disabled = (currentPage <= 1);
+      document.getElementById('next-btn').disabled = (currentPage >= totalPages);
+    }
+
+    document.getElementById('query-btn').addEventListener('click', function() {
+      currentPage = 1;
+      document.getElementById('table-wrapper').hidden = false;
+      renderTable();
+    });
+
+    document.getElementById('prev-btn').addEventListener('click', function() {
+      if (currentPage > 1) { currentPage--; renderTable(); }
+    });
+
+    document.getElementById('next-btn').addEventListener('click', function() {
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderTable();
+        if (currentPage === totalPages) {
+          var r = document.getElementById('result');
+          r.textContent = '已浏览全部 ' + mockData.length + ' 条跨行转账记录，核对完成';
+          r.hidden = false;
+        }
+      }
+    });
+  </script>
+</body>
+</html>

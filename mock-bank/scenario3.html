@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>对公贷款系统 - 放款申请</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f7fa; color: #1f2937; padding: 20px; }
+    .container { max-width: 720px; margin: 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); overflow: hidden; }
+    header { background: #7f1d1d; color: #fff; padding: 16px 24px; }
+    header h1 { font-size: 18px; }
+    main { padding: 24px; }
+    section h2 { font-size: 16px; color: #374151; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 14px; color: #374151; margin-bottom: 6px; font-weight: 500; }
+    .form-group input { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    .form-group input:focus { outline: none; border-color: #7f1d1d; box-shadow: 0 0 0 3px rgba(127,29,29,.1); }
+    button { background: #7f1d1d; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; }
+    button:hover { background: #631818; }
+    button.secondary { background: #fff; color: #7f1d1d; border: 1px solid #7f1d1d; }
+    button.secondary:hover { background: #fef2f2; }
+    button:disabled { background: #d1d5db; cursor: not-allowed; }
+    .logged-user { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+    .search-results { margin-top: 12px; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
+    .search-results .item { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; cursor: pointer; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .search-results .item:last-child { border-bottom: none; }
+    .search-results .item:hover { background: #fef2f2; }
+    .search-results .item.selected { background: #fee2e2; }
+    .search-results .item .name { font-weight: 500; }
+    .search-results .item .meta { font-size: 12px; color: #6b7280; }
+    .btn-row { margin-top: 16px; }
+    .btn-row button { margin-right: 8px; }
+    .result { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 14px; }
+    .result-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header><h1>对公贷款系统 · 放款申请</h1></header>
+    <main>
+      <!-- 登录区 -->
+      <section id="login-section">
+        <h2>用户登录</h2>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="username">用户名</label>
+            <input id="username" type="text" placeholder="请输入用户名" required>
+          </div>
+          <div class="form-group">
+            <label for="password">密码</label>
+            <input id="password" type="password" placeholder="请输入密码" required>
+          </div>
+          <button type="submit">登录</button>
+        </form>
+      </section>
+
+      <!-- 业务区 -->
+      <section id="business-section" hidden>
+        <p class="logged-user">当前用户：<span id="current-user">-</span></p>
+        <h2>放款申请表单</h2>
+        <form id="loan-form">
+          <div class="form-group">
+            <label for="loan-amount">放款金额</label>
+            <input id="loan-amount" type="text" placeholder="请输入放款金额（元）">
+          </div>
+          <div class="form-group">
+            <label for="loan-account">贷款账号</label>
+            <input id="loan-account" type="text" placeholder="请输入贷款账号">
+          </div>
+          <div class="form-group">
+            <label for="borrower-name">借款人</label>
+            <input id="borrower-name" type="text" placeholder="请输入借款人名称">
+          </div>
+        </form>
+        <div class="btn-row">
+          <button type="button" id="search-btn" class="secondary">搜索借款人</button>
+        </div>
+
+        <!-- 搜索结果区 -->
+        <div id="search-results" class="search-results" hidden></div>
+
+        <div class="btn-row">
+          <button type="button" id="submit-btn" disabled>提交放款申请</button>
+        </div>
+        <div id="result" class="result result-success" hidden></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // 登录
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var u = document.getElementById('username').value;
+      document.getElementById('current-user').textContent = u;
+      document.getElementById('login-section').hidden = true;
+      document.getElementById('business-section').hidden = false;
+    });
+
+    // mock 搜索结果（目标项：测试科技有限公司）
+    var mockResults = [
+      { name: '测试科技有限公司', credit: '91110100MA01ABC234', industry: '信息技术' },
+      { name: '测试贸易有限公司', credit: '91110100MA01DEF567', industry: '批发零售' },
+      { name: '测试咨询合伙企业', credit: '91110100MA01GHI890', industry: '商务服务' }
+    ];
+    var selectedTarget = null;
+
+    document.getElementById('search-btn').addEventListener('click', function() {
+      var kw = document.getElementById('borrower-name').value.trim();
+      var box = document.getElementById('search-results');
+      box.innerHTML = '';
+      // 关键字非空时过滤，否则全量展示
+      var list = kw ? mockResults.filter(function(r) { return r.name.indexOf(kw) >= 0; }) : mockResults;
+      if (list.length === 0) {
+        box.innerHTML = '<div class="item"><span class="name">无匹配结果</span></div>';
+      } else {
+        list.forEach(function(r) {
+          var div = document.createElement('div');
+          div.className = 'item';
+          div.innerHTML = '<span><span class="name">' + r.name + '</span><br><span class="meta">统一社会信用代码：' + r.credit + ' · 行业：' + r.industry + '</span></span>';
+          div.addEventListener('click', function() {
+            document.querySelectorAll('.search-results .item').forEach(function(el) { el.classList.remove('selected'); });
+            div.classList.add('selected');
+            selectedTarget = r.name;
+            document.getElementById('submit-btn').disabled = false;
+          });
+          box.appendChild(div);
+        });
+      }
+      box.hidden = false;
+    });
+
+    document.getElementById('submit-btn').addEventListener('click', function() {
+      var amt = document.getElementById('loan-amount').value;
+      var acct = document.getElementById('loan-account').value;
+      var borrower = document.getElementById('borrower-name').value;
+      var r = document.getElementById('result');
+      r.textContent = '放款申请已提交：金额 ' + amt + ' 元，贷款账号 ' + acct + '，借款人 ' + borrower + '（已选择：' + selectedTarget + '）';
+      r.hidden = false;
+    });
+  </script>
+</body>
+</html>

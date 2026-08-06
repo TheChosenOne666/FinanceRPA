@@ -110,6 +110,12 @@ public class WorkflowTriggerServiceImpl implements WorkflowTriggerService {
         taskParams.put("steps", resolvedSteps);
         taskParams.put("industry", template.getIndustry());
         taskParams.put("riskLevel", template.getRiskLevel());
+        // 透传 login_url 作为 Skyvern 浏览器访问地址（Python 端 tasks.py 从 params.url 读取，
+        // 缺省 about:blank）。M9.1：让走工作流触发时 Skyvern 能访问到真实/mock 业务页面
+        Object loginUrl = userParams.get("login_url");
+        if (loginUrl != null && !loginUrl.toString().isEmpty()) {
+            taskParams.put("url", loginUrl.toString());
+        }
         createRequest.setParams(taskParams);
         createRequest.setWorkflowId(template.getWorkflowId());
 

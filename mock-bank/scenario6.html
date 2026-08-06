@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>证券交易系统 - 委托下单</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f7fa; color: #1f2937; padding: 20px; }
+    .container { max-width: 680px; margin: 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); overflow: hidden; }
+    header { background: #047857; color: #fff; padding: 16px 24px; }
+    header h1 { font-size: 18px; }
+    main { padding: 24px; }
+    section h2 { font-size: 16px; color: #374151; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 14px; color: #374151; margin-bottom: 6px; font-weight: 500; }
+    .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: #fff; }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: #047857; box-shadow: 0 0 0 3px rgba(4,120,87,.1); }
+    button { background: #047857; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; }
+    button:hover { background: #036049; }
+    .logged-user { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+    .risk-confirm { margin: 16px 0; padding: 12px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; font-size: 13px; color: #92400e; }
+    .risk-confirm label { display: flex; align-items: center; font-weight: 500; }
+    .risk-confirm input { margin-right: 8px; }
+    .result { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 14px; }
+    .result-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    button:disabled { background: #d1d5db; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header><h1>证券交易系统 · 委托下单</h1></header>
+    <main>
+      <!-- 登录区 -->
+      <section id="login-section">
+        <h2>用户登录</h2>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="username">用户名</label>
+            <input id="username" type="text" placeholder="请输入用户名" required>
+          </div>
+          <div class="form-group">
+            <label for="password">密码</label>
+            <input id="password" type="password" placeholder="请输入密码" required>
+          </div>
+          <button type="submit">登录</button>
+        </form>
+      </section>
+
+      <!-- 业务区 -->
+      <section id="business-section" hidden>
+        <p class="logged-user">当前用户：<span id="current-user">-</span></p>
+        <h2>委托下单表单</h2>
+        <form id="order-form">
+          <div class="form-group">
+            <label for="stock-code">股票代码</label>
+            <input id="stock-code" type="text" placeholder="请输入股票代码（如 600000）">
+          </div>
+          <div class="form-group">
+            <label for="trade-type">交易类型</label>
+            <select id="trade-type">
+              <option value="">请选择交易类型</option>
+              <option value="买入">买入</option>
+              <option value="卖出">卖出</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="quantity">委托数量</label>
+            <input id="quantity" type="text" placeholder="请输入委托数量（股）">
+          </div>
+          <div class="form-group">
+            <label for="price">委托价格</label>
+            <input id="price" type="text" placeholder="请输入委托价格（元）">
+          </div>
+          <div class="risk-confirm">
+            <label><input type="checkbox" id="risk-confirm-checkbox"> 已阅读并确认风险揭示书</label>
+          </div>
+          <button type="button" id="submit-btn" disabled>提交委托</button>
+        </form>
+        <div id="result" class="result result-success" hidden></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // 登录
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var u = document.getElementById('username').value;
+      document.getElementById('current-user').textContent = u;
+      document.getElementById('login-section').hidden = true;
+      document.getElementById('business-section').hidden = false;
+    });
+
+    // 风险揭示确认后才能提交
+    document.getElementById('risk-confirm-checkbox').addEventListener('change', function() {
+      document.getElementById('submit-btn').disabled = !this.checked;
+    });
+
+    document.getElementById('submit-btn').addEventListener('click', function() {
+      var code = document.getElementById('stock-code').value;
+      var type = document.getElementById('trade-type').value;
+      var qty = document.getElementById('quantity').value;
+      var price = document.getElementById('price').value;
+      var r = document.getElementById('result');
+      r.textContent = '委托已提交：' + type + ' ' + code + '，数量 ' + qty + ' 股，价格 ' + price + ' 元';
+      r.hidden = false;
+    });
+  </script>
+</body>
+</html>

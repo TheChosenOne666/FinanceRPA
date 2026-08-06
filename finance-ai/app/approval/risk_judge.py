@@ -175,8 +175,13 @@ class RiskJudgeService:
         # 格式化金额匹配
         amounts_text = self._format_amounts(request.amount_matches, request.max_amount)
 
-        # 格式化参数
-        params_text = json.dumps(request.params, ensure_ascii=False, indent=2) if request.params else "无"
+        # 格式化参数（排除 steps 字段：steps 是 Skyvern 内部执行 JSON，
+        # 含 field_mapping 的 key 如"身份证号"，LLM 会误读为实际处理的敏感数据 → 误判 critical）
+        filtered_params = (
+            {k: v for k, v in request.params.items() if k != "steps"}
+            if request.params else None
+        )
+        params_text = json.dumps(filtered_params, ensure_ascii=False, indent=2) if filtered_params else "无"
 
         return (
             f"{RISK_JUDGE_SYSTEM_PROMPT}\n\n"

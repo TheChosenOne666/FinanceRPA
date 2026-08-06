@@ -1,0 +1,20 @@
+{
+  "name": "finrpa-e2e",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "FinanceRPA M9.1 端到端测试：6 个金融场景全链路验收（触发→审批→Skyvern 执行 mock 银行页→审计→大屏统计）",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:scenario1": "playwright test scenarios/01-bank-statement.spec.ts",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.0.0",
+    "axios": "^1.7.7",
+    "typescript": "^5.6.3"
+  }
+}
