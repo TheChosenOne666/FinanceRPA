@@ -1,11 +1,22 @@
 # docker-compose.prod.yml
 # 生产环境配置（独立使用：docker-compose -f docker-compose.prod.yml up -d）
-# 与 docker-compose.yml 的区别：应用服务用构建镜像（非 volume 挂载源码），启用资源限制
+#
+# 与 docker-compose.yml 的区别：
+# 1. 应用服务用构建镜像（非 volume 挂载源码）
+# 2. 启用 HTTPS（443 端口 + SSL 证书挂载）
+# 3. 资源限制（CPU + 内存，deploy.resources.limits）
+# 4. 日志卷挂载（backend / ai / nginx 日志独立卷）
+# 5. 健康检查强化（合理 interval/timeout/retries/start_period）
+# 6. 备份卷（pg-backup / minio-backup，配合 M9.4 backup.sh 脚本）
+#
+# 使用前置条件：参见 docs/deployment.md
+#   - 准备 .env.prod（复制 .env.prod.example 并填入真实密钥）
+#   - 生成 SSL 证书（自签或 Let's Encrypt，放置于 nginx/ssl/）
 
 name: finrpa-prod
 
 services:
-  # ========== 数据层（与开发环境一致） ==========
+  # ========== 数据层 ==========
   postgres:
     image: postgres:16-alpine
     container_name: finrpa-postgres
@@ -13,16 +24,28 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-finrpa}
       POSTGRES_USER: ${POSTGRES_USER:-finrpa}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env.prod 中设置 POSTGRES_PASSWORD}
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+    # 生产环境不暴露端口到宿主机（仅容器内网通信）
+    expose:
+      - "5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - pg-backup:/backups/postgres
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finrpa}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finrpa} -d ${POSTGRES_DB:-finrpa}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          memory: 512M
     networks:
       - finrpa-net
 
@@ -30,16 +53,24 @@ services:
     image: redis:7-alpine
     container_name: finrpa-redis
     restart: always
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
-    ports:
-      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?请在 .env.prod 中设置 REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    expose:
+      - "6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep PONG || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          memory: 128M
     networks:
       - finrpa-net
 
@@ -49,18 +80,29 @@ services:
     restart: always
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?请在 .env 中设置 MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?请在 .env.prod 中设置 MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?请在 .env.prod 中设置 MINIO_ROOT_PASSWORD}
+    # MinIO API 端口仅内网；Console 可选暴露到宿主机（生产建议关闭或加白名单）
+    expose:
+      - "9000"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
+      - minio-backup:/backups/minio
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 256M
     networks:
       - finrpa-net
 
@@ -73,29 +115,54 @@ services:
     restart: always
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-finrpa}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-finrpa}?stringtype=unspecified
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-finrpa}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
-      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-    ports:
-      - "8080:8080"
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # AI 服务地址（Java 调用 Python finance-ai）
+      AI_BASE_URL: http://finance-ai:8000
+      AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:?请在 .env.prod 中设置 AI_INTERNAL_TOKEN}
+      # Fernet 加密密钥（工作流敏感参数加密，必须与开发环境一致或重新加密已有数据）
+      FERNET_KEY: ${FERNET_KEY:?请在 .env.prod 中设置 FERNET_KEY}
+      # JWT 密钥（覆盖 application.yml 默认值）
+      JWT_SECRET: ${JWT_SECRET:?请在 .env.prod 中设置 JWT_SECRET}
+      # MinIO 对象存储
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_PREFIX: ${MINIO_BUCKET_PREFIX:-finrpa-audit-}
+      # 通知模块（可选，未配置则跳过）
+      WECOM_WEBHOOK_URL: ${WECOM_WEBHOOK_URL:-}
+      DINGTALK_WEBHOOK_URL: ${DINGTALK_WEBHOOK_URL:-}
+      DINGTALK_SECRET: ${DINGTALK_SECRET:-}
+      # 生产环境关闭演示数据初始化
+      DEMO_DATA_ENABLED: "false"
+      # 时区
+      TZ: Asia/Shanghai
+    expose:
+      - "8080"
+    volumes:
+      - backend-logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/api/actuator/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 90s
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 1G
+        reservations:
+          memory: 512M
     networks:
       - finrpa-net
 
@@ -106,25 +173,63 @@ services:
     container_name: finrpa-ai
     restart: always
     environment:
+      # finance-ai 自有数据库（业务表，与 Skyvern 表共存于 finrpa 库）
       DATABASE_URL: postgresql+asyncpg://finrpa:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-finrpa}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       BACKEND_BASE_URL: http://finance-backend:8080
-    ports:
-      - "8000:8000"
+      # 内部鉴权 Token（与 Java 后端 ai.internal-token 一致）
+      INTERNAL_API_TOKEN: ${AI_INTERNAL_TOKEN}
+      # === Skyvern 配置 ===
+      DATABASE_STRING: postgresql+asyncpg://finrpa:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-finrpa}
+      BROWSER_TYPE: chromium-headless
+      VIDEO_PATH: /data/videos
+      HAR_PATH: /data/har
+      LOG_PATH: /data/log
+      ARTIFACT_STORAGE_PATH: /data/artifacts
+      SKYVERN_STORAGE_TYPE: local
+      NOTIFICATION_REGISTRY_TYPE: local
+      ENV: prod
+      EXECUTE_ALL_STEPS: "true"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-["https://localhost"]}
+      # Skyvern JWT 与加密密钥（生产环境务必替换）
+      SECRET_KEY: ${SKYVERN_SECRET_KEY:?请在 .env.prod 中设置 SKYVERN_SECRET_KEY}
+      ENCRYPTOR_AES_SECRET_KEY: ${SKYVERN_AES_KEY:?请在 .env.prod 中设置 SKYVERN_AES_KEY}
+      # === Skyvern LLM 配置（视觉决策用，必填） ===
+      ENABLE_VOLCENGINE: "true"
+      LLM_KEY: ${SKYVERN_LLM_KEY:-VOLCENGINE_DOUBAO_SEED_1_6}
+      VOLCENGINE_API_KEY: ${VOLCENGINE_API_KEY:?请在 .env.prod 中设置 VOLCENGINE_API_KEY}
+      # === finance-ai 自有 LLM 配置（M6.2 risk_judge 用，复用火山方舟豆包） ===
+      LLM_PROVIDER: volcengine
+      LLM_API_KEY: ${VOLCENGINE_API_KEY}
+      LLM_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
+      LLM_MODEL: volcengine/doubao-seed-evolving
+      # 执行器配置
+      EXECUTOR_MAX_CONCURRENT: ${EXECUTOR_MAX_CONCURRENT:-5}
+      EXECUTOR_STEP_TIMEOUT: ${EXECUTOR_STEP_TIMEOUT:-60}
+      # 时区
+      TZ: Asia/Shanghai
+    expose:
+      - "8000"
+    volumes:
+      - ai-data:/data
+      - ai-logs:/data/log
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/ai/health || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ai/health')\" || exit 1"]
+      interval: 30s
       timeout: 10s
-      retries: 10
-      start_period: 60s
+      retries: 5
+      start_period: 300s
     deploy:
       resources:
         limits:
+          cpus: "2.0"
+          memory: 4G
+        reservations:
           memory: 2G
     networks:
       - finrpa-net
@@ -135,21 +240,25 @@ services:
     image: finrpa/finance-frontend:latest
     container_name: finrpa-frontend
     restart: always
-    ports:
-      - "8081:80"
+    expose:
+      - "80"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 30s
     deploy:
       resources:
         limits:
+          cpus: "0.25"
           memory: 128M
+        reservations:
+          memory: 64M
     networks:
       - finrpa-net
 
-  # ========== 网关层 ==========
+  # ========== 网关层（HTTPS 终结） ==========
   nginx:
     image: nginx:1.25-alpine
     container_name: finrpa-nginx
@@ -158,8 +267,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
+      # 生产配置覆盖默认 default.conf（仅挂载 prod.conf 到 default.conf）
+      - ./nginx/conf.d/prod.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # SSL 证书挂载（自签或 Let's Encrypt，见 docs/deployment.md）
+      - ./nginx/ssl:/etc/nginx/ssl:ro
       - nginx-logs:/var/log/nginx
     depends_on:
       finance-backend:
@@ -169,23 +281,37 @@ services:
       finance-frontend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 10s
     deploy:
       resources:
         limits:
+          cpus: "0.5"
           memory: 256M
+        reservations:
+          memory: 128M
     networks:
       - finrpa-net
 
+# ========== 数据卷 ==========
 volumes:
+  # 持久化数据
   postgres-data:
   redis-data:
   minio-data:
+  # 日志卷（独立卷，便于备份与排查）
+  backend-logs:
+  ai-data:
+  ai-logs:
   nginx-logs:
+  # 备份卷（配合 M9.4 backup.sh 脚本使用）
+  pg-backup:
+  minio-backup:
 
+# ========== 网络 ==========
 networks:
   finrpa-net:
     driver: bridge

@@ -1,0 +1,6 @@
+SSL 证书目录占位文件。
+
+证书文件（server.crt / server.key）由部署人员生成后放入此目录，
+已被 .gitignore 忽略，不会入库。
+
+生成方式见 docs/deployment.md "HTTPS 证书配置"章节。

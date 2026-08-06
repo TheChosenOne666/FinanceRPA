@@ -1,0 +1,71 @@
+# application-prod.yml
+# 生产环境配置（SPRING_PROFILES_ACTIVE=prod 时加载）
+# 与 application-dev.yml 的区别：
+# 1. 关闭 SQL 日志（StdOutImpl → Slf4jImpl，输出到日志文件而非控制台）
+# 2. 调整日志级别（com.finrpa: INFO，org.springframework.web: INFO）
+# 3. actuator 健康检查收敛（show-details: never，不暴露内部组件状态）
+# 4. Flyway 启用（生产必须执行迁移）
+# 5. 文件日志输出（按天滚动，保留 30 天）
+#
+# 注：演示数据初始化器 DemoDataInitializer 已通过 @Profile("dev") 限定，
+#     prod 环境下不会加载该 Bean，无需在此显式关闭。
+
+spring:
+  autoconfigure:
+    exclude: []
+  # PostgreSQL 数据源（生产环境从环境变量注入）
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  # Redis（生产环境密码从环境变量注入）
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD}
+      timeout: 5000ms
+  # Flyway 数据库迁移（生产环境启用）
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: ${POSTGRES_DB:finrpa}
+    baseline-on-migrate: true
+    baseline-version: 0
+
+# 关闭 SQL 日志（输出到 SLF4J 而非 stdout，避免污染容器控制台日志）
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+# actuator 健康检查收敛（不暴露内部组件详情，仅返回整体 UP/DOWN）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+# 日志级别与文件输出
+logging:
+  level:
+    root: INFO
+    com.finrpa: INFO
+    org.springframework: WARN
+    org.springframework.web: INFO
+  file:
+    name: /app/logs/finance-backend.log
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 30
+      total-size-cap: 5GB

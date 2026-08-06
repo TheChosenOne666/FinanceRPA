@@ -13,6 +13,14 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# 生产环境变量（保留 .env.prod.example）
+.env.prod
+
+# SSL 证书（保留目录占位 .gitkeep，证书文件不入库）
+nginx/ssl/*.crt
+nginx/ssl/*.key
+nginx/ssl/*.pem
+
 # 日志
 *.log
 logs/
