@@ -64,7 +64,7 @@ public interface WorkflowConstant {
             [
               {"name":"login_url","type":"string","required":true,"encrypted":false,"description":"业务系统登录页 URL"},
               {"name":"login_username","type":"string","required":true,"encrypted":false,"description":"登录用户名"},
-              {"name":"login_password","type":"string","required":true,"encrypted":true,"description":"登录密码（Fernet 加密存储）"}
+              {"name":"login_password","type":"string","required":true,"encrypted":true,"description":"登录密码"}
             """;
 
     /**
@@ -90,8 +90,8 @@ public interface WorkflowConstant {
             COMMON_LOGIN_PARAMS + """
                      ,
                       {"name":"account_number","type":"string","required":true,"encrypted":false,"description":"对公账户号"},
-                      {"name":"date_start","type":"date","required":true,"encrypted":false,"description":"流水开始日期 YYYY-MM-DD"},
-                      {"name":"date_end","type":"date","required":true,"encrypted":false,"description":"流水结束日期 YYYY-MM-DD"}
+                      {"name":"date_start","type":"date","required":true,"encrypted":false,"description":"流水开始日期"},
+                      {"name":"date_end","type":"date","required":true,"encrypted":false,"description":"流水结束日期"}
                     ]""",
             "[" + COMMON_LOGIN_STEP + "," + """
                   {"skill":"form_fill","params_mapping":{
@@ -112,7 +112,7 @@ public interface WorkflowConstant {
             "high",
             COMMON_LOGIN_PARAMS + """
                      ,
-                      {"name":"query_date","type":"date","required":true,"encrypted":false,"description":"核对日期 YYYY-MM-DD"}
+                      {"name":"query_date","type":"date","required":true,"encrypted":false,"description":"核对日期"}
                     ]""",
             "[" + COMMON_LOGIN_STEP + "," + """
                   {"skill":"table_extract","params_mapping":{

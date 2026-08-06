@@ -81,11 +81,29 @@ export async function runWorkflow(
   return res.data.data
 }
 
+/**
+ * 批量创建任务
+ *
+ * 将一组用户数据（前端解析 CSV / 粘贴多行得到的 rows）按 columnMapping 映射为
+ * 同一工作流模板参数，后端逐条生成任务，消灭重复手动录入。
+ *
+ * @param payload 批量请求（workflowId + columnMapping + rows）
+ * @returns 批量结果（含每条明细）
+ */
+export async function batchCreateTasks(payload: BatchTaskRequest): Promise<BatchTaskResultVO> {
+  const res = await axiosClient.post<BaseResponse<BatchTaskResultVO>>(
+    '/batch-tasks',
+    payload,
+  )
+  return res.data.data
+}
+
 /** 工作流 API 聚合导出 */
 export const workflowApi = {
   listWorkflows,
   getWorkflow,
   runWorkflow,
+  batchCreateTasks,
 }
 
 // ============================================================
@@ -143,4 +161,19 @@ export const RISK_LEVEL_LABELS: Record<WorkflowRiskLevel, string> = {
   medium: '中',
   high: '高',
   critical: '极高',
+}
+
+/**
+ * Skill 英文名 → 中文标签（对齐后端 SkillConstant 7 个内置 Skill）
+ *
+ * 工作流步骤展示用中文替换 skill 代码名，避免暴露开发层标识符。
+ */
+export const SKILL_LABELS: Record<string, string> = {
+  login: '登录',
+  session_keep_alive: '会话保活',
+  form_fill: '表单填充',
+  search_and_select: '搜索选择',
+  pagination: '分页遍历',
+  table_extract: '表格提取',
+  file_download: '文件下载',
 }

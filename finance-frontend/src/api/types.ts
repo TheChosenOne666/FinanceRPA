@@ -502,6 +502,68 @@ export interface WorkflowRunVO {
 }
 
 // ============================================================
+// 批量任务（数据驱动，对齐 com.finrpa.batch.dto.*）
+// ============================================================
+
+/**
+ * 外部数据源查询（与 rows 二选一）
+ */
+export interface ExternalQuery {
+  /** 目标表名 */
+  tableName: string;
+  /** 可选 WHERE 子句（不含 WHERE 关键字） */
+  whereClause?: string;
+  /** 限制条数（默认 100，最大 1000） */
+  limit?: number;
+}
+
+/**
+ * 批量创建任务请求
+ */
+export interface BatchTaskRequest {
+  /** 工作流模板业务 ID */
+  workflowId: number;
+  /** 列名(CSV/外部表) → 模板 param name 的映射 */
+  columnMapping: Record<string, string>;
+  /** 直接传入的多行参数数据 */
+  rows?: Record<string, unknown>[];
+  /** 外部数据源查询配置 */
+  externalQuery?: ExternalQuery;
+}
+
+/**
+ * 批量创建任务结果（单条明细）
+ */
+export interface BatchItemResult {
+  /** 行号（从 1 开始） */
+  rowIndex: number;
+  /** 是否成功 */
+  success: boolean;
+  /** 成功时返回的任务 ID */
+  taskId?: string;
+  /** 成功时的任务状态 */
+  state?: string;
+  /** 失败原因 */
+  error?: string;
+}
+
+/**
+ * 批量创建任务结果
+ */
+export interface BatchTaskResultVO {
+  /** 批次 ID */
+  batchId: string;
+  /** 总数据行数 */
+  total: number;
+  /** 成功创建的任务数 */
+  successCount: number;
+  /** 失败行数 */
+  failedCount: number;
+  /** 每条数据的处理结果 */
+  results: BatchItemResult[];
+}
+
+// ============================================================
 // NEEDS_HUMAN 队列管理（M5.5）
 // 对齐 com.finrpa.llm.dto.request / response
 // ============================================================

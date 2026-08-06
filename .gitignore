@@ -28,3 +28,6 @@ logs/
 # 临时文件
 tmp/
 temp/
+
+# AI 运行时下载产物
+finance-ai/downloads/

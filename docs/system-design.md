@@ -1030,6 +1030,40 @@ WorkflowTemplate:
 4. Java 更新任务终态
 ```
 
+#### 6.8.5 批量数据驱动任务（M10，2026-08-06）
+
+> 将「同一流程模板 + 不同用户数据」批量生成任务，消灭重复手动录参。
+
+**数据架构**：
+
+```
+               ┌─────────────┐
+   上传CSV/TSV/ │  前端解析   │ 外部数据源(JDBC,只读)
+   Excel  /粘贴 │batchParser  │
+   多行  ──────▶│batchParser  │        │
+               └─────┬───────┘        │ previewTable()
+                     │ rows           ▼
+                     │      ┌────────────────────┐
+                     └─────▶│  BatchTaskService   │
+                            │ 1. 按columnMapping  │
+                            │    重命名为模板param │
+                            │ 2. 逐条 triggerWorkflow
+                            │ 3. 汇总 results[]   │
+                            └─────────┬──────────┘
+                                      ▼
+                            WorkflowTriggerService.triggerWorkflow
+                            （复用单任务：加密/校验/审批/触发Python）
+```
+
+**关键设计**：
+- **批量不重新发明执行链路**：复用 `triggerWorkflow`，每条数据生成一个标准任务，天然继承加密、风险审批、SSE、审计。
+- **数据来源解耦**：CSV/TSV/粘贴由前端解析为 `rows`（Excel 经 SheetJS 解析首个工作表后转回 CSV 文本复用同一链路）；外部业务系统由 `ExternalDataSourceService` 动态 Hikari 连接拉取（默认 `external-datasource.enabled=false`，生产按需开启）。
+- **字段映射**：`columnMapping`（源列名 → 模板 param name）在数据入库前完成重命名，下游无需感知来源。
+- **容量与容错**：MAX_ROWS=500 防过载；单条失败不影响其余，结果含逐行成功/失败原因。
+- **安全**：外部表名白名单校验，WHERE 子句拦截注释/分隔符，连接池只读。
+
+**接口**：`POST /api/batch-tasks` → `BatchTaskResultVO{batchId,total,successCount,failedCount,results[]}`。
+
 ### 6.9 运营大屏（dashboard）
 
 #### 6.9.1 统计指标

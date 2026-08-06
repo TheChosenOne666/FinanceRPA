@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { taskApi } from '@/api/tasks'
-import type { TaskQueryRequest, TaskStatus, TaskVO, WorkflowRiskLevel } from '@/api/types'
+import type { TaskQueryRequest, TaskStatus, TaskVO, WorkflowRiskLevel, BatchTaskResultVO } from '@/api/types'
 import { ApiError } from '@/api/AxiosClient'
 import { RISK_LEVEL_LABELS } from '@/api/workflows'
 import { tenantApi } from '@/api/tenant'
@@ -33,8 +33,10 @@ import {
   IconRefresh,
   IconSearch,
   IconTarget,
+  IconUpload,
 } from '@/components/Icons'
 import TriggerTaskModal from './TriggerTaskModal'
+import BatchTaskModal from './BatchTaskModal'
 
 /** 默认页大小 */
 const DEFAULT_PAGE_SIZE = 10
@@ -85,6 +87,15 @@ const RISK_OPTIONS: Array<{ value: '' | WorkflowRiskLevel; label: string }> = [
  * - PENDING        → pending（灰色沙漏）
  * - FAILED/ABORTED → failed（红色 X）
  */
+
+/**
+ * 终态任务集合（对齐后端 TaskStateMachine.isTerminal）
+ *
+ * 终态任务无论 totalSteps 是否大于 0，都展示满进度条（100%），
+ * 保证任务列表视觉一致性，避免"规划失败/异常终态"的任务无进度条显得突兀。
+ */
+const TERMINAL_STATUSES: TaskStatus[] = ['SUCCESS', 'FAILED', 'NEEDS_HUMAN', 'ABORTED']
+
 const STATUS_ICON_CONFIG: Record<TaskStatus, { iconClass: string; icon: ReactNode }> = {
   SUCCESS: {
     iconClass: 'success',
@@ -163,6 +174,8 @@ function TasksPage() {
 
   // 2. 触发任务弹窗
   const [triggerOpen, setTriggerOpen] = useState(false)
+  // 2.1 批量任务弹窗
+  const [batchOpen, setBatchOpen] = useState(false)
 
   // 3. 业务线列表（用于筛选下拉，对齐原型 03-tasks.html）
   const { data: businessLines } = useQuery({
@@ -273,6 +286,20 @@ function TasksPage() {
     [navigate],
   )
 
+  /** 批量任务完成后关闭弹窗并刷新列表 */
+  const handleBatchCompleted = useCallback(
+    (result: BatchTaskResultVO) => {
+      setBatchOpen(false)
+      if (result.failedCount > 0) {
+        alert(
+          `批量完成：成功 ${result.successCount} 条，失败 ${result.failedCount} 条。批次号 ${result.batchId}`,
+        )
+      }
+      refetch()
+    },
+    [refetch],
+  )
+
   const records: TaskVO[] = data?.records ?? []
   const total: number = data?.total ?? 0
   const businessLineList: BusinessLineVO[] = businessLines ?? []
@@ -303,6 +330,14 @@ function TasksPage() {
           >
             <IconPlay size={14} />
             触发任务
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setBatchOpen(true)}
+          >
+            <IconUpload size={14} />
+            批量创建
           </button>
         </div>
       </div>
@@ -481,6 +516,12 @@ function TasksPage() {
         />
       )}
       {/* endregion */}
+
+      {/* region 批量任务弹窗 */}
+      {batchOpen && (
+        <BatchTaskModal onClose={() => setBatchOpen(false)} onCompleted={handleBatchCompleted} />
+      )}
+      {/* endregion */}
     </div>
   )
 }
@@ -498,11 +539,18 @@ function TaskCard({ task, onClick }: { task: TaskVO; onClick: () => void }) {
   // 1. 时间格式化
   const createTime = dayjs(task.createTime).format('YYYY-MM-DD HH:mm:ss')
 
-  // 2. 进度展示（仅当 totalSteps > 0 时显示进度条）
-  const hasProgress = task.totalSteps > 0
-  const progressPct = hasProgress
-    ? Math.min(100, Math.round((task.currentStep / task.totalSteps) * 100))
-    : 0
+  // 2. 进度展示：终态任务一律显示满进度条（100%），非终态任务仅当 totalSteps > 0 时显示
+  const isTerminal = TERMINAL_STATUSES.includes(task.status)
+  const hasProgress = isTerminal || task.totalSteps > 0
+  const progressPct = isTerminal
+    ? 100
+    : task.totalSteps > 0
+      ? Math.min(100, Math.round((task.currentStep / task.totalSteps) * 100))
+      : 0
+  // 进度条状态色 class（按任务状态着色，EXECUTING 用默认蓝色）
+  const progressBarClass = isTerminal
+    ? `progress-bar-${task.status.toLowerCase()}`
+    : 'progress-bar-running'
 
   // 3. 状态图标配置
   const iconConfig = STATUS_ICON_CONFIG[task.status]
@@ -556,7 +604,7 @@ function TaskCard({ task, onClick }: { task: TaskVO; onClick: () => void }) {
               耗时 <span className="mono">{formatDuration(Number(task.durationMs))}</span>
             </span>
           )}
-          {hasProgress && (
+          {task.totalSteps > 0 && (
             <span className="stat-item">
               步骤 <span className="mono">{task.currentStep}/{task.totalSteps}</span>
             </span>
@@ -568,12 +616,12 @@ function TaskCard({ task, onClick }: { task: TaskVO; onClick: () => void }) {
           )}
         </div>
 
-        {/* 进度条（仅当 totalSteps > 0 时显示） */}
+        {/* 进度条（终态任务显示满进度条；非终态仅 totalSteps > 0 时显示） */}
         {hasProgress && (
           <div className="task-progress-wrap">
             <div className="progress">
               <div
-                className="progress-bar"
+                className={`progress-bar ${progressBarClass}`}
                 style={{ width: `${progressPct}%` }}
               />
             </div>

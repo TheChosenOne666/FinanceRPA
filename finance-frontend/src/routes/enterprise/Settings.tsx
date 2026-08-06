@@ -197,7 +197,7 @@ const SUB_NAV_ITEMS: SubNavItem[] = [
   },
   {
     key: 'permissions',
-    label: '权限矩阵',
+    label: '权限',
     icon: (
       <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />

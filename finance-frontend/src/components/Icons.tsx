@@ -169,6 +169,28 @@ export function IconClose(props: IconProps) {
   )
 }
 
+/** 上传图标（批量 CSV 导入） */
+export function IconUpload(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </Svg>
+  )
+}
+
+/** 数据库图标（外部数据源对接） */
+export function IconDatabase(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </Svg>
+  )
+}
+
 /** 任务/工作流图标（区别于列表） */
 export function IconWorkflow(props: IconProps) {
   return (

@@ -19,6 +19,7 @@ import {
   workflowApi,
   INDUSTRY_LABELS,
   RISK_LEVEL_LABELS,
+  SKILL_LABELS,
   parseWorkflowParams,
   parseWorkflowSteps,
 } from '@/api/workflows'
@@ -227,7 +228,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
 }
 
 /**
- * 执行步骤列表（对齐原型 workflow-steps：有序列表 + 序号圆圈 + skill 名 + 参数）
+ * 执行步骤列表（对齐原型 workflow-steps：有序列表 + 序号圆圈 + skill 中文名 + 业务可读描述）
  *
  * @param stepsJson 步骤 JSON 字符串
  */
@@ -243,10 +244,8 @@ function WorkflowSteps({ stepsJson }: { stepsJson: string }) {
       {steps.map((step, idx) => (
         <li key={idx}>
           <div>
-            <div className="step-name">{step.skill}</div>
-            <div className="step-params">
-              {formatStepParams(step)}
-            </div>
+            <div className="step-name">{SKILL_LABELS[step.skill] || step.skill}</div>
+            <div className="step-params">{formatStepDesc(step)}</div>
           </div>
         </li>
       ))}
@@ -255,16 +254,45 @@ function WorkflowSteps({ stepsJson }: { stepsJson: string }) {
 }
 
 /**
- * 格式化步骤参数为 key=value, key=value 字符串
+ * 按技能类型生成业务可读的步骤描述
+ *
+ * 隐藏 params_mapping 中的代码字段名、`{{param}}` 模板占位符、CSS 选择器等技术细节，
+ * 仅展示业务用户需要知道的动作描述。
  *
  * @param step 步骤定义
+ * @returns 业务可读描述
  */
-function formatStepParams(step: WorkflowStep): string {
-  const entries = Object.entries(step.params_mapping || {})
-  if (entries.length === 0) return '-'
-  return entries
-    .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
-    .join(', ')
+function formatStepDesc(step: WorkflowStep): string {
+  const m = step.params_mapping || {}
+  switch (step.skill) {
+    case 'login':
+      return '登录业务系统'
+    case 'session_keep_alive':
+      return '保持会话活跃，过期自动重登'
+    case 'form_fill': {
+      // field_mapping 的 key 是业务字段标签（如"账号"），value 是模板占位符（不展示）
+      const fm = m.field_mapping as Record<string, unknown> | undefined
+      if (!fm || typeof fm !== 'object') return '填写表单'
+      const fields = Object.keys(fm)
+      return fields.length > 0 ? `填写表单：${fields.join('、')}` : '填写表单'
+    }
+    case 'search_and_select': {
+      const target = m.target_text
+      return `搜索并选择目标记录${typeof target === 'string' && target ? `（${target}）` : ''}`
+    }
+    case 'pagination': {
+      const max = m.max_pages
+      return `翻页提取${typeof max === 'number' ? `（最多 ${max} 页）` : ''}`
+    }
+    case 'table_extract':
+      return '提取表格数据'
+    case 'file_download': {
+      const ext = m.expected_extension
+      return `下载文件${typeof ext === 'string' && ext ? `（${ext}）` : ''}`
+    }
+    default:
+      return '执行操作'
+  }
 }
 
 /**
@@ -552,18 +580,12 @@ function ParamField({
         id={fieldId}
         type={inputType}
         className={`input${error ? ' input-error' : ''}`}
-        placeholder={inputType === 'date' ? undefined : `${param.description || param.name}（${param.type}）`}
+        placeholder={inputType === 'date' ? undefined : `请输入${param.description || param.name}`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         autoComplete="off"
       />
-      {param.description && (
-        <div className="param-hint">
-          <code>{param.name}</code>
-          <span className="param-type"> · {param.type}</span>
-        </div>
-      )}
       {error && <div className="field-error">{error}</div>}
     </div>
   )

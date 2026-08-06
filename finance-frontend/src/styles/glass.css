@@ -1275,6 +1275,23 @@ a:hover {
   transition: width var(--transition-normal);
 }
 
+/* 进度条按任务状态着色（终态任务满进度条 + 状态色，进行中保持蓝色） */
+.task-progress-wrap .progress-bar-running {
+  background: var(--finrpa-blue);
+}
+.task-progress-wrap .progress-bar-success {
+  background: var(--accent-success);
+}
+.task-progress-wrap .progress-bar-failed {
+  background: var(--accent-danger);
+}
+.task-progress-wrap .progress-bar-needs_human {
+  background: var(--accent-warning);
+}
+.task-progress-wrap .progress-bar-aborted {
+  background: var(--text-secondary);
+}
+
 .task-progress-wrap .pct {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -2948,28 +2965,6 @@ a:hover {
   background: rgba(201, 168, 76, 0.10);
   color: var(--finrpa-gold-dark);
   border: 1px solid rgba(201, 168, 76, 0.28);
-}
-
-.param-hint {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.param-hint code {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 1px 6px;
-  background: rgba(26, 58, 92, 0.04);
-  border-radius: 3px;
-  color: var(--finrpa-blue);
-}
-
-.param-type {
-  color: var(--text-muted);
 }
 
 /* ---------- 26. Skill 步骤流程图 ---------- */

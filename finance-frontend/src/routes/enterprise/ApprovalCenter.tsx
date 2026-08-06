@@ -21,6 +21,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { approvalApi } from '@/api/approval'
+import { parseWorkflowParams, workflowApi } from '@/api/workflows'
 import type {
   ApprovalActionRequest,
   ApprovalQueryRequest,
@@ -483,6 +484,22 @@ function ApprovalDetail({ approval, currentUserName, onActionSuccess }: Approval
   const taskParams = parseTaskParams(approval.requestPayload)
   const countdown = calcCountdown(approval.timeoutAt)
 
+  // 1.1 拉取关联工作流模板，建立 参数代码名 → 中文 description 的映射（用于任务参数表展示业务名）
+  const { data: workflowData } = useQuery({
+    queryKey: ['workflow', approval.workflowId],
+    queryFn: () => workflowApi.getWorkflow(approval.workflowId!),
+    enabled: !!approval.workflowId,
+    refetchOnWindowFocus: false,
+  })
+  const paramNameDescMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    if (!workflowData?.params) return map
+    for (const p of parseWorkflowParams(workflowData.params)) {
+      map[p.name] = p.description || p.name
+    }
+    return map
+  }, [workflowData?.params])
+
   // 2. 倒计时每秒刷新
   const [, setTick] = useState(0)
   useEffect(() => {
@@ -618,14 +635,14 @@ function ApprovalDetail({ approval, currentUserName, onActionSuccess }: Approval
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>参数名</th>
-                  <th>参数值</th>
+                  <th>参数</th>
+                  <th>值</th>
                 </tr>
               </thead>
               <tbody>
                 {taskParams.map((p) => (
                   <tr key={p.name}>
-                    <td>{p.name}</td>
+                    <td>{paramNameDescMap[p.name] || p.name}</td>
                     <td className="mono">{p.value}</td>
                   </tr>
                 ))}

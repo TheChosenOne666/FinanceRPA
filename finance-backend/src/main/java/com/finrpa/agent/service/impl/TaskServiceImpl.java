@@ -754,8 +754,11 @@ public class TaskServiceImpl implements TaskService {
     /**
      * 计算任务耗时（仅终态任务计算，进行中任务返回 null）
      *
+     * <p>历史数据兜底：V28 迁移前 update_time 不会自动刷新（与 create_time 相同），
+     * 此时无法计算真实耗时，返回 null 由前端展示「-」，避免显示「0s」误导用户。</p>
+     *
      * @param task 任务实体
-     * @return 耗时毫秒数；非终态任务返回 null
+     * @return 耗时毫秒数；非终态任务或无有效耗时数据时返回 null
      */
     private Long calculateDurationMs(AgentTaskEO task) {
         if (task == null || task.getStatus() == null || task.getCreateTime() == null || task.getUpdateTime() == null) {
@@ -763,6 +766,10 @@ public class TaskServiceImpl implements TaskService {
         }
         TaskStateEnum state = TaskStateEnum.getEnumByValue(task.getStatus());
         if (state == null || !TaskStateMachine.isTerminal(state)) {
+            return null;
+        }
+        // 历史数据兜底：update_time 与 create_time 相同说明未经历过有效 UPDATE，耗时不可信
+        if (task.getUpdateTime().getTime() == task.getCreateTime().getTime()) {
             return null;
         }
         return task.getUpdateTime().getTime() - task.getCreateTime().getTime();

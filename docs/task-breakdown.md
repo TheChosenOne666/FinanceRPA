@@ -1907,6 +1907,30 @@ M{里程碑号}.{任务序号}
 - M7.4 CSV 导出 + 多维检索增强
 - M9.2 性能测试
 
+### M10 批量数据驱动任务（2026-08-06 新增）
+
+> 解决「每次换用户都要手动填参数」的痛点：将一批用户数据（CSV / 粘贴多行 / 外部业务系统表）按字段映射批量生成同一工作流模板的 N 个任务。
+
+#### M10.1 Java 批量任务 API + 解析引擎 ✅
+
+| **任务 ID** | M10.1 |
+|-------------|-------|
+| **任务名称** | 批量任务后端接口与拆分执行 |
+| **模块** | 后端 `com.finrpa.batch` |
+| **规模** | L |
+| **前置依赖** | M3.6（工作流模板 + params）、M6.1（triggerWorkflow 单任务触发） |
+| **状态** | ✅ 已完成（2026-08-06）。产出：(1) **依赖**：`pom.xml` 新增 `commons-csv`(CSV 解析) + `HikariCP`(动态外部数据源)。(2) **配置**：`application.yml` 新增 `external-datasource`（enabled/url/driver-class-name/username/password，默认未启用）。(3) **DTO**：`batch/dto/BatchTaskRequest`（workflowId + columnMapping + rows | externalQuery）、`BatchTaskResultVO`（batchId/total/successCount/failedCount/results[]）。(4) **服务**：`batch/service/BatchTaskService`——解析 rows 或外部表 → 按 columnMapping 重命名为模板 param name → 逐条调 `triggerWorkflow` 生成任务，MAX_ROWS=500 上限；`batch/service/ExternalDataSourceService`——懒加载 HikariDataSource（只读池，表名/WHERE 子句注入校验）。(5) **控制层**：`batch/controller/BatchTaskController` → `POST /api/batch-tasks`。(6) **测试**：`BatchTaskServiceTest`（6 例：直接 rows 成功映射/部分失败汇总/外部未启用抛错/外部启用拉取/空与超限/缺 mapping，全部通过）。 |
+
+#### M10.2 前端批量提交入口 ✅
+
+| **任务 ID** | M10.2 |
+|-------------|-------|
+| **任务名称** | 批量任务前端弹窗 + 数据解析 |
+| **模块** | 前端 `routes/tasks/BatchTaskModal.tsx` + `utils/batchParser.ts` |
+| **规模** | M |
+| **前置依赖** | M10.1 |
+| **状态** | ✅ 已完成（2026-08-06；2026-08-07 扩展文件格式）。产出：(1) **API**：`api/workflows.ts` 新增 `batchCreateTasks`；`api/types.ts` 新增 `BatchTaskRequest/ExternalQuery/BatchTaskResultVO/BatchItemResult`。(2) **弹窗**：`BatchTaskModal.tsx`——三种数据来源（上传文件 CSV/TSV/Excel / 粘贴多行 / 外部数据源），自动推断列名并生成映射表，提交时构造 payload；Excel 经 SheetJS 解析首个工作表后转回 CSV 文本复用下游链路。(3) **解析工具**：`utils/batchParser.ts`（+ `.mjs` 真源）`parseDelimited`/`collectColumns`/`isExcelFile`/`parseExcelBuffer` 纯函数；新增 `xlsx`(SheetJS 0.18.5) 依赖。(4) **接入**：`TasksPage.tsx` 新增「批量创建」按钮 + 批量结果提示 + 弹窗渲染；`Icons.tsx` 新增 `IconUpload`/`IconDatabase`。(5) **测试**：`batchParser.test.mjs`（node --test，8 例全过：逗号 CSV/制表符/空内容/列数不足/去重顺序/isExcelFile 识别/Excel 解析 xlsx/仅表头无数据返回空）。 |
+
 ### 9.4 修订记录
 
 | 版本 | 日期 | 修订人 | 说明 |
@@ -1926,6 +1950,8 @@ M{里程碑号}.{任务序号}
 | v2.1 | 2026-08-06 | - | M9.2 场景4 审计查询性能测试通过（100 万条造数，4 维度 P95 均达标：分页 37ms / 多维 21ms / 深度翻页 15ms / COUNT 146ms，均 < 500ms）；修复 5 个测试侧 bug：① 造数 audit_id 起始值 9.9e18 越界 bigint 上限→改为 8e18（同步 seed-audit-logs.mjs / spec / README）② 造数 SQL 数组下标 `$3[...]` 类型推断失败→加括号显式 cast `($3::text[])[...]` ③ 造数 `float::int` 四舍五入致数组越界返回 NULL 违反 NOT NULL→改用 `floor()` 截断 ④ 测试多维检索传 ISO 8601 带 Z 字符串，后端 java.sql.Timestamp 无法解析返回 403→新增 fmtTimestamp() 改传 `yyyy-MM-dd HH:mm:ss` ⑤ 全部失败时 P95=0 误报通过延迟断言→增加成功率断言（successRate===1）；更新 docs/perf-test-report.md 场景4 结果与瓶颈分析 |
 | v2.2 | 2026-08-06 | - | 新增 M9.7 LLM 调用链优化任务（规模 M，前置 M5.1/M5.2/M5.3/M9.2）并标记已完成。4 个侵入点接入 Skyvern 原生 LLM 调用链：① 新建 `app/llm/llm_key_mapper.py` provider 感知路由表（OPENAI/VOLCENGINE 同 provider 内 light/standard/heavy 路由）；② `api_handler_factory.py` litellm 调用后上报 `rpa_llm_call_log`（task_id/org_id/prompt_tokens/completion_tokens/duration_ms/cache_hit）；③ `tasks.py` `trigger_task` 改走 `AgentCoordinator` + `_skyvern_action_handler` 闭包 + `ResilientCaller`；④ `agent.py` `execute_step` 插入 ModelRouter 动态选模型 + ActionCache 查缓存（命中跳过 LLM + 补报 cache_hit / 未命中写缓存 TTL 24h）。修复 3 个 HIGH/MEDIUM 质量问题：ActionCache Redis 连接泄漏（改单例 `get_instance()`）/ 跨 provider llm_key 错误覆盖（provider 感知路由）/ LlmCallRecord 缺 task_id+org_id（从 step 填充）。场景1 性能验证：端到端延迟从优化前 321246ms（5.4min）降至 187585ms（3.1min），降幅约 41.6%。同步更新 docs/perf-test-report.md 3.1 节优化前后对比 |
 | v2.3 | 2026-08-06 | - | 更新 M9.3 任务状态为已完成。6 大产出全部交付：① HTTPS 启用（nginx/conf.d/prod.conf 新增 443 HTTPS server + HTTP→HTTPS 301 重定向 + 6 安全头 + http2 on 新语法，SSL 证书挂载 ./nginx/ssl）② 资源限制（7 服务 deploy.resources.limits CPU+内存 + reservations，finance-ai 4G/2CPU，backend 1G/1CPU，redis 256M+maxmemory LRU，postgres 1G，minio 512M，frontend 128M，nginx 256M）③ 日志卷挂载（backend-logs/ai-logs/nginx-logs 独立命名卷，backend logback 按天滚动 30 天）④ 健康检查强化（所有服务 healthcheck interval/timeout/retries/start_period，finance-ai start_period=300s，redis 带密码认证，depends_on service_healthy 强制启动顺序）⑤ 备份策略（pg-backup/minio-backup 命名卷预挂载 + 部署文档 pg_dump/mc mirror 命令 + crontab 自动备份示例，M9.4 将封装为 scripts/backup.sh）⑥ 部署文档 docs/deployment.md 9 章（硬件/软件/3 种 HTTPS 证书/必填变量清单+一键生成/启动+验证/服务架构+资源+健康+日志/备份策略+crontab/7 类故障排查/升级回滚/安全清单/速查附录）。安全加固：数据层端口仅 expose 内网（不 ports 暴露），actuator show-details: never，application-prod.yml 关闭 SQL 日志+调整日志级别。验证：docker-compose config 输出 9739 字节（所有 ${VAR:?...} 必填变量解析成功）；nginx -t 语法通过（无 warning）；application-prod.yml YAML 语法通过。配套产出：.env.prod.example（11 必填+8 可选）、nginx/ssl/.gitkeep、.gitignore 新增 .env.prod + nginx/ssl/*.{crt,key,pem} |
+| v2.4 | 2026-08-06 | - | 修复 3 个前端暴露代码层面信息 + 1 个任务耗时全 0s bug。① 工作流填写表单（WorkflowDetail.tsx ParamField）：placeholder 去掉 `（string）` 类型后缀，删除输入框下方 `<code>param.name</code> · param.type` 代码标识，清理 glass.css 对应死代码样式 `.param-hint` / `.param-hint code` / `.param-type`。② 后端内置工作流模板参数描述（WorkflowConstant.java）：`login_password` 去「Fernet 加密存储」、`date_start/date_end/query_date` 去「YYYY-MM-DD」格式串。③ 审批中心任务参数表（ApprovalCenter.tsx）：用 `approval.workflowId` 拉取工作流模板详情，建立 `参数代码名→中文 description` 映射，单元格从 `account_number` 改为「对公账户号」；表头从「参数名/参数值」改为「参数/值」。④ 工作流执行步骤（WorkflowDetail.tsx）：新增 `SKILL_LABELS` 常量（7 个 skill 英文名→中文映射），用 `formatStepDesc` 按 skill 类型生成业务可读描述（登录/填写表单：账号、开始日期/下载文件（.pdf）等），隐藏 `{{param}}` 模板占位符和 CSS 选择器等技术细节。⑤ 任务耗时 0s bug（根因：PostgreSQL `DEFAULT CURRENT_TIMESTAMP` 仅 INSERT 生效，UPDATE 不刷新；项目未配 MetaObjectHandler updateFill）：新增 V28 迁移脚本，创建 `set_update_timestamp()` 触发器函数并挂载到 25 张含 update_time 列的业务表；TaskServiceImpl.calculateDurationMs 增加 `updateTime == createTime` 兜底返回 null（历史数据显示「-」而非「0s」）。前端 tsc --noEmit 通过，后端 mvnw compile 通过 |
+| v2.5 | 2026-08-06 | - | 修复任务管理进度条展示不一致问题。根因：Python Coordinator 在 Planner 规划失败（LLM 异常/重试耗尽转 NEEDS_HUMAN）时 `state.current_plan=None`，终态回调 `total_steps=0`，前端 `hasProgress = totalSteps > 0` 判定为 false 不渲染进度条，导致"第一个成功任务有 100% 进度条、其它失败任务无进度条"的视觉不一致。修复（方案 A：终态任务一律显示满进度条）：TasksPage.tsx 新增 `TERMINAL_STATUSES` 常量（SUCCESS/FAILED/NEEDS_HUMAN/ABORTED），`hasProgress = isTerminal || totalSteps > 0`，终态 `progressPct=100`；进度条按状态着色（progress-bar-success 绿/failed 红/needs_human 橙/aborted 灰/running 蓝）；"步骤 x/y"统计项仅 `totalSteps > 0` 时展示（终态无步骤任务不显示）。glass.css 新增 5 个状态色 progress-bar-* 类。前端 tsc --noEmit 通过 |
 
 ---
 
