@@ -11,7 +11,7 @@
  *
  * 验收标准：审计查询 < 500ms。
  *
- * 测试后自动清理造数数据（DELETE WHERE audit_id >= 9900000000000000000）。
+ * 测试后自动清理造数数据（DELETE WHERE audit_id >= 8000000000000000000）。
  */
 import pg from 'pg';
 import { AUDIT_QUERY_SAMPLES, PG_DB, PG_HOST, PG_PASSWORD, PG_PORT, PG_USER } from '../lib/env';
@@ -21,8 +21,18 @@ import type { PerfSample } from '../lib/types';
 
 const { Client } = pg;
 
-/** 造数 audit_id 起始值（与 seed-audit-logs.mjs 一致）。 */
-const SEED_AUDIT_ID_START = '9900000000000000000';
+/**
+ * 将 Date 格式化为后端 java.sql.Timestamp 可解析的 `yyyy-MM-dd HH:mm:ss` 格式（UTC）。
+ *
+ * 后端 AuditLogQueryRequest.startTime/endTime 为 java.sql.Timestamp 类型，
+ * 无法解析 ISO 8601 带 Z 的字符串（如 2026-05-08T16:37:29.803Z），需用此格式。
+ */
+function fmtTimestamp(d: Date): string {
+  return d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
+}
+
+/** 造数 audit_id 起始值（与 seed-audit-logs.mjs 一致，需在 bigint 上限 9.22×10^18 内）。 */
+const SEED_AUDIT_ID_START = '8000000000000000000';
 
 test.describe('场景4 · 审计日志百万级查询性能', () => {
   test.describe.configure({ timeout: 30 * 60 * 1000 }); // 30 分钟
@@ -79,8 +89,8 @@ test.describe('场景4 · 审计日志百万级查询性能', () => {
       for (let i = 0; i < AUDIT_QUERY_SAMPLES; i++) {
         const m = await measure(() =>
           api.listAuditLogs({
-            startTime: ninetyDaysAgo.toISOString(),
-            endTime: thirtyDaysAgo.toISOString(),
+            startTime: fmtTimestamp(ninetyDaysAgo),
+            endTime: fmtTimestamp(thirtyDaysAgo),
             riskLevel: ['low', 'medium', 'high', 'critical'][i % 4],
             actionType: ['NAVIGATE', 'CLICK', 'INPUT_TEXT', 'LOGIN'][i % 4],
             current: 1,
@@ -148,6 +158,12 @@ test.describe('场景4 · 审计日志百万级查询性能', () => {
       saveStats('场景4-COUNT查询', countStats, 'perf-audit-count.perf.json');
 
       // 6. 断言验收标准：审计查询 < 500ms
+      // 先校验成功率（全部失败时 P95=0 会误报通过，必须先拦截；successRate 为 0-1 小数，1=100%）
+      expect(pageStats.successRate, `分页查询成功率应为 100%（实际 ${(pageStats.successRate * 100).toFixed(2)}%）`).toBe(1);
+      expect(multiStats.successRate, `多维检索成功率应为 100%（实际 ${(multiStats.successRate * 100).toFixed(2)}%）`).toBe(1);
+      expect(page1000Stats.successRate, `深度翻页成功率应为 100%（实际 ${(page1000Stats.successRate * 100).toFixed(2)}%）`).toBe(1);
+      expect(countStats.successRate, `COUNT 查询成功率应为 100%（实际 ${(countStats.successRate * 100).toFixed(2)}%）`).toBe(1);
+      // 再校验延迟
       expect(pageStats.p95Ms, `分页查询 P95 应 < 500ms（实际 ${pageStats.p95Ms}ms）`).toBeLessThan(500);
       expect(multiStats.p95Ms, `多维检索 P95 应 < 500ms（实际 ${multiStats.p95Ms}ms）`).toBeLessThan(500);
       // 深度翻页放宽到 2s（LIMIT OFFSET 20000 在百万级数据下确实较慢，记录基线）

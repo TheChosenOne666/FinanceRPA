@@ -189,10 +189,10 @@ tests/perf/
 
 `scripts/seed-audit-logs.mjs` 直连 PostgreSQL，用 `generate_series` 批量 INSERT：
 
-- `audit_id` 起始值 `9900000000000000000`，避开雪花算法 ID 范围
+- `audit_id` 起始值 `8000000000000000000`（8×10^18，低于 bigint 上限 9.22×10^18，避开雪花算法真实 ID 范围）
 - 数据分布：6 个 org_id × 4 个 risk_level × 10 个 action_type
 - 时间范围：过去 90 天（按 `random()` 分布）
-- 测试后自动清理（`DELETE WHERE audit_id >= 9900000000000000000`）
+- 测试后自动清理（`DELETE WHERE audit_id >= 8000000000000000000`）
 - 造数后执行 `ANALYZE` 更新统计信息
 
 ## 产出物

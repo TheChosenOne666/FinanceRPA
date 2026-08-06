@@ -13,9 +13,10 @@
  *   AUDIT_SEED_COUNT=500000 node scripts/seed-audit-logs.mjs  # 造 50 万条
  *
  * 清理（测试后自动执行）：
- *   DELETE FROM rpa_audit_log WHERE audit_id >= 9900000000000000000;
+ *   DELETE FROM rpa_audit_log WHERE audit_id >= 8000000000000000000;
  *
- * 注：造数用 audit_id >= 9900000000000000000 的范围，避免与雪花算法生成的真实 ID 冲突。
+ * 注：造数用 audit_id >= 8000000000000000000 的范围（8×10^18，低于 bigint 上限 9.22×10^18，
+ *     且高于雪花算法在系统寿命期内的真实 ID），避免与真实数据冲突。
  */
 import pg from 'pg';
 
@@ -31,8 +32,8 @@ const PG_PASSWORD = process.env.PG_PASSWORD || 'finrpa';
 const SEED_COUNT = Number(process.env.AUDIT_SEED_COUNT || 1_000_000);
 const BATCH_SIZE = Number(process.env.AUDIT_SEED_BATCH_SIZE || 10_000);
 
-// 造数 audit_id 起始值（避开雪花算法 ID 范围）
-const SEED_AUDIT_ID_START = 9_900_000_000_000_000_000n;
+// 造数 audit_id 起始值（避开雪花算法 ID 范围，且需在 bigint 上限 9.22×10^18 内）
+const SEED_AUDIT_ID_START = 8_000_000_000_000_000_000n;
 
 // 数据分布
 const ORG_IDS = [1, 2, 3, 4, 5, 6];
@@ -92,13 +93,13 @@ async function main() {
           (random() * 1000)::bigint + 1,
           (random() * 100)::bigint + 1,
           (random() * 50)::bigint + 1,
-          $3[array_length($3::text[], 1) * random() + 1]::text,
+          ($3::text[])[(floor(array_length($3::text[], 1) * random()) + 1)::int],
           'target-' || (gs % 1000),
           'https://example.com/page-' || (gs % 100),
           '{"key":"value_' || gs || '"}',
-          $4[array_length($4::text[], 1) * random() + 1]::text,
+          ($4::text[])[(floor(array_length($4::text[], 1) * random()) + 1)::int],
           CASE WHEN random() < 0.2 THEN '模拟错误信息' ELSE NULL END,
-          $5[array_length($5::text[], 1) * random() + 1]::text,
+          ($5::text[])[(floor(array_length($5::text[], 1) * random()) + 1)::int],
           NOW() - (random() * 90)::int * INTERVAL '1 day',
           NOW() - (random() * 90)::int * INTERVAL '1 day' + INTERVAL '1 second',
           (random() * 5000)::int,
