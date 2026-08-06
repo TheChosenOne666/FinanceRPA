@@ -1,16 +1,13 @@
-# FinanceRPA
+# 金融级 AI 浏览器自动化平台 · 银行 / 保险 / 证券场景深度定制
 
-> 基于 Skyvern 二次开发的金融级 AI 浏览器自动化平台
-> Java 后端 + Python AI 服务 + React 前端 的跨语言架构
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
+[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://www.java.com/)
+[![Python](https://img.shields.io/badge/Python-3.11-yellow.svg)](https://www.python.org/)
+[![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
+[![Based on Skyvern](https://img.shields.io/badge/Based%20on-Skyvern-7C3AED.svg)](https://github.com/Skyvern-AI/skyvern)
+[![Tests](https://img.shields.io/badge/Tests-JUnit%205%20%7C%20pytest%20%7C%20Vitest%20%7C%20Playwright-success.svg)](tests/)
 
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
-![Java](https://img.shields.io/badge/Java-21-orange.svg)
-![Python](https://img.shields.io/badge/Python-3.11-yellow.svg)
-![React](https://img.shields.io/badge/React-18-61dafb.svg)
-![Based on Skyvern](https://img.shields.io/badge/Based%20on-Skyvern-7C3AED.svg)
-![Tests](https://img.shields.io/badge/Tests-JUnit%205%20%7C%20pytest%20%7C%20Vitest%20%7C%20Playwright-success.svg)
-
-FinanceRPA 用 LLM + 计算机视觉替代传统 XPath 脚本驱动浏览器，面向银行、保险、证券后台的高重复、强合规自动化场景（下载流水、填报保单、提交合规报告、对公信贷核验、监管报表等）。在 Skyvern 视觉决策能力之上，补齐了金融企业所需的**三维度权限、全链路审计、分级审批、LLM 韧性、多 Agent 协同、成本控制**等企业级能力，支持纯私有化部署，数据不出内网。
+FinanceRPA 是基于Skyvern进行二次开发的金融场景AI自动化平台，用 LLM + 计算机视觉替代传统 XPath 脚本驱动浏览器，面向银行、保险、证券后台的高重复、强合规自动化场景（下载流水、填报保单、提交合规报告、对公信贷核验、监管报表等）。在 Skyvern 视觉决策能力之上，补齐了金融企业所需的**三维度权限、全链路审计、分级审批、LLM 韧性、多 Agent 协同、成本控制**等企业级能力，支持纯私有化部署，数据不出内网。
 
 ***
 
