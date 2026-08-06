@@ -24,9 +24,9 @@ from app.agent.event_bus import get_event_bus
 from app.agent.executor import ExecutorAgent
 from app.agent.planner import PlannerAgent
 from app.agent.schemas import TaskPlan
-from app.audit.reporter import AuditReporter
 from app.clients.java_backend import JavaBackendClient
 from app.clients.skyvern_client import SkyvernClient, map_skyvern_status
+from app.llm.resilient_caller import ResilientCaller
 from app.config import get_settings
 from app.schemas import (
     TaskAbortResponse,
@@ -66,18 +66,116 @@ async def _execute_task_background(
     org_id: str,
     goal: str,
     java_client: JavaBackendClient,
+    url: str = "about:blank",
+    params: dict | None = None,
 ) -> None:
-    """后台执行任务（通过 Coordinator 编排，全程回调 Java）。"""
+    """后台执行任务（通过 Coordinator 编排，全程回调 Java）。
+
+    M9.7：接入 Skyvern action_handler，ExecutorAgent 真实调 Skyvern API 执行子任务。
+    Planner 拆任务 → Executor 逐个调 action_handler → action_handler 调 SkyvernClient。
+    """
     logger.info(
-        "后台任务启动 [task=%s, org=%s, goal=%s], 等待信号量...",
-        task_id, org_id, goal,
+        "后台任务启动 [task=%s, org=%s, goal=%s, url=%s], 等待信号量...",
+        task_id, org_id, goal, url,
     )
     async with _get_semaphore():
         logger.info("后台任务获取信号量，开始执行 [task=%s]", task_id)
 
         event_bus = get_event_bus()
-        planner = PlannerAgent()  # fallback 版
+
+        # M9.7: 注入 ResilientCaller（三层容错 + rpa_llm_call_log 上报）
+        # Planner 是纯文本 LLM 调用（不传 screenshots），用 GPT-4o-mini 即可
+        async def _planner_llm_callable(prompt: str) -> str:
+            """Planner LLM 调用（纯文本，GPT-4o-mini）。"""
+            import litellm
+            response = await litellm.acompletion(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=2000,
+                temperature=0.1,
+            )
+            return response.choices[0].message.content
+
+        resilient_caller = ResilientCaller(
+            llm_callable=_planner_llm_callable,
+            java_client=java_client,
+        )
+        planner = PlannerAgent(resilient_caller=resilient_caller)
+
+        # M9.7: action_handler 封装 SkyvernClient（创建任务 + 轮询终态）
+        # 闭包捕获 url/params/task_id/event_bus，供 ExecutorAgent 逐子任务调用
+        _task_url = url
+        _task_params = params or {}
+        _task_id = task_id
+        _event_bus = event_bus
+
+        async def _skyvern_action_handler(goal: str, context: dict) -> dict:
+            """ExecutorAgent 的 action_handler：调 Skyvern API 执行子任务。"""
+            # 1. 创建 Skyvern 任务
+            skyvern_client = SkyvernClient()
+            try:
+                skyvern_task = await skyvern_client.create_task(
+                    title=f"FinanceRPA-{_task_id}",
+                    url=_task_url,
+                    navigation_goal=goal,
+                    navigation_payload=_task_params if _task_params else None,
+                )
+            finally:
+                await skyvern_client.close()
+
+            if skyvern_task is None:
+                return {"success": False, "error": "Skyvern 任务创建失败", "data": None}
+
+            skyvern_task_id = skyvern_task.get("task_id")
+            logger.info(
+                "action_handler: Skyvern 任务创建成功 [task=%s, skyvern=%s, goal=%s]",
+                _task_id, skyvern_task_id, goal[:50],
+            )
+
+            # 2. 轮询 Skyvern 任务状态（每 5s，最长 10 分钟）
+            skyvern_client = SkyvernClient()
+            try:
+                for _ in range(_SKYVERN_MONITOR_TIMEOUT // _SKYVERN_POLL_INTERVAL):
+                    await asyncio.sleep(_SKYVERN_POLL_INTERVAL)
+                    task_status = await skyvern_client.get_task(skyvern_task_id)
+                    if task_status is None:
+                        continue
+
+                    status = map_skyvern_status(task_status.get("status", ""))
+
+                    # 发布进度事件
+                    await _event_bus.publish(
+                        _task_id,
+                        "progress",
+                        {
+                            "skyvernTaskId": skyvern_task_id,
+                            "status": status,
+                            "message": f"Skyvern 任务状态: {status}",
+                        },
+                    )
+
+                    if status in ("SUCCESS", "FAILED", "ABORTED"):
+                        if status == "SUCCESS":
+                            return {
+                                "success": True,
+                                "data": task_status,
+                                "error": None,
+                                "page_url": task_status.get("url"),
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "data": task_status,
+                                "error": task_status.get("failure_reason", f"Skyvern 任务 {status}"),
+                                "page_url": task_status.get("url"),
+                            }
+            finally:
+                await skyvern_client.close()
+
+            return {"success": False, "error": "Skyvern 任务超时", "data": None}
+
         executor = ExecutorAgent(
+            action_handler=_skyvern_action_handler,
             java_client=java_client,
             event_bus=event_bus,
             task_id=task_id,
@@ -120,6 +218,11 @@ async def _execute_task_background(
             )
         finally:
             _active_tasks.discard(task_id)
+            # M9.7: 关闭 JavaBackendClient
+            try:
+                await java_client.close()
+            except Exception as e:
+                logger.warning("关闭 JavaBackendClient 失败: %s", e)
             logger.info(
                 "后台任务结束，从活跃集合移除 [task=%s, 剩余活跃=%d]",
                 task_id, len(_active_tasks),
@@ -136,169 +239,14 @@ _SKYVERN_MONITOR_TIMEOUT = 600
 _SKYVERN_POLL_INTERVAL = 5
 
 
-async def _monitor_skyvern_task(
-    task_id: str,
-    org_id: str,
-    user_id: str,
-    skyvern_task_id: str,
-    target_url: str,
-    goal: str,
-    params: dict,
-) -> None:
-    """后台监控 Skyvern 任务，终态时回调 Java 状态 + 上报审计 + 发布 SSE（M9.1）。
-
-    M3.8 默认路径下 Skyvern 原生 API 不会主动回调 Java，也不会产生审计日志。
-    本函数补齐这个缺口：
-      1. 轮询 Skyvern 任务状态（每 5s，最长 10 分钟）
-      2. Skyvern 进入终态（SUCCESS/FAILED/ABORTED）时：
-         - 回调 Java update_task_state 更新任务终态
-         - 上报一条任务级审计日志（AuditReporter，action_type=skyvern_task_execution）
-         - 发布 SSE 终态事件（complete/error）
-      3. 异常或超时也回调 Java FAILED
-
-    @param task_id: RPA 任务 ID（雪花算法）
-    @param org_id: 组织 ID
-    @param user_id: 触发用户 ID（审计需要）
-    @param skyvern_task_id: Skyvern 任务 ID
-    @param target_url: Skyvern 浏览器访问的 URL（审计记录用）
-    @param goal: 任务目标
-    @param params: 任务参数（审计记录用）
-    """
-    logger.info(
-        "Skyvern 监控启动 [task=%s, skyvern=%s, url=%s]",
-        task_id, skyvern_task_id, target_url,
-    )
-
-    skyvern_client = SkyvernClient()
-    java_client = JavaBackendClient()
-    reporter = AuditReporter(java_client=java_client)
-    event_bus = get_event_bus()
-    started_at = datetime.now(timezone.utc)
-
-    rpa_state = "EXECUTING"
-    failure_reason = ""
-
-    try:
-        # 0. 先将任务从 PENDING → EXECUTING（Java 状态机要求：PENDING 不能直接跳 SUCCESS）
-        # M9.1 修复：此前监控直接回调 SUCCESS 被 TaskStateMachine 拒绝（非法流转 PENDING→SUCCESS）
-        await java_client.update_task_state(
-            task_id=task_id,
-            state="EXECUTING",
-            message="Skyvern 任务开始执行",
-        )
-
-        # 1. 轮询 Skyvern 状态
-        poll_count = _SKYVERN_MONITOR_TIMEOUT // _SKYVERN_POLL_INTERVAL
-        for _ in range(poll_count):
-            await asyncio.sleep(_SKYVERN_POLL_INTERVAL)
-            task = await skyvern_client.get_task(skyvern_task_id)
-            if task is None:
-                logger.warning(
-                    "Skyvern 监控: 查询返回空 [task=%s, skyvern=%s]",
-                    task_id, skyvern_task_id,
-                )
-                continue
-            skyvern_status = task.get("status", "running")
-            rpa_state = map_skyvern_status(skyvern_status)
-            failure_reason = task.get("failure_reason") or ""
-            logger.info(
-                "Skyvern 监控轮询 [task=%s, skyvern_status=%s, rpa_state=%s]",
-                task_id, skyvern_status, rpa_state,
-            )
-            if rpa_state in ("SUCCESS", "FAILED", "ABORTED"):
-                break
-            # 非终态：发布 progress 事件（供 SSE 订阅者感知任务进行中，避免前端长时间无反馈）
-            await event_bus.publish(
-                task_id,
-                "progress",
-                {
-                    "state": "EXECUTING",
-                    "skyvernStatus": skyvern_status,
-                    "message": f"Skyvern 任务执行中（{skyvern_status}）",
-                },
-            )
-        else:
-            # 轮询超时，标记失败
-            rpa_state = "FAILED"
-            failure_reason = f"Skyvern 任务监控超时（{_SKYVERN_MONITOR_TIMEOUT}s）"
-
-        completed_at = datetime.now(timezone.utc)
-        duration_ms = int((completed_at - started_at).total_seconds() * 1000)
-        execution_result = "success" if rpa_state == "SUCCESS" else "failed"
-        terminal_message = failure_reason or f"Skyvern 任务 {rpa_state}"
-
-        # 2. 回调 Java 更新任务终态
-        logger.info("Skyvern 监控: 回调 Java 终态 [task=%s, state=%s]", task_id, rpa_state)
-        await java_client.update_task_state(
-            task_id=task_id,
-            state=rpa_state,
-            message=terminal_message,
-            error_message=failure_reason if rpa_state != "SUCCESS" else None,
-        )
-
-        # 3. 上报任务级审计日志（M9.1：补 Skyvern 原生路径的审计缺口）
-        logger.info("Skyvern 监控: 上报审计 [task=%s, result=%s]", task_id, execution_result)
-        await reporter.report_step(
-            org_id=org_id,
-            task_id=task_id,
-            step_index=0,
-            action_type="skyvern_task_execution",
-            started_at=started_at,
-            completed_at=completed_at,
-            duration_ms=duration_ms,
-            page_url=target_url,
-            action_params=json.dumps(params, ensure_ascii=False) if params else None,
-            execution_result=execution_result,
-            error_message=failure_reason if rpa_state != "SUCCESS" else None,
-            user_id=user_id,
-        )
-
-        # 4. 发布 SSE 终态事件
-        sse_event_type = "complete" if rpa_state == "SUCCESS" else "error"
-        await event_bus.publish(
-            task_id,
-            sse_event_type,
-            {"state": rpa_state, "message": terminal_message},
-        )
-
-        logger.info("Skyvern 监控完成 [task=%s, state=%s, duration=%dms]", task_id, rpa_state, duration_ms)
-    except Exception as e:
-        logger.error("Skyvern 监控异常 [task=%s]: %s", task_id, e, exc_info=True)
-        # 异常时回调 Java 失败
-        try:
-            await java_client.update_task_state(
-                task_id=task_id,
-                state="FAILED",
-                message=f"监控异常: {e}",
-                error_message=str(e),
-            )
-            await event_bus.publish(
-                task_id, "error", {"state": "FAILED", "message": f"监控异常: {e}"},
-            )
-        except Exception as inner:
-            logger.error("Skyvern 监控异常回调失败 [task=%s]: %s", task_id, inner, exc_info=True)
-    finally:
-        _active_tasks.discard(task_id)
-        await skyvern_client.close()
-        await java_client.close()
-        logger.info(
-            "Skyvern 监控结束，从活跃集合移除 [task=%s, 剩余活跃=%d]",
-            task_id, len(_active_tasks),
-        )
-        # 延迟清理事件总线（保留终态事件供迟到订阅者）
-        asyncio.get_event_loop().call_later(
-            300, lambda: event_bus.cleanup(task_id),
-        )
-
-
 @router.post("", response_model=TaskTriggerResponse)
 async def trigger_task(request: TaskTriggerRequest) -> TaskTriggerResponse:
-    """触发任务执行（M3.8：调 Skyvern API 创建 Skyvern 原生任务）。
+    """触发任务执行（M9.7：改走 Coordinator 编排 + Skyvern action_handler）。
 
     流程：
       1. 注册事件总线 + 标记活跃
-      2. 调 Skyvern POST /api/v1/tasks 创建任务（LLM 视觉决策 + 浏览器自动化）
-      3. 返回 skyvern_task_id 给 Java 后端
+      2. 启动后台 Coordinator：Planner 拆任务 → Executor 逐个调 action_handler → SkyvernClient
+      3. 返回 task_id（skyvern_task_id 在 action_handler 内部创建，异步回调 Java）
     """
     logger.info(
         "API 触发任务: task_id=%s, org_id=%s, goal=%s, workflow_id=%s",
@@ -314,71 +262,33 @@ async def trigger_task(request: TaskTriggerRequest) -> TaskTriggerResponse:
         request.task_id, len(_active_tasks),
     )
 
-    # 2. 调 Skyvern API 创建任务
-    # 从 params 中提取 URL（工作流模板参数），默认用 about:blank 让 Skyvern 至少能启动浏览器
+    # 2. 从 params 中提取 URL（工作流模板参数）
     target_url = request.params.get("url", "about:blank") if request.params else "about:blank"
 
-    skyvern_client = SkyvernClient()
-    try:
-        skyvern_task = await skyvern_client.create_task(
-            title=f"FinanceRPA-{request.task_id}",
-            url=target_url,
-            navigation_goal=request.goal,
-            navigation_payload=request.params if request.params else None,
-        )
-    finally:
-        await skyvern_client.close()
-
-    if skyvern_task is None:
-        # Skyvern 创建失败，回调 Java 标记失败
-        logger.error("Skyvern 任务创建失败: task_id=%s", request.task_id)
-        java_client = JavaBackendClient()
-        try:
-            await java_client.update_task_state(
-                task_id=request.task_id,
-                state="FAILED",
-                message="Skyvern 任务创建失败",
-                error_message="Skyvern API 调用失败",
-            )
-        finally:
-            await java_client.close()
-        _active_tasks.discard(request.task_id)
-        raise HTTPException(
-            status_code=502,
-            detail="Skyvern 任务创建失败，请检查 Skyvern 服务状态",
-        )
-
-    skyvern_task_id = skyvern_task.get("task_id")
-    logger.info(
-        "Skyvern 任务创建成功: task_id=%s, skyvern_task_id=%s, url=%s",
-        request.task_id, skyvern_task_id, target_url,
-    )
-
-    # 3. 启动后台监控（M9.1：轮询 Skyvern 状态，终态回调 Java + 上报审计 + 发布 SSE）
-    # M3.8 默认路径下 Skyvern 不主动回调，需本监控补齐任务终态回传与审计日志
-    # 关键：必须持有 Task 引用，否则事件循环可能将其垃圾回收，导致监控中断、任务永远卡在 PENDING
-    monitor_task = asyncio.create_task(_monitor_skyvern_task(
+    # M9.7: 改走 Coordinator → Planner → Executor → action_handler（SkyvernClient）
+    # Planner 拆任务 + 失败策略 + 断点续跑 + 子任务级审计，action_handler 内部调 Skyvern
+    java_client = JavaBackendClient()
+    bg_task = asyncio.create_task(_execute_task_background(
         task_id=request.task_id,
         org_id=request.org_id,
-        user_id=request.user_id,
-        skyvern_task_id=skyvern_task_id,
-        target_url=target_url,
         goal=request.goal,
+        java_client=java_client,
+        url=target_url,
         params=request.params if request.params else {},
     ))
-    _background_tasks.add(monitor_task)
-    monitor_task.add_done_callback(_background_tasks.discard)
+    _background_tasks.add(bg_task)
+    bg_task.add_done_callback(_background_tasks.discard)
     logger.info(
-        "Skyvern 监控任务已启动并加入引用集合 [task=%s, 后台任务数=%d]",
-        request.task_id, len(_background_tasks),
+        "Coordinator 后台任务已启动 [task=%s, url=%s, 后台任务数=%d]",
+        request.task_id, target_url, len(_background_tasks),
     )
 
-    # 4. 返回含 skyvern_task_id 的响应（Java 侧保存到 rpa_agent_task.skyvern_task_id）
+    # 3. 返回响应（skyvern_task_id 在 action_handler 内部创建，此处返回 None）
     return TaskTriggerResponse(
         task_id=request.task_id,
-        skyvern_task_id=skyvern_task_id,
+        skyvern_task_id=None,
         status="running",
-        message="Skyvern 任务已触发",
+        message="任务已触发，Coordinator 编排中",
     )
 
 

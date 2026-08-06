@@ -1060,6 +1060,27 @@ class ForgeAgent:
                         self.async_operation_pool.run_operation(task.task_id, AgentPhase.llm)
                         llm_key_override = None
 
+                    # M9.7: ModelRouter 动态选模型（按页面复杂度路由 light/standard/heavy）
+                    # 使用 provider 感知路由，确保同 provider 内选型，避免跨 provider 错误覆盖
+                    try:
+                        from app.llm.model_router import ModelRouter
+                        from app.llm.llm_key_mapper import route_by_complexity
+                        if scraped_page.html and task.navigation_goal and llm_key_override:
+                            _router = ModelRouter()
+                            _score, _ = _router.route(scraped_page.html)
+                            _routed_key = route_by_complexity(_score.level, llm_key_override)
+                            if _routed_key != llm_key_override:
+                                LOG.info(
+                                    "ModelRouter routed model",
+                                    original=llm_key_override,
+                                    routed=_routed_key,
+                                    score=_score.total_score,
+                                    level=_score.level,
+                                )
+                                llm_key_override = _routed_key
+                    except Exception as _e:
+                        LOG.warning("ModelRouter routing failed, using default", error=str(_e))
+
                     llm_api_handler = LLMAPIHandlerFactory.get_override_llm_api_handler(
                         llm_key_override, default=app.LLM_API_HANDLER
                     )
@@ -1069,13 +1090,64 @@ class ForgeAgent:
                         if context:
                             context.use_prompt_caching = True
 
+                    # M9.7: ActionCache 查询（命中则跳过 LLM 调用，高频重复场景省 50%+ LLM 调用）
+                    _cached_response = None
                     if not reuse_speculative_llm_response:
+                        try:
+                            from app.llm.action_cache import ActionCache
+                            if scraped_page.html and task.navigation_goal:
+                                # 复用全局单例，避免每 step 创建新 Redis 连接池导致泄漏
+                                _cache = ActionCache.get_instance()
+                                _cached_response = await _cache.get(
+                                    scraped_page.html, task.navigation_goal,
+                                )
+                                if _cached_response:
+                                    LOG.info(
+                                        "ActionCache hit, skip LLM call",
+                                        step_id=step.step_id,
+                                    )
+                        except Exception as _e:
+                            LOG.warning("ActionCache get failed", error=str(_e))
+
+                    if _cached_response:
+                        json_response = _cached_response
+                        # M9.7: 缓存命中时补报 cache_hit 记录（成本分析可见缓存节省效果）
+                        try:
+                            from app.clients.java_backend import JavaBackendClient
+                            from app.llm.resilient_caller import LlmCallRecord
+                            from datetime import datetime, timezone
+                            _java_client = JavaBackendClient()
+                            _record = LlmCallRecord(
+                                task_id=step.task_id,
+                                org_id=step.organization_id,
+                                context_name=prompt_name or "skyvern_extract_action",
+                                retry_attempt=0,
+                                success=True,
+                                duration_ms=0,
+                                cache_hit=True,
+                                timestamp=datetime.now(timezone.utc).isoformat(),
+                            )
+                            await _java_client.report_llm_call(_record.model_dump())
+                            await _java_client.close()
+                        except Exception as _e:
+                            LOG.warning("Failed to report cache hit to Java", error=str(_e))
+                    elif not reuse_speculative_llm_response:
                         json_response = await llm_api_handler(
                             prompt=extract_action_prompt,
                             prompt_name=prompt_name,
                             step=step,
                             screenshots=scraped_page.screenshots,
                         )
+                        # M9.7: ActionCache 写入（未命中时缓存 LLM 结果，TTL 24 小时）
+                        try:
+                            from app.llm.action_cache import ActionCache
+                            if scraped_page.html and task.navigation_goal and json_response:
+                                _cache = ActionCache.get_instance()
+                                await _cache.set(
+                                    scraped_page.html, task.navigation_goal, json_response,
+                                )
+                        except Exception as _e:
+                            LOG.warning("ActionCache set failed", error=str(_e))
                     else:
                         LOG.debug(
                             "Using speculative extract-actions response",

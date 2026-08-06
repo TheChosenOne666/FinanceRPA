@@ -1312,6 +1312,31 @@ class LLMAPIHandlerFactory:
                     llm_cost=llm_cost if llm_cost > 0 else None,
                 )
 
+                # M9.7: 上报 LLM 调用记录到 Java（rpa_llm_call_log 表，支撑成本分析）
+                try:
+                    from app.clients.java_backend import JavaBackendClient
+                    from app.llm.resilient_caller import LlmCallRecord
+                    from datetime import datetime, timezone
+                    _java_client = JavaBackendClient()
+                    _record = LlmCallRecord(
+                        task_id=step.task_id if step else None,
+                        org_id=step.organization_id if step else organization_id,
+                        model=llm_config.model_name,
+                        context_name=prompt_name or "skyvern_extract_action",
+                        retry_attempt=0,
+                        success=True,
+                        duration_ms=int(duration_seconds * 1000),
+                        prompt_tokens=prompt_tokens if prompt_tokens > 0 else None,
+                        completion_tokens=completion_tokens if completion_tokens > 0 else None,
+                        total_tokens=(prompt_tokens + completion_tokens) if (prompt_tokens > 0 or completion_tokens > 0) else None,
+                        cache_hit=False,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                    )
+                    await _java_client.report_llm_call(_record.model_dump())
+                    await _java_client.close()
+                except Exception as _e:
+                    LOG.warning("Failed to report LLM call to Java", error=str(_e))
+
                 if step and is_speculative_step:
                     step.speculative_llm_metadata = SpeculativeLLMMetadata(
                         prompt=llm_prompt_value,

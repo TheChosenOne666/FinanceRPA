@@ -41,7 +41,7 @@ class ActionCache:
     - DOM 动态内容剥除（时间戳、随机 ID、文本内容等）
 
     使用示例：
-        cache = ActionCache()
+        cache = ActionCache.get_instance()  # 复用全局单例，避免 Redis 连接泄漏
         # 查缓存
         cached = await cache.get(dom_structure="<html>...</html>", navigation_goal="下载流水")
         if cached:
@@ -50,6 +50,20 @@ class ActionCache:
         result = await llm_call(...)
         await cache.set(dom_structure, navigation_goal, result)
     """
+
+    # 模块级单例（复用 Redis 连接池，避免每次实例化创建新连接导致泄漏）
+    _instance: "ActionCache | None" = None
+
+    @classmethod
+    def get_instance(cls) -> "ActionCache":
+        """获取全局单例（复用 Redis 连接池，避免连接泄漏）。
+
+        @return: ActionCache 全局单例
+        """
+        if cls._instance is None:
+            cls._instance = cls()
+            logger.info("ActionCache: 初始化全局单例")
+        return cls._instance
 
     def __init__(
         self,
