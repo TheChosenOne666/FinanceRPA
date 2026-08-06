@@ -5,28 +5,16 @@
 
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Java](https://img.shields.io/badge/Java-21-orange.svg)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-green.svg)
 ![Python](https://img.shields.io/badge/Python-3.11-yellow.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
+![Based on Skyvern](https://img.shields.io/badge/Based%20on-Skyvern-7C3AED.svg)
+![Tests](https://img.shields.io/badge/Tests-JUnit%205%20%7C%20pytest%20%7C%20Vitest%20%7C%20Playwright-success.svg)
 
 FinanceRPA 用 LLM + 计算机视觉替代传统 XPath 脚本驱动浏览器，面向银行、保险、证券后台的高重复、强合规自动化场景（下载流水、填报保单、提交合规报告、对公信贷核验、监管报表等）。在 Skyvern 视觉决策能力之上，补齐了金融企业所需的**三维度权限、全链路审计、分级审批、LLM 韧性、多 Agent 协同、成本控制**等企业级能力，支持纯私有化部署，数据不出内网。
 
 ***
 
 ## 界面预览
-
-### 认证与首页
-
-<table>
-  <tr>
-    <td width="50%" align="center"><b>登录页</b><br>毛玻璃卡片 · 用户名/密码 · 过期提示</td>
-    <td width="50%" align="center"><b>首页</b><br>欢迎区 + 快捷入口 + 用户/角色/权限</td>
-  </tr>
-  <tr>
-    <td><img src="docs/previews/01-login.png" alt="登录页"></td>
-    <td><img src="docs/previews/02-home.png" alt="首页"></td>
-  </tr>
-</table>
 
 ### 监控
 
