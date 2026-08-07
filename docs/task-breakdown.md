@@ -1724,6 +1724,7 @@ M2.2 需要 Python 回调 Java 的内部 API，M2.3（Java agent 模块）需实
 | **产出物** | `Makefile` 完善 + `scripts/` 运维脚本 |
 | **描述** | 1. Makefile：`make dev` / `make build` / `make test` / `make seed` / `make backup` / `make logs`<br>2. `scripts/healthcheck.sh`：全链路健康检查<br>3. `scripts/seed_demo_data.py`：演示数据导入<br>4. `scripts/backup.sh`：PG + MinIO 备份 |
 | **验收标准** | Makefile 命令可用；脚本执行成功 |
+| **状态** | ✅ 已完成（2026-08-07）。4 大产出全部交付：(1) **Makefile 完善**：新增 `make dev`（一键 `docker-compose up -d` 全服务，支持 `PROFILE=prod` 切换生产 overlay）、`make dev-down`、`make backup`、`make logs`（跟踪日志）、`make health`（调用 healthcheck.sh），原有 `make build`/`make test`/`make seed`/`make install`/`make clean` 保留；`make seed` 改为调用 `scripts/seed_demo_data.py`。（2）**`scripts/healthcheck.sh`**：全链路健康检查覆盖 7 个组件（postgres/redis/minio/backend/ai/frontend/nginx），采用"宿主机端口 HTTP/TCP 探测优先 + 容器 health 状态回退"双策略，兼容开发（端口暴露）与生产（仅内网）环境，`pg_isready`/`redis-cli PING` 可选增强，退出码 0/1 可被 CI 判定。（3）**`scripts/seed_demo_data.py`**：读取根目录 `.env` 连接 PG，优先 `psql` 命令行、回退 `psycopg2`，幂等导入 `finance-backend/.../db/seed/demo_data.sql`（含 sys_user/sys_user_role 演示账号）。（4）**`scripts/backup.sh`**：PG 逻辑备份（`pg_dump --clean --if-exists --create` gzip，优先本地 pg_dump、回退容器内 pg_dump）+ MinIO 同步（优先 `mc mirror`、回退 `aws s3 sync`），本地保留最近 7 份，凭据自动从 `.env` 加载。三个脚本均通过 `bash -n` / `py_compile` 语法校验。
 
 #### M9.5 SIT 系统集成测试 ✅
 
@@ -1906,30 +1907,6 @@ M{里程碑号}.{任务序号}
 - M5.4 Java LLM 调用记录与统计
 - M7.4 CSV 导出 + 多维检索增强
 - M9.2 性能测试
-
-### M10 批量数据驱动任务（2026-08-06 新增）
-
-> 解决「每次换用户都要手动填参数」的痛点：将一批用户数据（CSV / 粘贴多行 / 外部业务系统表）按字段映射批量生成同一工作流模板的 N 个任务。
-
-#### M10.1 Java 批量任务 API + 解析引擎 ✅
-
-| **任务 ID** | M10.1 |
-|-------------|-------|
-| **任务名称** | 批量任务后端接口与拆分执行 |
-| **模块** | 后端 `com.finrpa.batch` |
-| **规模** | L |
-| **前置依赖** | M3.6（工作流模板 + params）、M6.1（triggerWorkflow 单任务触发） |
-| **状态** | ✅ 已完成（2026-08-06）。产出：(1) **依赖**：`pom.xml` 新增 `commons-csv`(CSV 解析) + `HikariCP`(动态外部数据源)。(2) **配置**：`application.yml` 新增 `external-datasource`（enabled/url/driver-class-name/username/password，默认未启用）。(3) **DTO**：`batch/dto/BatchTaskRequest`（workflowId + columnMapping + rows | externalQuery）、`BatchTaskResultVO`（batchId/total/successCount/failedCount/results[]）。(4) **服务**：`batch/service/BatchTaskService`——解析 rows 或外部表 → 按 columnMapping 重命名为模板 param name → 逐条调 `triggerWorkflow` 生成任务，MAX_ROWS=500 上限；`batch/service/ExternalDataSourceService`——懒加载 HikariDataSource（只读池，表名/WHERE 子句注入校验）。(5) **控制层**：`batch/controller/BatchTaskController` → `POST /api/batch-tasks`。(6) **测试**：`BatchTaskServiceTest`（6 例：直接 rows 成功映射/部分失败汇总/外部未启用抛错/外部启用拉取/空与超限/缺 mapping，全部通过）。 |
-
-#### M10.2 前端批量提交入口 ✅
-
-| **任务 ID** | M10.2 |
-|-------------|-------|
-| **任务名称** | 批量任务前端弹窗 + 数据解析 |
-| **模块** | 前端 `routes/tasks/BatchTaskModal.tsx` + `utils/batchParser.ts` |
-| **规模** | M |
-| **前置依赖** | M10.1 |
-| **状态** | ✅ 已完成（2026-08-06；2026-08-07 扩展文件格式）。产出：(1) **API**：`api/workflows.ts` 新增 `batchCreateTasks`；`api/types.ts` 新增 `BatchTaskRequest/ExternalQuery/BatchTaskResultVO/BatchItemResult`。(2) **弹窗**：`BatchTaskModal.tsx`——三种数据来源（上传文件 CSV/TSV/Excel / 粘贴多行 / 外部数据源），自动推断列名并生成映射表，提交时构造 payload；Excel 经 SheetJS 解析首个工作表后转回 CSV 文本复用下游链路。(3) **解析工具**：`utils/batchParser.ts`（+ `.mjs` 真源）`parseDelimited`/`collectColumns`/`isExcelFile`/`parseExcelBuffer` 纯函数；新增 `xlsx`(SheetJS 0.18.5) 依赖。(4) **接入**：`TasksPage.tsx` 新增「批量创建」按钮 + 批量结果提示 + 弹窗渲染；`Icons.tsx` 新增 `IconUpload`/`IconDatabase`。(5) **测试**：`batchParser.test.mjs`（node --test，8 例全过：逗号 CSV/制表符/空内容/列数不足/去重顺序/isExcelFile 识别/Excel 解析 xlsx/仅表头无数据返回空）。 |
 
 ### 9.4 修订记录
 

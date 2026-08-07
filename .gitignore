@@ -29,5 +29,8 @@ logs/
 tmp/
 temp/
 
+# 运维备份产物（M9.4 backup.sh 输出）
+backups/
+
 # AI 运行时下载产物
 finance-ai/downloads/
